@@ -766,21 +766,23 @@ function calcPadMake() {
     pad.appendChild(c === '⌫' ? キー(c, calcPadBack, 色) : キー(c, () => calcPadInsert(c), 色));
   });
 
-  // 下の段：全部消す／システムのキーボード／閉じる
+  // 下の段：全部消す ／ 閉じる ／ 確定（右下）
   const 消 = キー('全部消す', calcPadClear, '#5a3a3a');
   消.style.fontSize = '13px';
   消.style.gridColumn = 'span 2';
   pad.appendChild(消);
 
-  const 切 = キー('キーボード', calcPadSystem, '#3a4a3a');
-  切.style.fontSize = '13px';
-  切.style.gridColumn = 'span 1';
-  pad.appendChild(切);
-
-  const 閉 = キー('閉じる', () => { if (calcPadFor) calcPadFor.blur(); }, '#3a3a3a');
+  const 閉 = キー('閉じる', calcPadClose, '#3a3a3a');
   閉.style.fontSize = '13px';
-  閉.style.gridColumn = 'span 2';
+  閉.style.gridColumn = 'span 1';
   pad.appendChild(閉);
+
+  // ★確定は右下です。押すと、その場で残して次の欄へ進みます。
+  //   仕入先が20行あるので、1つ入れるたびに閉じずに進めるようにしました
+  const 確 = キー('確定', calcPadDone, '#2f6b3f');
+  確.style.fontSize = '15px';
+  確.style.gridColumn = 'span 2';
+  pad.appendChild(確);
 
   document.body.appendChild(pad);
   calcPad = pad;
@@ -826,15 +828,32 @@ function calcPadClear() {
   i.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-/** ★逃げ道：システムのキーボードに戻します */
-function calcPadSystem() {
+/** 閉じる … その場で残して、テンキーを引っこめます */
+function calcPadClose() {
   const i = calcPadFor;
-  if (!i) return;
-  i.dataset.sys = '1';
-  i.inputMode = 'numeric';
+  calcPadFor = null;
   calcPadHide();
-  i.blur();
-  setTimeout(() => i.focus(), 30);
+  if (i) i.blur();          // blur で、待たずにその場で残ります
+}
+
+/**
+ * 確定 … その場で残して、次の欄へ進みます
+ *
+ * ★仕入先は20行あります。1つ入れるたびに閉じて開いて、では手間なので、
+ *   そのまま次の欄へ送ります。最後の欄まで来たら、閉じます。
+ */
+function calcPadDone() {
+  const i = calcPadFor;
+  if (!i) { calcPadClose(); return; }
+  const 並び = [...document.querySelectorAll('input[data-k],input[data-grid]')]
+    .filter((e) => e.offsetParent && !e.readOnly);
+  const at = 並び.indexOf(i);
+  const 次 = (at >= 0 && at + 1 < 並び.length) ? 並び[at + 1] : null;
+  if (!次) { calcPadClose(); return; }
+  i.blur();                 // いまの欄を、その場で残します
+  calcPadFor = 次;
+  次.focus();
+  calcPadShow(次);
 }
 
 /**
@@ -874,7 +893,6 @@ function calcPadBind(input) {
   if (!calcTouch()) return;                 // パソコンは本物のキーボードで
   input.inputMode = 'none';                 // ★システムのキーボードを出しません
   input.addEventListener('focus', () => {
-    if (input.dataset.sys === '1') return;   // 「キーボード」に切り替えた欄
     calcPadFor = input;
     calcPadShow(input);
   });
@@ -1306,12 +1324,16 @@ function renderGridBox() {
 
   const 節 = (見出し, 行, 入れ先, F名, G名) => {
     if (!行.length) return;
+    // ★節ごとに入れ物を作ります。ボタンをその節の下に置くためです
+    const sec = document.createElement('div');
+    sec.className = 'cash-grid__sec';
+    sec.dataset.part = 入れ先;
     const h = document.createElement('p');
     h.className = 'cash-minus__head';
     h.style.margin = '14px 0 8px';
     h.style.fontWeight = '700';
     h.textContent = `${見出し}（${F名} ／ ${G名}）`;
-    el.cashGrid.appendChild(h);
+    sec.appendChild(h);
 
     const wrap = document.createElement('div');
     // ★1行に1件です。
@@ -1372,7 +1394,8 @@ function renderGridBox() {
       });
       wrap.appendChild(row);
     });
-    el.cashGrid.appendChild(wrap);
+    sec.appendChild(wrap);
+    el.cashGrid.appendChild(sec);
   };
 
   節('④仕入明細', w.shiire, 'shiire', '当日現金', '掛仕入');
@@ -1413,80 +1436,42 @@ function renderGridFill() {
 }
 
 /**
- * 「仕入・人件費だけ書く」ボタンの出し入れ
+ * 区分ごとの「日報に書く」ボタンを、その場に出し入れします
  *
  * ★入力のたびに呼びます。1つでも入っていれば出て、全部消せば引っ込みます。
  *   ここで欄ごと作り直すと、打っている途中で入力の位置が飛ぶので、
  *   ボタンだけを出し入れします。
- * ★このボタンがあるのは、仕入と人件費がジャーナルの写真と関係ないからです。
- *   読み取りが通らなかった日でも、ここだけは書けるようにします。
+ * ★区分ごとに分けているのは、書く先がそれぞれ別のマスだからです。
+ *   仕入と人件費は写真と関係ないので、読み取りが通らなかった日でも書けます。
  */
-function renderGridButton() {
-  if (!el.cashGrid) return;
-  let b = el.cashGrid.querySelector('.cash-grid__go');
-  const 出す = cashGridSend().length > 0;
+function nippouPartButton(親, part, 文) {
+  if (!親) return;
+  let b = 親.querySelector(`.nippou-go[data-part="${part}"]`);
+  const 出す = part === 'delivery'
+    ? Object.keys(nippouPartData('delivery').values).length > 0
+    : cashGridSend(part).length > 0;
   if (!出す) { if (b) b.remove(); return; }
   if (!b) {
     b = document.createElement('button');
     b.type = 'button';
-    b.className = 'btn btn--sub cash-grid__go';
-    b.addEventListener('click', writeGridOnly);
-    el.cashGrid.appendChild(b);
+    b.className = 'btn btn--sub nippou-go';
+    b.dataset.part = part;
+    b.style.marginBottom = '14px';
+    b.addEventListener('click', () => nippouWritePart(part, b));
+    親.appendChild(b);
   }
   const test = NippouTest.get();
-  b.textContent = test ? '★テスト用の日報に 仕入・人件費だけ書く' : '仕入・人件費だけ書く';
+  b.textContent = (test ? '★テスト用の日報に ' : '') + 文;
   b.classList.toggle('btn--danger', !!test);
+  return b;
 }
 
-/**
- *  仕入と人件費だけを日報へ書きます
- *
- *  ★日報の5つ（現金売上ほか）には触りません。
- *    ジャーナルの読み取りが通らなかった日でも、ここだけは書けます。
- *  ★流れは5つと同じ「見る → 確かめる → 書く」です。
- */
-async function writeGridOnly() {
-  const test = NippouTest.get();
-  const folder = test ? '' : NippouFolders.get(state.storeId);
-  if (!test && !folder) {
-    setNippouMsg('日報フォルダが登録されていません。マネージの店舗一覧で登録してください', 'warn');
-    return;
-  }
-  const だめ = cashGridBad();
-  if (だめ.length) {
-    setNippouMsg(`${だめ.join('、')} の計算式が計算できません。直すか、空にしてから書いてください`, 'warn');
-    return;
-  }
-  const extra = cashGridSend();
-  if (!extra.length) { setNippouMsg('入れたものがありません', 'warn'); return; }
-
-  const dateStr = ymd(state.y, state.m, state.d);
-  try {
-    setNippouMsg('日報を見に行っています…');
-    const look = await Sync.ask('nippouWrite',
-      { mode: '見る', file: test, folder, day: dateStr, values: {}, extra });
-    if (!look.ok) { setNippouMsg(look.error || '日報を開けませんでした', 'warn'); return; }
-    if (!nippouGasOk(look)) return;
-
-    const rows = look.rows || [];
-    const 食いちがい = nippouClash(look.rows);
-    const ok = await askConfirm({
-      item: `${look.file}　${look.sheet}日のページ（仕入・人件費）`,
-      message: rows.map((r) => `${r.name} ${cashShow(r.after)}`).join('／')
-        + nippouClashText(食いちがい),
-      okLabel: '書く',
-      danger: 食いちがい.length > 0,
-    });
-    if (!ok) { setNippouMsg(''); return; }
-
-    setNippouMsg('日報に書いています…');
-    const res = await Sync.ask('nippouWrite',
-      { mode: '書く', file: test, folder, day: dateStr, values: {}, extra });
-    if (!res.ok) { setNippouMsg(res.error || '書けませんでした', 'warn'); return; }
-    setNippouMsg(`仕入・人件費を日報に書きました（${res.sheet}日・${extra.length}か所）`, 'ok');
-  } catch (e) {
-    setNippouMsg(String(e && e.message || e), 'warn');
-  }
+/** 仕入・人件費のボタン（それぞれの節の下に置きます） */
+function renderGridButton() {
+  if (!el.cashGrid) return;
+  const 節 = (part) => el.cashGrid.querySelector(`.cash-grid__sec[data-part="${part}"]`);
+  nippouPartButton(節('shiire'), 'shiire', '仕入明細を日報に書く');
+  nippouPartButton(節('jinken'), 'jinken', '人件費を日報に書く');
 }
 
 /** 仕入・人件費の下に出す一言（計算式の答えと、計算できない式） */
@@ -1519,9 +1504,9 @@ function renderGridNote() {
 }
 
 /** 仕入・人件費に、計算できない式が残っていないか */
-function cashGridBad() {
+function cashGridBad(だけ) {
   const out = [];
-  ['shiire', 'jinken'].forEach((入れ先) => {
+  (だけ ? [だけ] : ['shiire', 'jinken']).forEach((入れ先) => {
     Object.keys(cashEdit[入れ先] || {}).forEach((name) => {
       ['f', 'g'].forEach((c) => {
         const v = (cashEdit[入れ先][name] || {})[c];
@@ -1534,10 +1519,10 @@ function cashGridBad() {
 }
 
 /** 仕入・人件費を、日報へ渡す形にします */
-function cashGridSend() {
+function cashGridSend(だけ) {
   const out = [];
   const 列 = { f: 'F', g: 'G' };
-  ['shiire', 'jinken'].forEach((入れ先) => {
+  (だけ ? [だけ] : ['shiire', 'jinken']).forEach((入れ先) => {
     Object.keys(cashEdit[入れ先] || {}).forEach((name) => {
       ['f', 'g'].forEach((c) => {
         const v = (cashEdit[入れ先][name] || {})[c];
@@ -1600,6 +1585,16 @@ function renderNippouMinusNote() {
   el.cashMinusNote.textContent = 言.join('　');
   el.cashMinusNote.className = 'cash-msg'
     + (だめ.length ? ' is-warn' : ' is-ok') + (言.length ? '' : ' is-hidden');
+
+  // ★デリバリーの「日報に書く」は、その5つの欄のすぐ下に置きます。
+  //   入れ物は index.html ではなく、ここで作って差し込みます
+  if (!el.cashMinusGo) {
+    const w = document.createElement('div');
+    w.id = 'cashMinusGo';
+    el.cashMinusNote.insertAdjacentElement('afterend', w);
+    el.cashMinusGo = w;
+  }
+  nippouPartButton(el.cashMinusGo, 'delivery', '出前館・ウーバー・ロケットナウを日報に書く');
 }
 
 /* ------------------------------------------------------------
@@ -1725,16 +1720,78 @@ function cashMinusBad() {
   }).map((k) => NIPPOU_LABELS[k]);
 }
 
-async function writeNippou() {
-  if (!cashEdit.jok) return;
-  // ★計算できない式が残っているときは、書きません。
-  //   0円として書くと、本当は売上があった日を0円で残してしまいます
-  const だめ = cashMinusBad().concat(cashGridBad());
+/* ------------------------------------------------------------
+ *  日報へ書く（4つに分けています）
+ *
+ *      ジャーナル … 現金売上・クレジット（引き算の式）・電子マネー・純売上・当日客数
+ *      デリバリー … 出前館・ウーバー・ロケットナウ
+ *      仕入明細   … ④の仕入先ごとの 当日現金／掛仕入
+ *      人件費     … ⑤の区分ごとの 人数／金額
+ *
+ *  ★分けても順番を気にしなくてよいのは、現金売上とクレジットが
+ *    **式**（=151967-B5-B11）で入るからです。あとからデリバリーを書けば、
+ *    日報の中で現金売上がひとりでに直ります。
+ *  ★どれも「見る → 確かめる → 書く」を通ります。空の欄は書きません。
+ * ---------------------------------------------------------- */
+
+const NIPPOU_PARTS = {
+  journal:  { name: 'ジャーナルの5つ', 記録も: true },
+  delivery: { name: '出前館・ウーバー・ロケットナウ' },
+  shiire:   { name: '仕入明細' },
+  jinken:   { name: '人件費' },
+};
+
+/** その区分で、日報へ渡すものを作ります */
+function nippouPartData(part) {
+  if (part === 'journal') {
+    const n = nippouValues(cashEdit.j || {}, cashEdit.m);
+    const values = {};
+    CASH_NIPPOU_ROWS.forEach((r) => {
+      if ((NIPPOU_MINUS[r.key] || []).length) return;      // 式で入れる分は calc へ
+      if (n[r.key] !== null && n[r.key] !== undefined) values[NIPPOU_LABELS[r.key]] = n[r.key];
+    });
+    return { values, calc: nippouCalc(), extra: [] };
+  }
+  if (part === 'delivery') {
+    const values = {};
+    CASH_MINUS_ROWS.forEach((k) => {
+      const v = cashEdit.m[k];
+      // ★空の欄は書きません。0を書くと、日報に先に入れてあった数字を消します
+      if (v === undefined || v === null || String(v).trim() === '') return;
+      values[NIPPOU_LABELS[k]] = (cashIsFormula(v) && cashMinusNum(v) !== null)
+        ? cashFormulaPlain(v) : cashMinusOr0(v);
+    });
+    return { values, calc: {}, extra: [] };
+  }
+  // 仕入明細・人件費
+  return { values: {}, calc: {}, extra: cashGridSend(part) };
+}
+
+/** その区分で、計算できない式が残っていないか */
+function nippouPartBad(part) {
+  if (part === 'delivery') return cashMinusBad();
+  if (part === 'shiire' || part === 'jinken') return cashGridBad(part);
+  return [];
+}
+
+/**
+ * 日報へ書きます（区分ごと）
+ *
+ * ★ジャーナルの5つだけは、先に現金売上を記録します。
+ *   書いてから記録に失敗すると、日報にだけ数字が入って手元に証拠が残りません。
+ */
+async function nippouWritePart(part, btn) {
+  const 決 = NIPPOU_PARTS[part];
+  if (!決) return;
+  if (part === 'journal' && !cashEdit.jok) return;
+
+  const だめ = nippouPartBad(part);
   if (だめ.length) {
     setNippouMsg(`${だめ.join('、')} の計算式が計算できません。`
       + '直すか、空にしてから書いてください（数字と ＋−×÷ かっこ だけが使えます）', 'warn');
     return;
   }
+
   // ★テスト用の書き先が入っていれば、そちらへ書きます（この端末の中だけの設定です）
   const test = NippouTest.get();
   const folder = test ? '' : NippouFolders.get(state.storeId);
@@ -1742,28 +1799,29 @@ async function writeNippou() {
     setNippouMsg('日報フォルダが登録されていません。マネージの店舗一覧で登録してください', 'warn');
     return;
   }
-  const dateStr = ymd(state.y, state.m, state.d);
-  const values = nippouSend();
 
-  el.cashToNippou.disabled = true;
+  const { values, calc, extra } = nippouPartData(part);
+  if (!Object.keys(values).length && !Object.keys(calc).length && !extra.length) {
+    setNippouMsg(`${決.name}に、入れたものがありません`, 'warn');
+    return;
+  }
+
+  const dateStr = ymd(state.y, state.m, state.d);
+  if (btn) btn.disabled = true;
   try {
     // ① まず、今の中身を見に行きます（書きません）
-    setNippouMsg('日報を見に行っています…');
-    const extra = cashGridSend();
-    const calc = nippouCalc();
+    setNippouMsg(`日報を見に行っています…（${決.name}）`);
     const look = await Sync.ask('nippouWrite',
       { mode: '見る', file: test, folder, day: dateStr, values, extra, calc });
     if (!look.ok) { setNippouMsg(look.error || '日報を開けませんでした', 'warn'); return; }
-    // ★書く前に、Apps Script が新しい版かを見ます。
-    //   ここで止めないと、古いGASが知らない書き方（計算式など）を
-    //   黙って素通りさせ、当日総合計の検算も通ってしまいます
+    // ★書く前に、Apps Script が新しい版かを見ます
     if (!nippouGasOk(look)) return;
 
     // ② 並べて確かめてもらいます
     const rows = look.rows || [];
-    const 食いちがい = nippouClash(look.rows);
+    const 食いちがい = nippouClash(rows);
     const ok = await askConfirm({
-      item: `${look.file}　${look.sheet}日のページ`,
+      item: `${look.file}　${look.sheet}日のページ（${決.name}）`,
       message: rows.map((r) => `${r.name} ${cashShow(r.after)}`).join('／')
         + nippouClashText(食いちがい),
       okLabel: '書く',
@@ -1771,20 +1829,35 @@ async function writeNippou() {
     });
     if (!ok) { setNippouMsg(''); return; }
 
-    // ★ここから先は何秒かかかります。控えておいて、
-    //   途中でアプリを閉じられても続きからやり直せるようにします
-    cashJobSave({
-      kind: 'send', store: state.storeId, date: dateStr, values, test, folder,
-      sales: cashYen(el.cashSales.value), by: el.cashStaff.value,
-      j: cashEdit.j, m: cashEdit.m, sure: cashEdit.sure, extra, calc,
-      at: new Date().toISOString(),
-    });
-    await nippouSendNow(values, dateStr, test, folder, extra, calc);
+    if (決.記録も) {
+      // ★ここから先は何秒かかかります。控えておいて、
+      //   途中でアプリを閉じられても続きからやり直せるようにします
+      cashJobSave({
+        kind: 'send', store: state.storeId, date: dateStr, values, test, folder,
+        sales: cashYen(el.cashSales.value), by: el.cashStaff.value,
+        j: cashEdit.j, m: cashEdit.m, sure: cashEdit.sure, extra, calc,
+        at: new Date().toISOString(),
+      });
+      await nippouSendNow(values, dateStr, test, folder, extra, calc);
+      return;
+    }
+
+    // ③ 書きます（ジャーナル以外は、現金売上の記録は要りません）
+    setNippouMsg(`日報に書いています…（${決.name}）`);
+    const res = await Sync.ask('nippouWrite',
+      { mode: '書く', file: test, folder, day: dateStr, values, extra, calc });
+    if (!res.ok) { setNippouMsg(res.error || '書けませんでした', 'warn'); return; }
+    setNippouMsg(`${決.name}を日報に書きました（${res.sheet}日・${(res.rows || []).length}か所）`, 'ok');
   } catch (e) {
     setNippouMsg(String(e && e.message || e), 'warn');
   } finally {
-    el.cashToNippou.disabled = false;
+    if (btn) btn.disabled = false;
   }
+}
+
+/** 「日報に書く」＝ジャーナルの5つ（前からのボタン） */
+async function writeNippou() {
+  return nippouWritePart('journal', el.cashToNippou);
 }
 
 /**
