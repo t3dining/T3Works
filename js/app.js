@@ -695,6 +695,125 @@ async function cashResume() {
  *  ★打つたびに同期へ流すと重いので、少し待ってからまとめて書きます。
  * ---------------------------------------------------------- */
 
+/* ------------------------------------------------------------
+ *  計算の記号バー（スマホ用）
+ *
+ *  ★iPhone の数字キーボードには「＝」も「＋」もありません。
+ *    かといって文字キーボードにすると、数字が小さくて打ちにくくなります。
+ *    そこで**数字キーボードのまま**、その上に記号のバーを自分で出します。
+ *
+ *  ★押しても入力の場所を離しません（キーボードが閉じないように）。
+ *    pointerdown で preventDefault するのが肝心です。
+ *  ★キーボードの高さは visualViewport で見ます。
+ *    これが無いブラウザでは、画面の一番下に出します。
+ * ---------------------------------------------------------- */
+
+let calcBar = null;
+let calcBarFor = null;      // いまバーを出している入力欄
+
+/** バーを作ります（1つだけ作って、使い回します） */
+function calcBarMake() {
+  // ★DOMに付いているかまで見ます。変数だけを見ていると、
+  //   何かの拍子に外れたとき、二度と出てこなくなります
+  if (calcBar && document.body && document.body.contains(calcBar)) return calcBar;
+  calcBar = null;
+  const bar = document.createElement('div');
+  bar.id = 'calcBar';
+  bar.style.cssText = [
+    'position:fixed', 'left:0', 'right:0', 'bottom:0', 'z-index:9999',
+    'display:none', 'gap:6px', 'padding:6px 8px',
+    'background:#2b2b2b', 'box-shadow:0 -2px 8px rgba(0,0,0,.25)',
+    'overflow-x:auto', '-webkit-overflow-scrolling:touch',
+  ].join(';');
+
+  const 押す = (label, どうする) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = label;
+    b.style.cssText = [
+      'flex:0 0 auto', 'min-width:44px', 'height:40px',
+      'font-size:18px', 'font-weight:700', 'color:#fff',
+      'background:#4a4a4a', 'border:0', 'border-radius:8px',
+    ].join(';');
+    // ★押したときに入力欄から離れないように、既定の動きを止めます
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); });
+    b.addEventListener('click', (e) => { e.preventDefault(); どうする(); });
+    return b;
+  };
+
+  ['=', '+', '-', '*', '/', '(', ')'].forEach((c) => {
+    bar.appendChild(押す(c, () => calcBarInsert(c)));
+  });
+  bar.appendChild(押す('⌫', () => calcBarBack()));
+  const 閉 = 押す('閉じる', () => { if (calcBarFor) calcBarFor.blur(); });
+  閉.style.fontSize = '13px';
+  閉.style.marginLeft = 'auto';
+  bar.appendChild(閉);
+
+  document.body.appendChild(bar);
+  calcBar = bar;
+  return bar;
+}
+
+/** カーソルのところに字を入れます */
+function calcBarInsert(c) {
+  const i = calcBarFor;
+  if (!i || i.readOnly) return;
+  const at = i.selectionStart === null ? i.value.length : i.selectionStart;
+  const to = i.selectionEnd === null ? at : i.selectionEnd;
+  i.value = i.value.slice(0, at) + c + i.value.slice(to);
+  const 次 = at + c.length;
+  try { i.setSelectionRange(次, 次); } catch (e) { /* 数字欄では効かないことがあります */ }
+  i.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/** 1文字消します */
+function calcBarBack() {
+  const i = calcBarFor;
+  if (!i || i.readOnly) return;
+  const at = i.selectionStart === null ? i.value.length : i.selectionStart;
+  const to = i.selectionEnd === null ? at : i.selectionEnd;
+  if (at === to) {
+    if (at === 0) return;
+    i.value = i.value.slice(0, at - 1) + i.value.slice(to);
+    try { i.setSelectionRange(at - 1, at - 1); } catch (e) { /* 同上 */ }
+  } else {
+    i.value = i.value.slice(0, at) + i.value.slice(to);
+    try { i.setSelectionRange(at, at); } catch (e) { /* 同上 */ }
+  }
+  i.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/** キーボードの上に来るように、高さを合わせます */
+function calcBarPlace() {
+  if (!calcBar) return;
+  const vv = window.visualViewport;
+  if (!vv) { calcBar.style.bottom = '0px'; return; }
+  const 下 = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+  calcBar.style.bottom = `${下}px`;
+}
+
+/** その入力欄に、記号バーを付けます */
+function calcBarBind(input) {
+  input.addEventListener('focus', () => {
+    calcBarFor = input;
+    const bar = calcBarMake();
+    bar.style.display = 'flex';
+    calcBarPlace();
+  });
+  input.addEventListener('blur', () => {
+    // ほかの欄へ移っただけなら、出したままにします
+    setTimeout(() => {
+      if (calcBarFor === input) { calcBarFor = null; if (calcBar) calcBar.style.display = 'none'; }
+    }, 120);
+  });
+}
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', calcBarPlace);
+  window.visualViewport.addEventListener('scroll', calcBarPlace);
+}
+
 /** その日の書きかけ（無ければ空） */
 function cashHandOf(storeId, dateStr) {
   const v = (Store.getDay(storeId, dateStr).items || {})[CASH_HAND];
@@ -894,6 +1013,7 @@ function renderNippouBox(done) {
       });
       // 欄から離れたら、待たずにその場で残します
       input.addEventListener('blur', () => cashHandSave(true));
+      calcBarBind(input);       // ★数字キーボードの上に、＝や＋を出します
       wrap.append(name, input);
       el.cashMinus.appendChild(wrap);
     });
@@ -1166,6 +1286,7 @@ function renderGridBox() {
           renderGridButton();
         });
         i.addEventListener('blur', () => cashHandSave(true));
+        calcBarBind(i);         // ★数字キーボードの上に、＝や＋を出します
         row.appendChild(i);
       });
       wrap.appendChild(row);
@@ -1267,15 +1388,13 @@ async function writeGridOnly() {
     if (!nippouGasOk(look)) return;
 
     const rows = look.rows || [];
-    const already = rows.filter((r) => r.before !== null && r.before !== '' && r.before !== r.after);
+    const 食いちがい = nippouClash(look.rows);
     const ok = await askConfirm({
       item: `${look.file}　${look.sheet}日のページ（仕入・人件費）`,
       message: rows.map((r) => `${r.name} ${cashShow(r.after)}`).join('／')
-        + (already.length
-          ? `　★${already.map((r) => `${r.name}は いま ${cashShow(r.before)}`).join('、')}。上書きします`
-          : ''),
+        + nippouClashText(食いちがい),
       okLabel: '書く',
-      danger: already.length > 0,
+      danger: 食いちがい.length > 0,
     });
     if (!ok) { setNippouMsg(''); return; }
 
@@ -1426,6 +1545,10 @@ function nippouSend() {
     //   何件でいくらだったかが残ります。ふつうの数はそのまま数で渡します。
     CASH_MINUS_ROWS.forEach((k) => {
       const v = cashEdit.m[k];
+      // ★空の欄は、書きません。
+      //   0 を書くと、日報に先に入れてあった数字を消してしまいます
+      //   （実際にそうなりました）。0 にしたいときは 0 と入れてもらいます。
+      if (v === undefined || v === null || String(v).trim() === '') return;
       if (cashIsFormula(v) && cashMinusNum(v) !== null) {
         values[NIPPOU_LABELS[k]] = cashFormulaPlain(v);   // 「=1000+2000」の形
       } else {
@@ -1461,6 +1584,33 @@ function nippouCalc() {
     };
   });
   return calc;
+}
+
+/**
+ * 日報にすでに入っている数と、アプリが入れようとしている数が食いちがう所
+ *
+ * ★「日報にはあるが、アプリでは入れていない」は、ここに出ません。
+ *   そういう欄は、そもそも**書きません**（nippouSend で外しています）。
+ *   ですからここに出るのは「**両方に入っていて、数がちがう**」だけです。
+ */
+function nippouClash(rows) {
+  return (rows || []).filter((r) => {
+    if (r.before === null || r.before === undefined || r.before === '') return false;
+    // 見た目がちがっても、同じ数なら食いちがいではありません
+    //（「2620」と 2620、式とその答え、など）
+    const a = cashMinusNum(r.before);
+    const b = cashMinusNum(r.after);
+    if (a !== null && b !== null) return a !== b;
+    return String(r.before) !== String(r.after);
+  });
+}
+
+/** 食いちがいを、そのまま読める文にします */
+function nippouClashText(食いちがい) {
+  if (!食いちがい.length) return '';
+  return '　★日報とアプリで数がちがいます：'
+    + 食いちがい.map((r) => `${r.name}（日報 ${cashShow(r.before)} → アプリ ${cashShow(r.after)}）`).join('、')
+    + '。このまま書くと、日報の数がアプリの数に上書きされます';
 }
 
 function setNippouMsg(text, kind) {
@@ -1530,15 +1680,13 @@ async function writeNippou() {
 
     // ② 並べて確かめてもらいます
     const rows = look.rows || [];
-    const already = rows.filter((r) => r.before !== null && r.before !== '' && r.before !== r.after);
+    const 食いちがい = nippouClash(look.rows);
     const ok = await askConfirm({
       item: `${look.file}　${look.sheet}日のページ`,
       message: rows.map((r) => `${r.name} ${cashShow(r.after)}`).join('／')
-        + (already.length
-          ? `　★${already.map((r) => `${r.name}は いま ${cashShow(r.before)}`).join('、')}。上書きします`
-          : ''),
+        + nippouClashText(食いちがい),
       okLabel: '書く',
-      danger: already.length > 0,
+      danger: 食いちがい.length > 0,
     });
     if (!ok) { setNippouMsg(''); return; }
 
