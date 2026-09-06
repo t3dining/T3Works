@@ -2595,8 +2595,28 @@ const CATCH_OTHER = '__other__';
  * ---------------------------------------------------------- */
 const MEETING_STORE = '_meeting';
 
+/**
+ * 会議資料の1店舗ぶんの数字の並び
+ *
+ * ★もとは `js/meeting-data.js` にありましたが、**ここへ移しました**（2026年9月5日）。
+ *   あちらは会社の売上・原価・人件費が入っていて公開から外すファイルです。
+ *   `js/app.js` は `MEETING_FIELDS` を `typeof` の守りなしに5か所で使っているので、
+ *   置いたままだと、外した瞬間に会議資料の画面が例外で落ちます。
+ */
+const MEETING_FIELDS = ['inc', 'ex', 'guests', 'cost', 'labor', 'katch', 'katchPeople',
+  'gas', 'water', 'power', 'gasUse', 'waterUse', 'powerUse'];
+
 /** 取り込んだ議事メモを、その月分は記録として書き写しずみ、という印 */
 const MEETING_SEED_KEY = 'seeded';
+
+/**
+ * 会議資料の数字を記録へ写した印（1か月に1つ）
+ *
+ * ★`js/meeting-data.js` は GitHub Pages で誰でも読めます。会社の売上・原価・
+ *   人件費が店舗別・月別に出てしまうので、公開から外します。
+ *   ただし外すと画面から消えるので、先に記録へ写します。
+ */
+const MEETING_MOVED_KEY = 'moved';
 
 /** その月の議事録の入れ先（'2026-06' → _meeting/2026-06） */
 function meetingMonthKey(y, m) {

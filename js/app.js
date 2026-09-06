@@ -5018,7 +5018,185 @@ let nippouBusy = false;
 /** 取り込みの結果を、どの月のものとして出しているか */
 let nippouShownKey = '';
 
+/* ------------------------------------------------------------
+ *  会議資料の数字を、記録へ写す（1回だけ）
+ *
+ *  ★`js/meeting-data.js` は GitHub Pages で誰でも読めます。会社の売上・原価・
+ *    人件費が店舗別・月別に出てしまうので、公開から外します。
+ *    外すと画面から消えるので、先にここで記録（スプレッドシート）へ写します。
+ *    写したあとは、ファイルが無くても今までどおり出ます。
+ *
+ *  ★すでに記録がある店舗は書き換えません。日報から取り込み直した分を
+ *    上書きしないためです。二度押しても増えません。
+ *
+ *  ★キャッチは写しません。`renderMeeting()` がいつも立替金の集計で
+ *    上書きするので、記録に入れても使われません。
+ * ---------------------------------------------------------- */
+
+/** 1店舗ぶんの数字を、日報から取り込む分（num）と光熱費（util）に分けます */
+function meetingMoveSplit(arr) {
+  const num = {};
+  const util = {};
+  MEETING_FIELDS.forEach((f, i) => {
+    const n = arr && arr[i];
+    if (typeof n !== 'number') return;
+    if (NIPPOU_FIELDS.includes(f)) num[f] = n;
+    else if (MEETING_UTIL_FIELDS.includes(f)) util[f] = n;
+  });
+  return { num, util };
+}
+
+/** その月を写します。書いた件数を返します */
+function meetingMoveMonth(key) {
+  const data = MEETING_DATA[key];
+  if (!data) return 0;
+  const items = Store.getDay(MEETING_STORE, key).items || {};
+  let wrote = 0;
+  Object.entries(data.rows || {}).forEach(([sid, v]) => {
+    const num = {};
+    const util = {};
+    ['now', 'last'].forEach((side) => {
+      const got = meetingMoveSplit(v[side]);
+      if (Object.keys(got.num).length) num[side] = got.num;
+      if (Object.keys(got.util).length) util[side] = got.util;
+    });
+    if (Object.keys(num).length && !items[`num:${sid}`]) {
+      Store.setItem(MEETING_STORE, key, `num:${sid}`, { value: num });
+      wrote += 1;
+    }
+    if (Object.keys(util).length && !items[`util:${sid}`]) {
+      Store.setItem(MEETING_STORE, key, `util:${sid}`, { value: util });
+      wrote += 1;
+    }
+  });
+  Store.setItem(MEETING_STORE, key, MEETING_MOVED_KEY, { done: true });
+  return wrote;
+}
+
+/**
+ * 写せたかを、記録から読み直して確かめます
+ *
+ * ★見るのは「同じ数字か」ではなく「記録に数字があるか」です。
+ *   日報から取り込み直した月は、もとの数字と違っていて構いません。
+ *   大事なのは、ファイルを外しても画面が欠けないことです。
+ */
+function meetingMoveCheck(key) {
+  const data = MEETING_DATA[key];
+  const items = Store.getDay(MEETING_STORE, key).items || {};
+  const ng = [];
+  Object.entries(data.rows || {}).forEach(([sid, v]) => {
+    ['now', 'last'].forEach((side) => {
+      const got = meetingMoveSplit(v[side]);
+      const num = ((items[`num:${sid}`] || {}).value || {})[side] || {};
+      const util = ((items[`util:${sid}`] || {}).value || {})[side] || {};
+      Object.keys(got.num).forEach((f) => {
+        if (typeof num[f] !== 'number') ng.push(`${sid} ${side} ${f}`);
+      });
+      Object.keys(got.util).forEach((f) => {
+        if (typeof util[f] !== 'number') ng.push(`${sid} ${side} ${f}`);
+      });
+    });
+  });
+  return ng;
+}
+
+/** まだ写していない月 */
+function meetingMoveRest() {
+  if (typeof MEETING_DATA === 'undefined') return [];
+  return Object.keys(MEETING_DATA).sort().filter((k) => {
+    const items = Store.getDay(MEETING_STORE, k).items || {};
+    return !(items[MEETING_MOVED_KEY] && items[MEETING_MOVED_KEY].done);
+  });
+}
+
+/** 1回押せば、入っている月を全部写します */
+function moveMeetingData() {
+  const keys = Object.keys(MEETING_DATA || {}).sort();
+  const lines = [];
+  let wrote = 0;
+  let ng = 0;
+  keys.forEach((key) => {
+    wrote += meetingMoveMonth(key);
+    const bad = meetingMoveCheck(key);
+    const [y, m] = key.split('-');
+    const stores = Object.keys(MEETING_DATA[key].rows || {}).length;
+    if (bad.length) {
+      ng += 1;
+      lines.push({ ok: false, text: `${Number(y)}年${Number(m)}月　★入っていません：${bad.slice(0, 4).join('／')}` });
+    } else {
+      lines.push({ ok: true, text: `${Number(y)}年${Number(m)}月　${stores}店舗　✓` });
+    }
+  });
+  meetingSeq += 1;
+  renderMeeting();
+  meetingMoveShow(lines, ng
+    ? '★入っていない月があります。ko-dai に知らせてください'
+    : `全部そろいました（${keys.length}か月・${wrote}件を書きました）。同期が終わるまで待ってください`);
+}
+
+/** 結果を出します */
+function meetingMoveShow(lines, head) {
+  const list = document.getElementById('meetingMoveList');
+  if (!list) return;
+  list.innerHTML = '';
+  [{ head: true, text: head }].concat(lines).forEach((l) => {
+    const li = document.createElement('li');
+    li.className = 'nippou__row' + (l.head ? ' is-head' : '') + (l.ok === false ? ' is-ng' : '');
+    li.textContent = l.text;
+    list.appendChild(li);
+  });
+  list.classList.remove('is-hidden');
+}
+
+/**
+ * 写すボタンを出します
+ *
+ * ★index.html は本部のファイルなので触りません。ここで足します。
+ *   写し終われば消えます（`js/meeting-data.js` を外したあとも出ません）。
+ */
+function renderMeetingMove() {
+  let box = document.getElementById('meetingMove');
+  const rest = meetingMoveRest();
+
+  if (typeof MEETING_DATA === 'undefined' || !rest.length) {
+    if (box) box.classList.add('is-hidden');
+    return;
+  }
+
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'meetingMove';
+
+    const head = document.createElement('div');
+    head.className = 'nippou__head';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn';
+    btn.textContent = '会議資料の数字を記録へ写す';
+    btn.addEventListener('click', moveMeetingData);
+    const note = document.createElement('span');
+    note.className = 'nippou__note';
+    note.id = 'meetingMoveNote';
+    head.append(btn, note);
+
+    const list = document.createElement('ul');
+    list.className = 'nippou__list is-hidden';
+    list.id = 'meetingMoveList';
+
+    box.append(head, list);
+    el.nippouBox.appendChild(box);
+  }
+
+  box.classList.remove('is-hidden');
+  const note = document.getElementById('meetingMoveNote');
+  if (note) {
+    note.textContent = `1回押すと、${rest.length}か月ぶんが記録に入ります`
+      + '（公開ファイルを外すための下ごしらえです）';
+  }
+}
+
 function renderNippou() {
+  renderMeetingMove();
   const folders = NippouFolders.all();
   const n = STORES.filter((s) => folders[s.id]).length;
   el.nippouNote.textContent = n

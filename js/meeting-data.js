@@ -20,8 +20,8 @@
  *     そのままで問題ありません（アプリで入れた分だけ入ります）。
  */
 
-const MEETING_FIELDS = ['inc', 'ex', 'guests', 'cost', 'labor', 'katch', 'katchPeople',
-  'gas', 'water', 'power', 'gasUse', 'waterUse', 'powerUse'];
+/* ★MEETING_FIELDS は js/config.js へ移しました（2026年9月5日）。
+   このファイルは公開から外すので、アプリが要るものを置いておけません。 */
 
 /* 会議資料に出てくる店舗名 → アプリの店舗id */
 const MEETING_STORE_ID = {
