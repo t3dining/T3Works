@@ -913,6 +913,24 @@ function calcPadHide() {
   document.body.style.paddingBottom = '';
 }
 
+/**
+ * テンキー以外のところを触ったら、閉じます
+ *
+ * ★入力欄は inputmode="none" なので、よそを触っても
+ *   ブラウザが勝手に外してくれないことがあります。
+ *   自分で見て、閉じます。
+ * ★テンキーの中と、テンキーを使うほかの欄は、閉じません
+ *   （ほかの欄に移るときは、そのまま続けて打てるようにするためです）。
+ */
+function calcPadOutside(e) {
+  if (!calcPad || calcPad.style.display === 'none') return;
+  const t = e.target;
+  if (calcPad.contains(t)) return;                 // テンキーの中
+  if (t && t.dataset && (t.dataset.k || t.dataset.grid)) return;   // ほかの入力欄
+  calcPadClose();
+}
+document.addEventListener('pointerdown', calcPadOutside, true);
+
 /** その入力欄に、テンキーを付けます */
 function calcPadBind(input) {
   if (!calcTouch()) return;                 // パソコンは本物のキーボードで
@@ -954,6 +972,139 @@ function cashHandSave(now) {
   if (cashHandTimer) clearTimeout(cashHandTimer);
   if (now) put();
   else cashHandTimer = setTimeout(put, 700);
+}
+
+/* ------------------------------------------------------------
+ *  日報で直された数を、アプリに取り込みます
+ *
+ *  ★考え方。**「アプリが最後に書いた数」を覚えておきます。**
+ *    日報がそれと違っていたら、人が日報側で直したということなので、
+ *    そちらを正として取り込みます。同じなら、何もしません。
+ *
+ *    こうしないと「アプリで打ちかけていた数」まで日報の数で
+ *    上書きしてしまいます。書いた覚えのある欄だけを見るのが肝心です。
+ * ---------------------------------------------------------- */
+
+/** 仕入・人件費の覚え書きのキー（'酒のシバタ|G'） */
+function cashWroteKey(name, col) { return `${name}|${col}`; }
+
+/** その日、アプリが最後に書いた数 */
+function cashWroteOf(storeId, dateStr) {
+  return cashHandOf(storeId, dateStr).wrote || {};
+}
+
+/** 書いたものを覚えます（日報の数と見くらべるため） */
+function cashWroteSave(dateStr, values, extra) {
+  const 前 = cashWroteOf(state.storeId, dateStr);
+  const 次 = { ...前 };
+  Object.keys(values || {}).forEach((name) => {
+    const n = cashMinusNum(values[name]);
+    if (n !== null) 次[name] = n;
+  });
+  (extra || []).forEach((x) => {
+    const n = cashMinusNum(x.value);
+    if (n !== null) 次[cashWroteKey(x.name, x.col)] = n;
+  });
+  const 手 = cashHandOf(state.storeId, dateStr);
+  Store.setItem(state.storeId, dateStr, CASH_HAND, {
+    value: { ...手, m: cashEdit.m || {}, shiire: cashEdit.shiire || {}, jinken: cashEdit.jinken || {}, wrote: 次 },
+  });
+}
+
+/** この画面を開いてから、日報を読みにいった日 */
+const cashPulled = {};
+
+/**
+ * 日報を見に行って、直されていた数を取り込みます
+ *
+ * ★書いた覚えのある欄だけを見ます。打ちかけの欄は触りません。
+ * ★静かに動きます。取り込むものがあったときだけ、画面に出します。
+ */
+async function cashPullFromNippou(しずかに) {
+  const dateStr = ymd(state.y, state.m, state.d);
+  const wrote = cashWroteOf(state.storeId, dateStr);
+  if (!Object.keys(wrote).length) {
+    if (!しずかに) setNippouMsg('この日は、まだアプリから書いていません', 'warn');
+    return;
+  }
+  const test = NippouTest.get();
+  const folder = test ? '' : NippouFolders.get(state.storeId);
+  if (!test && !folder) {
+    if (!しずかに) setNippouMsg('日報フォルダが登録されていません', 'warn');
+    return;
+  }
+  // ★B列の数を返してもらうため、見たい行の名前を渡します（見るだけなので書きません）
+  const values = {};
+  CASH_MINUS_ROWS.forEach((k) => { values[NIPPOU_LABELS[k]] = 0; });
+
+  try {
+    const res = await Sync.ask('nippouWrite',
+      { mode: '見る', file: test, folder, day: dateStr, values, extra: [], calc: {} });
+    if (!res.ok && !res.grid) { if (!しずかに) setNippouMsg(res.error || '日報を開けませんでした', 'warn'); return; }
+    if (!res.v || res.v !== NIPPOU_GAS_VERSION) { if (!しずかに) nippouGasOk(res); return; }
+
+    const 取り込み = [];
+    const 次wrote = { ...wrote };
+
+    // ① デリバリー（B列）
+    const 名から = {};
+    CASH_MINUS_ROWS.forEach((k) => { 名から[NIPPOU_LABELS[k]] = k; });
+    (res.rows || []).forEach((r) => {
+      const k = 名から[r.name];
+      if (!k || wrote[r.name] === undefined) return;      // 書いた覚えのない欄は触りません
+      const 日報 = cashMinusNum(r.before);
+      if (日報 === null || 日報 === wrote[r.name]) return; // 直されていません
+      cashEdit.m[k] = String(日報);
+      次wrote[r.name] = 日報;
+      取り込み.push(`${r.name} ${日報.toLocaleString('ja-JP')}`);
+    });
+
+    // ② 仕入・人件費（F列・G列）
+    const w = res.grid ? nippouGridSplit(res.grid) : null;
+    if (w) {
+      [['shiire', w.shiire], ['jinken', w.jinken]].forEach(([入れ先, 行]) => {
+        行.forEach((r) => {
+          [['f', 'F', r.f], ['g', 'G', r.g]].forEach(([c, 大, 値]) => {
+            const key = cashWroteKey(r.name, 大);
+            if (wrote[key] === undefined) return;
+            const 日報 = cashMinusNum(値);
+            if (日報 === null || 日報 === wrote[key]) return;
+            if (!cashEdit[入れ先][r.name]) cashEdit[入れ先][r.name] = {};
+            cashEdit[入れ先][r.name][c] = String(日報);
+            次wrote[key] = 日報;
+            取り込み.push(`${r.name} ${日報.toLocaleString('ja-JP')}`);
+          });
+        });
+      });
+      GridCache.save(state.storeId, state.y, state.m, res.grid);
+    }
+
+    if (!取り込み.length) {
+      if (!しずかに) setNippouMsg('日報と同じでした（直されたものはありません）', 'ok');
+      return;
+    }
+    const 手 = cashHandOf(state.storeId, dateStr);
+    Store.setItem(state.storeId, dateStr, CASH_HAND, {
+      value: { ...手, m: cashEdit.m, shiire: cashEdit.shiire, jinken: cashEdit.jinken, wrote: 次wrote },
+    });
+    // ★先に描き直します。render の中で知らせが消えるためです
+    render();
+    setNippouMsg(`日報で直されていた数を取り込みました：${取り込み.join('、')}`, 'ok');
+  } catch (e) {
+    if (!しずかに) setNippouMsg(String(e && e.message || e), 'warn');
+  }
+}
+
+/** その日を開いたとき、1回だけ静かに読みにいきます */
+function cashPullAuto() {
+  const key = `${state.storeId}/${ymd(state.y, state.m, state.d)}`;
+  if (cashPulled[key]) return;
+  if (!Object.keys(cashWroteOf(state.storeId, ymd(state.y, state.m, state.d))).length) return;
+  if (!Sync.enabled || !Sync.enabled() || !Sync.pin()) return;
+  const test = NippouTest.get();
+  if (!test && !NippouFolders.get(state.storeId)) return;
+  cashPulled[key] = true;
+  cashPullFromNippou(true);
 }
 
 /** その日の現金売上の記録（無ければ null） */
@@ -1160,6 +1311,7 @@ function renderNippouBox(done) {
 
   renderNippouMinusNote();
   renderGridBox();
+  cashPullAuto();          // ★日報で直されていたら、取り込みます
 
   // ★写真をまだ読んでいないときは、読み取りの表と検算は出しません。
   //   手で入れる欄だけが出ている状態です（先に入れておけます）。
@@ -1450,6 +1602,17 @@ function renderGridBox() {
   再.textContent = '日報から読み直す（仕入先が増えたとき）';
   再.addEventListener('click', () => cashGridLoad());
   el.cashGrid.appendChild(再);
+
+  // ★日報側で直された数を、手でも取り込めるようにします
+  const 取 = document.createElement('button');
+  取.type = 'button';
+  取.className = 'btn btn--sub';
+  取.style.fontSize = '12px';
+  取.style.padding = '6px 12px';
+  取.style.marginLeft = '8px';
+  取.textContent = '日報の数を取り込む';
+  取.addEventListener('click', () => cashPullFromNippou(false));
+  el.cashGrid.appendChild(取);
 
   renderGridNote();
 
@@ -1886,6 +2049,7 @@ async function nippouWritePart(part, btn) {
     const res = await Sync.ask('nippouWrite',
       { mode: '書く', file: test, folder, day: dateStr, values, extra, calc });
     if (!res.ok) { setNippouMsg(res.error || '書けませんでした', 'warn'); return; }
+    cashWroteSave(dateStr, values, extra);   // ★日報で直されたかを見くらべるため
     setNippouMsg(`${決.name}を日報に書きました（${res.sheet}日・${(res.rows || []).length}か所）`, 'ok');
   } catch (e) {
     setNippouMsg(String(e && e.message || e), 'warn');
@@ -1927,6 +2091,7 @@ async function nippouSendNow(values, dateStr, test, folder, extra, calc) {
   }
 
   cashJobClear();            // ここまで来たら、やり直す必要はありません
+  cashWroteSave(dateStr, values, extra);   // ★日報で直されたかを見くらべるため
 
   // ③ 書いたあとの検算
   const want = (cashEdit.j || {}).gross;
