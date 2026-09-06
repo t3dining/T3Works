@@ -990,6 +990,10 @@ function renderCash() {
     //   ジャーナルを記録する人がちがう日があるので、入れないようにしました
     //   （先に入っていると、そのまま押してしまいます）
     fillStaffOptions(el.cashStaff, (saved && saved.by) || '');
+    // ★16px 未満だと、iOS が触ったときに画面を勝手に拡大します。
+    //   .staff-row__select はクローズの担当者欄でも使う共通の見た目（本部のもの）なので、
+    //   そちらは触らず、ジャーナルのこの1つだけを大きくします
+    el.cashStaff.style.fontSize = '16px';
     setCashMsg('');
     showCashPhoto();
   }
@@ -1073,6 +1077,9 @@ function renderNippouBox(done) {
       input.inputMode = 'numeric';
       input.autocomplete = 'off';
       input.className = 'cash-minus__input';
+      // ★16px 未満だと、iOS が触ったときに画面を勝手に拡大します。
+      //   css は本部のファイル（14px）なので、ここで16pxにします
+      input.style.fontSize = '16px';
       input.dataset.k = k;
       // ★入れた文字を、そのまま覚えます（数に直しません）。
       //   「=1000+2000+3000」と入れたら、日報のマスにも計算式のまま入れるためです。
@@ -1337,6 +1344,8 @@ function renderGridBox() {
         i.inputMode = 'numeric';
         i.autocomplete = 'off';
         i.className = 'cash-minus__input';
+        // ★16px 未満だと、iOS が触ったときに画面を勝手に拡大します
+        i.style.fontSize = '16px';
         i.placeholder = ラベル;
         // ★min-width:0 が肝心です。これが無いと、入力欄が縮まずに
         //   親からはみ出します（flex の初期値は min-width:auto のため）
