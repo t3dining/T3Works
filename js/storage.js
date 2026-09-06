@@ -1111,6 +1111,43 @@ const NippouTest = {
   },
 };
 
+/**
+ * 年間の売上目標（店舗ごと。マネージで登録します）
+ *
+ * ★もとは js/config.js に金額が直書きされていて、GitHub Pages で
+ *   **誰でも読めていました**（2026年9月5日に設定へ移しました）。
+ *   5店舗で5億5,000万、店舗別の内訳まで出ていました。
+ *   **config.js には書き戻さないでください。**
+ */
+const SalesTargets = {
+  _key: APP.storageKey + ':salesTargets',
+
+  all() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(this._key) || 'null');
+      if (saved && typeof saved === 'object') return saved;
+    } catch (e) {
+      /* 壊れていたら空に戻す */
+    }
+    return { ...SALES_TARGETS };
+  },
+
+  get(storeId) { return Number(this.all()[storeId]) || 0; },
+
+  /** 登録が1つでもあるか。無ければ画面に「まだ登録されていません」と出します */
+  any() { return Object.keys(this.all()).length > 0; },
+
+  save(map) {
+    const clean = {};
+    Object.keys(map || {}).forEach((k) => {
+      const n = Math.max(Math.round(Number(map[k]) || 0), 0);
+      if (n) clean[k] = n;
+    });
+    localStorage.setItem(this._key, JSON.stringify(clean));
+    return clean;
+  },
+};
+
 const NippouFolders = {
   _key: APP.storageKey + ':nippouFolders',
 

@@ -46,6 +46,7 @@ const el = {};
   'shiftCodeList', 'shiftSubmitUrl', 'viewShift',
   'viewTrain', 'trainStoreName', 'trainCount', 'trainInput', 'saveTrain', 'trainSaved',
   'trainItemsStore', 'trainItemsCount', 'trainEditor', 'trainAddSection',
+  'targetFields', 'saveTargets', 'targetCount', 'targetsSaved',
   'nippouFields', 'saveNippou', 'nippouCount', 'nippouSaved',
   'nippouTest', 'saveNippouTest', 'nippouTestSaved',
   'expImport', 'expImportLast', 'expImportNote',
@@ -1608,6 +1609,74 @@ function resetShiftSlots() {
   renderShiftSlots();
 }
 
+/* -------- 年間の売上目標 --------
+ *
+ *  会議資料の円グラフが使います。1月からの税抜累計売上を、この金額で割ります。
+ *
+ *  ★もとは js/config.js に直接書いてありましたが、あのファイルは GitHub Pages で
+ *    誰でも読めるので、会社の売上目標が店舗別に公開されていました。
+ *    ここへ移して、設定（スプレッドシート側）で持つようにしました。
+ *
+ *  ★5店舗の合計は入れません。入れた5つを足して出します
+ *    （二重に持つと、片方だけ古くなります）。
+ */
+function renderSalesTargets() {
+  const map = SalesTargets.all();
+  const n = STORES.filter((s) => map[s.id]).length;
+  const five = SALES_TARGET_FIVE_STORES
+    .reduce((t, id) => t + (Number(map[id]) || 0), 0);
+  el.targetCount.textContent = n
+    ? `${n}店舗　5店舗の合計 ¥${five.toLocaleString('ja-JP')}`
+    : 'まだ登録なし';
+
+  el.targetFields.innerHTML = '';
+  STORES.forEach((s) => {
+    const wrap = document.createElement('label');
+    wrap.className = 'field';
+    const label = document.createElement('span');
+    label.className = 'field__label';
+    label.textContent = s.name + (SALES_TARGET_FIVE_STORES.includes(s.id) ? '（5店舗に数える）' : '');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.inputMode = 'numeric';
+    input.className = 'field__input';
+    input.dataset.store = s.id;
+    input.autocomplete = 'off';
+    input.placeholder = '例：205000000';
+    input.value = map[s.id] ? String(map[s.id]) : '';
+    // 打っている途中でも、5店舗の合計がその場で分かるようにします
+    input.addEventListener('input', updateTargetTotal);
+    wrap.append(label, input);
+    el.targetFields.appendChild(wrap);
+  });
+}
+
+/** いま画面に入っている数字を読みます */
+function targetInputs() {
+  const map = {};
+  [...el.targetFields.querySelectorAll('input[data-store]')].forEach((i) => {
+    map[i.dataset.store] = Math.max(Math.round(Number(String(i.value).replace(/[,\s]/g, '')) || 0), 0);
+  });
+  return map;
+}
+
+/** 打っている途中の合計を出します（保存はしません） */
+function updateTargetTotal() {
+  const map = targetInputs();
+  const n = STORES.filter((s) => map[s.id]).length;
+  const five = SALES_TARGET_FIVE_STORES.reduce((t, id) => t + (map[id] || 0), 0);
+  el.targetCount.textContent = n
+    ? `${n}店舗　5店舗の合計 ¥${five.toLocaleString('ja-JP')}`
+    : 'まだ登録なし';
+}
+
+function saveSalesTargets() {
+  SalesTargets.save(targetInputs());
+  renderSalesTargets();
+  el.targetsSaved.classList.remove('is-hidden');
+  setTimeout(() => el.targetsSaved.classList.add('is-hidden'), 2500);
+}
+
 /* -------- 日報フォルダ --------
  *
  *  会議資料の「日報から取り込む」が見に行く、店舗ごとのGoogleドライブの
@@ -2073,6 +2142,7 @@ function renderAll() {
     renderStaff();
     renderCatchStaff();
     renderNippouFolders();
+    renderSalesTargets();
     renderSyncStatus();
     return;
   }
@@ -2324,6 +2394,7 @@ function bindEvents() {
   el.resetShiftSlots.addEventListener('click', resetShiftSlots);
   el.saveTrain.addEventListener('click', saveTrainees);
   el.trainAddSection.addEventListener('click', addSection);
+  el.saveTargets.addEventListener('click', saveSalesTargets);
   el.saveNippou.addEventListener('click', saveNippouFolders);
   el.saveNippouTest.addEventListener('click', saveNippouTest);
   el.expImportLast.addEventListener('click', () => importExpenseRecords(true));

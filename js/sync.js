@@ -342,6 +342,7 @@ const Sync = {
         trainees: Trainees._key,
         trainings: Trainings._key,
         nippouFolders: NippouFolders._key,
+        salesTargets: SalesTargets._key,
         closedDows: Closed._dowsKey,
         closedExceptions: Closed._exKey,
       };
@@ -600,6 +601,15 @@ function summaryFor(key) {
   NippouFolders.save = function (map) {
     const clean = _saveNippou(map);
     Sync.enqueue({ t: 'setting', n: 'nippouFolders', v: clean });
+    return clean;
+  };
+
+  // ★年間の売上目標。公開物（js/config.js）から外したので、ここから同期に乗せます。
+  //   店舗ごとの金額はスプレッドシート側（非公開）に入ります（2026-09-05）
+  const _saveTargets = SalesTargets.save.bind(SalesTargets);
+  SalesTargets.save = function (map) {
+    const clean = _saveTargets(map);
+    Sync.enqueue({ t: 'setting', n: 'salesTargets', v: clean });
     return clean;
   };
 

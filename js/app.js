@@ -985,7 +985,7 @@ function cashHandSave(now) {
  *    上書きしてしまいます。書いた覚えのある欄だけを見るのが肝心です。
  * ---------------------------------------------------------- */
 
-/** 仕入・人件費の覚え書きのキー（'酒のシバタ|G'） */
+/** 仕入・人件費の覚え書きのキー（'仕入先A|G'） */
 function cashWroteKey(name, col) { return `${name}|${col}`; }
 
 /** その日、アプリが最後に書いた数 */
@@ -1545,7 +1545,7 @@ function renderGridBox() {
       const name = document.createElement('span');
       name.className = 'cash-minus__label';
       name.textContent = r.name;
-      // 名前は幅を決めて折り返します。長い仕入先（八興食糧（米）など）でも
+      // 名前は幅を決めて折り返します。長い仕入先（〇〇食品（米）など）でも
       // 入力欄を押しつぶさないようにします
       name.style.flex = '0 0 6.5em';
       name.style.whiteSpace = 'normal';
@@ -1840,8 +1840,8 @@ function nippouSend() {
 /**
  *  現金売上とクレジットは、答えではなく「引き算の式」で入れます
  *
- *      B3（現金売上）  =151967-B5-B11
- *      B4（クレジット）=52447-B6-B12-B18
+ *      B3（現金売上）  =130000-B5-B11
+ *      B4（クレジット）=45000-B6-B12-B18
  *
  *  ★なぜ式にするか。ko-dai さんが日報でやっている計算そのものだからです。
  *    あとから出前館の数字を直せば、現金売上も日報の中でひとりでに直ります。
@@ -1875,7 +1875,7 @@ function nippouClash(rows) {
   return (rows || []).filter((r) => {
     if (r.before === null || r.before === undefined || r.before === '') return false;
     // 見た目がちがっても、同じ数なら食いちがいではありません
-    //（「2620」と 2620、式とその答え、など）
+    //（「3000」と 3000、式とその答え、など）
     const a = cashMinusNum(r.before);
     const b = cashMinusNum(r.after);
     if (a !== null && b !== null) return a !== b;
@@ -1931,7 +1931,7 @@ function cashMinusBad() {
  *      人件費     … ⑤の区分ごとの 人数／金額
  *
  *  ★分けても順番を気にしなくてよいのは、現金売上とクレジットが
- *    **式**（=151967-B5-B11）で入るからです。あとからデリバリーを書けば、
+ *    **式**（=130000-B5-B11）で入るからです。あとからデリバリーを書けば、
  *    日報の中で現金売上がひとりでに直ります。
  *  ★どれも「見る → 確かめる → 書く」を通ります。空の欄は書きません。
  * ---------------------------------------------------------- */
@@ -5198,7 +5198,7 @@ let nippouShownKey = '';
  *    上書きするので、記録に入れても使われません。
  * ---------------------------------------------------------- */
 
-/** 1店舗ぶんの数字を、日報から取り込む分（num）と光熱費（util）に分けます */
+/** 1店舗分の数字を、日報から取り込む分（num）と光熱費（util）に分けます */
 function meetingMoveSplit(arr) {
   const num = {};
   const util = {};
@@ -5355,7 +5355,7 @@ function renderMeetingMove() {
   box.classList.remove('is-hidden');
   const note = document.getElementById('meetingMoveNote');
   if (note) {
-    note.textContent = `1回押すと、${rest.length}か月ぶんが記録に入ります`
+    note.textContent = `1回押すと、${rest.length}か月分が記録に入ります`
       + '（公開ファイルを外すための下ごしらえです）';
   }
 }
@@ -5548,20 +5548,35 @@ function renderMeetingGoals() {
   el.meetingGoalPace.textContent = filled.count
     ? `（${filled.last}月まで＝目安 ${Math.round(pace * 100)}%）` : '';
 
+  /* ★目標はマネージで登録します（設定なので、公開ウェブには出ません）。
+     1つも登録が無いときは、黙って消さずに知らせます。
+     消えたのか、まだ入れていないのかが分からないのが一番こまるためです */
+  el.meetingGoals.innerHTML = '';
+  if (!SalesTargets.any()) {
+    const p = document.createElement('p');
+    p.className = 'expense-note';
+    p.textContent = '年間の売上目標がまだ登録されていません（マネージで登録します）';
+    el.meetingGoals.appendChild(p);
+    el.meetingGoals.classList.remove('is-hidden');
+    el.meetingGoalNote.classList.add('is-hidden');
+    return;
+  }
+
   const five = SALES_TARGET_FIVE_STORES;
+  const targets = SalesTargets.all();
   const items = STORES
-    .filter((s) => SALES_TARGETS[s.id] && cum[s.id] && cum[s.id].ex)
-    .map((s) => ({ name: s.name, color: s.color, now: cum[s.id].ex, goal: SALES_TARGETS[s.id] }));
+    .filter((s) => targets[s.id] && cum[s.id] && cum[s.id].ex)
+    .map((s) => ({ name: s.name, color: s.color, now: cum[s.id].ex, goal: targets[s.id] }));
 
   const now5 = five.reduce((t, id) => t + ((cum[id] || {}).ex || 0), 0);
-  if (now5) {
+  const goal5 = salesTargetFive();
+  if (now5 && goal5) {
     items.unshift({
       name: `${five.length}店舗 合計`, color: 'var(--money)',
-      now: now5, goal: SALES_TARGET_FIVE, big: true,
+      now: now5, goal: goal5, big: true,
     });
   }
 
-  el.meetingGoals.innerHTML = '';
   el.meetingGoals.classList.toggle('is-hidden', !items.length);
   el.meetingGoalNote.classList.toggle('is-hidden', !items.length);
   items.forEach((it) => el.meetingGoals.appendChild(goalCard(it, pace)));
