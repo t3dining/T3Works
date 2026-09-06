@@ -199,7 +199,17 @@ const IdbAdapter = {
     return out;
   },
 
-  dump() { return this._mem; },
+  /**
+   * いまの中身を渡す
+   *
+   * ★**写しを返します。**前は `this._mem` そのものを返していました。
+   *   呼んだ側が `delete all[key]` すると**中の写しから直接消える**ので、
+   *   そのあと `load(all)` に入っても「前は何があったか」が分からず、
+   *   **IndexedDB から消せませんでした**（2026-09-07に直しました）。
+   *   `js/sync.js` の `_applyPulled` も、渡されたものを書き換えてから
+   *   `load()` に渡しています。
+   */
+  dump() { return { ...this._mem }; },
 
   load(obj) {
     // ★これは「入れ替え」です。**減った分も消さなければなりません。**
