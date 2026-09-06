@@ -884,7 +884,7 @@ function calcPadNext(i) {
 /**
  * 打っている欄が、テンキーに隠れないようにします
  *
- * ★ページの下に、テンキーのぶんだけ余白を足します。
+ * ★ページの下に、テンキーの分だけ余白を足します。
  *   これが無いと、**一番下の欄はもう送れません**（送る先が無いため）。
  *   実際、人件費の最後の欄が隠れたままになりました。
  */
@@ -1384,7 +1384,7 @@ const GridCache = {
  *
  * ★その月のものが無ければ、**前の月のものを使います。**
  *   仕入先は月をまたいでもほとんど変わらないので、
- *   月が替わるたびに6店舗ぶん押してもらうのは手間だからです。
+ *   月が替わるたびに6店舗分押してもらうのは手間だからです。
  *   ずれていても危なくありません。書くときはA列・E列の**名前で探す**ので、
  *   無い名前は「行が見つかりません」と出て**書かれません**。
  *   新しく増えた仕入先を出したいときは「読み直す」を押してもらいます。
@@ -1392,7 +1392,7 @@ const GridCache = {
 function cashGridNow() {
   const g = GridCache.get(state.storeId, state.y, state.m);
   if (g) return nippouGridSplit(g);
-  // 前の月をさかのぼって探します（12か月ぶんまで）
+  // 前の月をさかのぼって探します（12か月分まで）
   let y = state.y;
   let m = state.m;
   for (let i = 0; i < 12; i++) {
@@ -1446,7 +1446,7 @@ const gridAuto = {};
  * 仕入先を、自動で読み直します
  *
  * ★押さなくてもよくするためのものです。
- *   その月ぶんをまだ読んでいないときだけ、裏で1回だけ読みにいきます
+ *   その月分をまだ読んでいないときだけ、裏で1回だけ読みにいきます
  *   （前の月の並びを出したまま読むので、待たされません。
  *     読めたら、増えた仕入先がそのまま欄に出ます）。
  * ★合言葉が入っていない・日報フォルダが未登録・通信できない、
@@ -1455,7 +1455,7 @@ const gridAuto = {};
 function cashGridAuto() {
   const key = `${state.storeId}/${state.y}-${state.m}`;
   if (gridAuto[key]) return;                                  // この画面では1回だけ
-  if (GridCache.get(state.storeId, state.y, state.m)) return; // その月ぶんは、もうある
+  if (GridCache.get(state.storeId, state.y, state.m)) return; // その月分は、もうある
   if (!Sync.enabled || !Sync.enabled() || !Sync.pin()) return;
   const test = NippouTest.get();
   if (!test && !NippouFolders.get(state.storeId)) return;
