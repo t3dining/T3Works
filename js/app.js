@@ -696,83 +696,117 @@ async function cashResume() {
  * ---------------------------------------------------------- */
 
 /* ------------------------------------------------------------
- *  計算の記号バー（スマホ用）
+ *  計算テンキー（スマホ用）
  *
- *  ★iPhone の数字キーボードには「＝」も「＋」もありません。
- *    かといって文字キーボードにすると、数字が小さくて打ちにくくなります。
- *    そこで**数字キーボードのまま**、その上に記号のバーを自分で出します。
+ *  ★なぜ自前で作るか。
+ *    ① iPhone の数字キーボードには「＝」も「＋」もありません。
+ *    ② はじめは数字キーボードの上に記号バーを出しましたが、
+ *       **iOS自身のバー（∧ ∨ ✓）が上に重なって隠れました。**
+ *       あれはOSが出すもので、ウェブ側からは消せません。
+ *    ③ 端末ごとにキーボードの設定がちがうと、出るものも変わります。
  *
- *  ★押しても入力の場所を離しません（キーボードが閉じないように）。
- *    pointerdown で preventDefault するのが肝心です。
- *  ★キーボードの高さは visualViewport で見ます。
- *    これが無いブラウザでは、画面の一番下に出します。
+ *    そこで **システムのキーボードを出さず**（inputmode="none"）、
+ *    数字も記号も入ったテンキーを自分で出します。
+ *    重なるものが無く、どの端末でも同じものが出ます。
+ *
+ *  ★指で使う端末だけです。パソコンは本物のキーボードで打てるので、
+ *    そのままにします。
+ *  ★もしテンキーで困ったときのために「キーボード」で元に戻せます。
  * ---------------------------------------------------------- */
 
-let calcBar = null;
-let calcBarFor = null;      // いまバーを出している入力欄
+/** 指で使う端末か（パソコンでは出しません） */
+function calcTouch() {
+  try {
+    return window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+  } catch (e) { return false; }
+}
 
-/** バーを作ります（1つだけ作って、使い回します） */
-function calcBarMake() {
+let calcPad = null;
+let calcPadFor = null;      // いま打っている入力欄
+
+/** テンキーを作ります（1つだけ作って、使い回します） */
+function calcPadMake() {
   // ★DOMに付いているかまで見ます。変数だけを見ていると、
   //   何かの拍子に外れたとき、二度と出てこなくなります
-  if (calcBar && document.body && document.body.contains(calcBar)) return calcBar;
-  calcBar = null;
-  const bar = document.createElement('div');
-  bar.id = 'calcBar';
-  bar.style.cssText = [
-    'position:fixed', 'left:0', 'right:0', 'bottom:0', 'z-index:9999',
-    'display:none', 'gap:6px', 'padding:6px 8px',
-    'background:#2b2b2b', 'box-shadow:0 -2px 8px rgba(0,0,0,.25)',
-    'overflow-x:auto', '-webkit-overflow-scrolling:touch',
+  if (calcPad && document.body && document.body.contains(calcPad)) return calcPad;
+  calcPad = null;
+
+  const pad = document.createElement('div');
+  pad.id = 'calcPad';
+  pad.style.cssText = [
+    'position:fixed', 'left:0', 'right:0', 'bottom:0', 'z-index:99999',
+    'display:none', 'grid-template-columns:repeat(5,1fr)', 'gap:6px',
+    'padding:8px 8px calc(8px + env(safe-area-inset-bottom))',
+    'background:#2b2b2b', 'box-shadow:0 -2px 12px rgba(0,0,0,.35)',
   ].join(';');
 
-  const 押す = (label, どうする) => {
+  const キー = (label, どうする, 色) => {
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = label;
     b.style.cssText = [
-      'flex:0 0 auto', 'min-width:44px', 'height:40px',
-      'font-size:18px', 'font-weight:700', 'color:#fff',
-      'background:#4a4a4a', 'border:0', 'border-radius:8px',
+      'height:46px', 'font-size:20px', 'font-weight:700', 'color:#fff',
+      `background:${色 || '#4a4a4a'}`, 'border:0', 'border-radius:8px',
+      'touch-action:manipulation', '-webkit-user-select:none', 'user-select:none',
     ].join(';');
-    // ★押したときに入力欄から離れないように、既定の動きを止めます
+    // ★押しても入力欄から離れないように、既定の動きを止めます
     b.addEventListener('pointerdown', (e) => { e.preventDefault(); });
     b.addEventListener('click', (e) => { e.preventDefault(); どうする(); });
     return b;
   };
 
-  ['=', '+', '-', '*', '/', '(', ')'].forEach((c) => {
-    bar.appendChild(押す(c, () => calcBarInsert(c)));
+  const 数 = '#555';
+  const 記号 = '#3d5a80';
+  [
+    ['7', 数], ['8', 数], ['9', 数], ['⌫', '#8a4a4a'], ['=', 記号],
+    ['4', 数], ['5', 数], ['6', 数], ['(', 記号], ['+', 記号],
+    ['1', 数], ['2', 数], ['3', 数], [')', 記号], ['-', 記号],
+    ['0', 数], ['00', 数], ['.', 数], ['*', 記号], ['/', 記号],
+  ].forEach(([c, 色]) => {
+    pad.appendChild(c === '⌫' ? キー(c, calcPadBack, 色) : キー(c, () => calcPadInsert(c), 色));
   });
-  bar.appendChild(押す('⌫', () => calcBarBack()));
-  const 閉 = 押す('閉じる', () => { if (calcBarFor) calcBarFor.blur(); });
-  閉.style.fontSize = '13px';
-  閉.style.marginLeft = 'auto';
-  bar.appendChild(閉);
 
-  document.body.appendChild(bar);
-  calcBar = bar;
-  return bar;
+  // 下の段：全部消す／システムのキーボード／閉じる
+  const 消 = キー('全部消す', calcPadClear, '#5a3a3a');
+  消.style.fontSize = '13px';
+  消.style.gridColumn = 'span 2';
+  pad.appendChild(消);
+
+  const 切 = キー('キーボード', calcPadSystem, '#3a4a3a');
+  切.style.fontSize = '13px';
+  切.style.gridColumn = 'span 1';
+  pad.appendChild(切);
+
+  const 閉 = キー('閉じる', () => { if (calcPadFor) calcPadFor.blur(); }, '#3a3a3a');
+  閉.style.fontSize = '13px';
+  閉.style.gridColumn = 'span 2';
+  pad.appendChild(閉);
+
+  document.body.appendChild(pad);
+  calcPad = pad;
+  return pad;
 }
 
 /** カーソルのところに字を入れます */
-function calcBarInsert(c) {
-  const i = calcBarFor;
+function calcPadInsert(c) {
+  const i = calcPadFor;
   if (!i || i.readOnly) return;
-  const at = i.selectionStart === null ? i.value.length : i.selectionStart;
-  const to = i.selectionEnd === null ? at : i.selectionEnd;
+  let at = i.selectionStart;
+  let to = i.selectionEnd;
+  if (at === null || at === undefined) { at = i.value.length; to = at; }
   i.value = i.value.slice(0, at) + c + i.value.slice(to);
   const 次 = at + c.length;
-  try { i.setSelectionRange(次, 次); } catch (e) { /* 数字欄では効かないことがあります */ }
+  try { i.setSelectionRange(次, 次); } catch (e) { /* 効かない欄もあります */ }
   i.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 /** 1文字消します */
-function calcBarBack() {
-  const i = calcBarFor;
+function calcPadBack() {
+  const i = calcPadFor;
   if (!i || i.readOnly) return;
-  const at = i.selectionStart === null ? i.value.length : i.selectionStart;
-  const to = i.selectionEnd === null ? at : i.selectionEnd;
+  let at = i.selectionStart;
+  let to = i.selectionEnd;
+  if (at === null || at === undefined) { at = i.value.length; to = at; }
   if (at === to) {
     if (at === 0) return;
     i.value = i.value.slice(0, at - 1) + i.value.slice(to);
@@ -784,34 +818,72 @@ function calcBarBack() {
   i.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-/** キーボードの上に来るように、高さを合わせます */
-function calcBarPlace() {
-  if (!calcBar) return;
-  const vv = window.visualViewport;
-  if (!vv) { calcBar.style.bottom = '0px'; return; }
-  const 下 = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-  calcBar.style.bottom = `${下}px`;
+/** 全部消します */
+function calcPadClear() {
+  const i = calcPadFor;
+  if (!i || i.readOnly) return;
+  i.value = '';
+  i.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-/** その入力欄に、記号バーを付けます */
-function calcBarBind(input) {
+/** ★逃げ道：システムのキーボードに戻します */
+function calcPadSystem() {
+  const i = calcPadFor;
+  if (!i) return;
+  i.dataset.sys = '1';
+  i.inputMode = 'numeric';
+  calcPadHide();
+  i.blur();
+  setTimeout(() => i.focus(), 30);
+}
+
+/**
+ * 打っている欄が、テンキーに隠れないようにします
+ *
+ * ★ページの下に、テンキーのぶんだけ余白を足します。
+ *   これが無いと、**一番下の欄はもう送れません**（送る先が無いため）。
+ *   実際、人件費の最後の欄が隠れたままになりました。
+ */
+function calcPadShow(input) {
+  const pad = calcPadMake();
+  pad.style.display = 'grid';
+  setTimeout(() => {
+    try {
+      const 高さ = pad.getBoundingClientRect().height;
+      document.body.style.paddingBottom = `${Math.round(高さ) + 24}px`;
+      const 下 = input.getBoundingClientRect().bottom;
+      const 上 = pad.getBoundingClientRect().top;
+      if (下 > 上 - 8) {
+        // ★滑らか送り（behavior:'smooth'）は使いません。効かない場面がありました。
+        //   すぐ動く形なら、どこでも確実に寄ってくれます。
+        //   余白を足した直後なので、送り先はできています
+        input.scrollIntoView({ block: 'center' });
+      }
+    } catch (e) { /* 位置が取れなくても、打つのに困りません */ }
+  }, 30);
+}
+
+/** テンキーを引っこめます（足した余白も戻します） */
+function calcPadHide() {
+  if (calcPad) calcPad.style.display = 'none';
+  document.body.style.paddingBottom = '';
+}
+
+/** その入力欄に、テンキーを付けます */
+function calcPadBind(input) {
+  if (!calcTouch()) return;                 // パソコンは本物のキーボードで
+  input.inputMode = 'none';                 // ★システムのキーボードを出しません
   input.addEventListener('focus', () => {
-    calcBarFor = input;
-    const bar = calcBarMake();
-    bar.style.display = 'flex';
-    calcBarPlace();
+    if (input.dataset.sys === '1') return;   // 「キーボード」に切り替えた欄
+    calcPadFor = input;
+    calcPadShow(input);
   });
   input.addEventListener('blur', () => {
     // ほかの欄へ移っただけなら、出したままにします
     setTimeout(() => {
-      if (calcBarFor === input) { calcBarFor = null; if (calcBar) calcBar.style.display = 'none'; }
+      if (calcPadFor === input) { calcPadFor = null; calcPadHide(); }
     }, 120);
   });
-}
-
-if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', calcBarPlace);
-  window.visualViewport.addEventListener('scroll', calcBarPlace);
 }
 
 /** その日の書きかけ（無ければ空） */
@@ -1013,7 +1085,7 @@ function renderNippouBox(done) {
       });
       // 欄から離れたら、待たずにその場で残します
       input.addEventListener('blur', () => cashHandSave(true));
-      calcBarBind(input);       // ★数字キーボードの上に、＝や＋を出します
+      calcPadBind(input);       // ★自前のテンキーを出します（＝や＋も打てます）
       wrap.append(name, input);
       el.cashMinus.appendChild(wrap);
     });
@@ -1286,7 +1358,7 @@ function renderGridBox() {
           renderGridButton();
         });
         i.addEventListener('blur', () => cashHandSave(true));
-        calcBarBind(i);         // ★数字キーボードの上に、＝や＋を出します
+        calcPadBind(i);         // ★自前のテンキーを出します（＝や＋も打てます）
         row.appendChild(i);
       });
       wrap.appendChild(row);
