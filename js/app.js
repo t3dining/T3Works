@@ -1148,7 +1148,8 @@ function renderNippouBox(done) {
   // ★テスト用の書き先が入っているときは、ひと目で分かるようにします。
   //   本番に書いたつもりでテストに入っていた、が一番こわいためです
   const test = NippouTest.get();
-  el.cashToNippou.textContent = test ? '★テスト用の日報に書く' : '日報に書く';
+  el.cashToNippou.textContent = test
+    ? '★テスト用の日報に ジャーナルの5つを書く' : 'ジャーナルの5つを日報に書く';
   el.cashToNippou.classList.toggle('btn--danger', !!test);
 
   // 検算の結果。★通らなかったときこそ、何が起きたかを出します
@@ -1290,7 +1291,11 @@ function renderGridBox() {
     // ★入れ物は index.html ではなく、ここで作って差し込みます
     const box = document.createElement('div');
     box.id = 'cashGrid';
-    el.cashMinus.insertAdjacentElement('afterend', box);
+    // ★出前館の欄・一言・その書き込みボタン、の**あと**に置きます。
+    //   el.cashMinus のすぐ後ろに入れると、あいだに割りこんで
+    //   デリバリーのボタンが仕入より下へ回ってしまいます（実際にそうなりました）
+    const 前 = el.cashMinusGo || el.cashMinusNote || el.cashMinus;
+    前.insertAdjacentElement('afterend', box);
     el.cashGrid = box;
   }
   const w = cashGridNow();
