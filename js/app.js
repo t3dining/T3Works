@@ -5810,10 +5810,18 @@ function renderStaffSelect(current) {
     el.staffSelect.appendChild(o);
   });
 
-  const edit = document.createElement('option');
-  edit.value = '__edit__';
-  edit.textContent = names.length ? '＋ 担当者リストを編集…' : '＋ 担当者を登録…';
-  el.staffSelect.appendChild(edit);
+  // ★担当者の出し入れは**マネージだけ**です（ko-dai の指示・2026-09-05）。
+  //   前はここに「＋ 担当者リストを編集…」を出していましたが、
+  //   押しても設定が開くだけで、**そこに編集する所はありません**でした。
+  //   名前と中身が食いちがっていたので、消しました。
+  //   まだ1人も登録が無いときだけ、どこで登録するかを出します（選べません）。
+  if (!names.length) {
+    const どこ = document.createElement('option');
+    どこ.value = '';
+    どこ.disabled = true;
+    どこ.textContent = '担当者はマネージで登録します';
+    el.staffSelect.appendChild(どこ);
+  }
 
   el.staffSelect.value = current;
   el.staffSelect.classList.toggle('is-empty', !current);
@@ -9617,12 +9625,6 @@ function bindEvents() {
   /* その日の担当者 */
   el.staffSelect.addEventListener('change', () => {
     const dateStr = ymd(state.y, state.m, state.d);
-    if (el.staffSelect.value === '__edit__') {
-      // 元の選択に戻してから設定を開く
-      renderStaffSelect(Store.getDay(state.storeId, dateStr).staff || '');
-      openModal();
-      return;
-    }
     Store.setStaff(state.storeId, dateStr, el.staffSelect.value);
     el.staffSelect.classList.toggle('is-empty', !el.staffSelect.value);
     refreshProgress();
