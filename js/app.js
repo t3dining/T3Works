@@ -184,7 +184,7 @@ const el = {
   shiftWishModal: $('shiftWishModal'), shiftWishWhen: $('shiftWishWhen'),
   shiftWishList: $('shiftWishList'),
   shiftSheetModal: $('shiftSheetModal'), shiftSheetTitle: $('shiftSheetTitle'),
-  shiftPastBtn: $('shiftPastBtn'), shiftSeedBtn: $('shiftSeedBtn'),
+  shiftPastBtn: $('shiftPastBtn'),
   shiftPastModal: $('shiftPastModal'),
   shiftPastList: $('shiftPastList'),
   shiftSheet: $('shiftSheet'), shiftPrintBtn: $('shiftPrintBtn'),
@@ -845,15 +845,40 @@ function calcPadClose() {
 function calcPadDone() {
   const i = calcPadFor;
   if (!i) { calcPadClose(); return; }
-  const 並び = [...document.querySelectorAll('input[data-k],input[data-grid]')]
-    .filter((e) => e.offsetParent && !e.readOnly);
-  const at = 並び.indexOf(i);
-  const 次 = (at >= 0 && at + 1 < 並び.length) ? 並び[at + 1] : null;
+  const 次 = calcPadNext(i);
   if (!次) { calcPadClose(); return; }
   i.blur();                 // いまの欄を、その場で残します
   calcPadFor = 次;
   次.focus();
   calcPadShow(次);
+}
+
+/**
+ * 「確定」で進む先
+ *
+ * ★仕入と人件費は**同じ列の下**へ進みます。
+ *   当日現金を入れているなら次の仕入先の当日現金へ、
+ *   掛仕入なら次の掛仕入へ。横に飛ぶと、
+ *   当日現金だけを上から順に入れたいときに困ります。
+ * ★出前館などの5つは、そのまま下の欄へ進みます（列が1つしかありません）。
+ */
+function calcPadNext(i) {
+  const 使える = (e) => e.offsetParent && !e.readOnly;
+  if (i.dataset.grid) {
+    // 同じ節・同じ列だけを、上から順に並べます
+    const 同じ列 = [...document.querySelectorAll(
+      `input[data-grid="${i.dataset.grid}"][data-col="${i.dataset.col}"]`)].filter(使える);
+    const at = 同じ列.indexOf(i);
+    if (at >= 0 && at + 1 < 同じ列.length) return 同じ列[at + 1];
+    // その列の一番下まで来たら、もう片方の列の先頭へ移ります
+    const 相手 = i.dataset.col === 'f' ? 'g' : 'f';
+    const 次の列 = [...document.querySelectorAll(
+      `input[data-grid="${i.dataset.grid}"][data-col="${相手}"]`)].filter(使える);
+    return 次の列.length ? 次の列[0] : null;
+  }
+  const 並び = [...document.querySelectorAll('input[data-k]')].filter(使える);
+  const at = 並び.indexOf(i);
+  return (at >= 0 && at + 1 < 並び.length) ? 並び[at + 1] : null;
 }
 
 /**
@@ -7526,7 +7551,7 @@ function renderShiftRoster(組む) {
   area.className = 'field__input field__input--area';
   area.rows = Math.max(6, people.length + 2);
   area.value = people.map((p) => p.n).join('\n');
-  area.placeholder = 'ほのか\nわかな\nそう';
+  area.placeholder = '\u5c71\u7530\n\u4f50\u85e4\n\u9234\u6728';
   box.appendChild(area);
 
   const row = document.createElement('div');
@@ -7742,10 +7767,6 @@ function renderShift() {
   el.shiftBuildBtn.textContent = phase === SHIFT_BUILT
     ? 'このシフトは確定ずみです'
     : 'シフトを確定する';
-
-  // ★一時的：PDFのシフトを入れるボタン。9月前半のバグるのときだけ出します
-  el.shiftSeedBtn.classList.toggle('is-hidden',
-    !(state.storeId === 'baguru' && state.y === 2026 && state.m === 9 && shiftHalf === 1));
 
   el.shiftWishCount.textContent = names.length ? `提出 ${sent} / ${names.length}人` : '名簿が未登録';
   if (!names.length) {
@@ -9034,116 +9055,18 @@ function shiftSheetTable(block, perDay, size) {
 }
 
 /* ============================================================
- *  ★一時的なもの：PDFのシフトを入れる
+ *  ★PDFのシフトを入れる仕掛けは、外しました（2026-09-05）
  *
- *  「2026＿バグるシフト表 - 09.01~09.15.pdf」の中身をそのまま
- *  9/1〜9/15 に入れるためのものです。1回押したら役目は終わりなので、
- *  そのあとの公開で、この かたまり と index.html のボタンを外します。
+ *  9/1〜9/15 のバグるの表を、そのまま12日分持っていました。
+ *  **アルバイト22人の名前・持ち場・出勤時刻**が入っていて、
+ *  公開したアプリの js に、そのまま乗っていました
+ *  （`…/T3Works/js/app.js` を開けば誰でも読めました）。
  *
- *  読み方： [名前, 持ち場, 時刻, 'F'なら通し]
- *    持ち場 … k＝キッチン、h＝ホール
- *    時刻   … 立ち上げは書かなければ10:00。11.5＝11:30、18.5＝18:30
+ *  「1回押したら外す」と書いてありましたが、外されないまま公開が続きました。
+ *  ★同じ形のものを作らないでください。人の名前が入るデータを
+ *    コードに直接書くと、公開した時点で誰でも読めます。
+ *    入れたいものがあれば、貼り付ける欄を作って手元から読ませてください。
  * ============================================================ */
-const SHIFT_SEED = {
-  '2026-09-02': {
-    o: [['もっちゃん', 'k'], ['大前さん', 'h']],
-    l: [['塩崎さん', 'k', '11'], ['ほのか', 'h', '11.5']],
-    d: [['てる', 'k', '18.5'], ['ゆめ', 'k', '19'], ['わかな', 'h', '18'], ['りの', 'h', '18.5']],
-  },
-  '2026-09-03': {
-    o: [['もっちゃん', 'k'], ['塩崎さん', 'h']],
-    l: [['大前さん', 'k', '11'], ['さなこ', 'h', '11.5']],
-    d: [['はるき', 'k', '18.5'], ['さや', 'h', '17.5'], ['あやね', 'h', '18.5']],
-  },
-  '2026-09-04': {
-    o: [['もっちゃん', 'k'], ['大前さん', 'h']],
-    l: [['塩崎さん', 'k', '11'], ['ほのか', 'h', '11.5']],
-    d: [['わかな', 'k', '18.5'], ['ゆめ', 'k', '19'], ['さや', 'h', '17.5'], ['みゆ', 'h', '18.5']],
-  },
-  '2026-09-05': {
-    o: [['なおや', 'k', '', 'F'], ['りの', 'h']],
-    l: [['じゅの', 'h', '11'], ['いな', 'h', '11.5']],
-    d: [['てる', 'k', '19'], ['ゆめ', 'h', '17'], ['わかな', 'h', '18.5']],
-  },
-  '2026-09-06': {
-    o: [['ごうき', 'k', '', 'F'], ['ほのか', 'h', '', 'F']],
-    l: [['かれん', 'k', '11', 'F'], ['ゆめ', 'k', '11.5'], ['いな', 'h', '11.5']],
-    d: [['ゆいか', 'h', '18.5'], ['りの', 'h', '18.5']],
-  },
-  '2026-09-07': {
-    o: [['もっちゃん', 'k'], ['塩崎さん', 'h']],
-    l: [['大前さん', 'k', '11'], ['みづき', 'h', '11.5']],
-    d: [['てる', 'k', '17.5'], ['なおや', 'k', '19'], ['あやね', 'h', '18.5']],
-    memo: 'まさ休み',
-  },
-  '2026-09-09': {
-    o: [['もっちゃん', 'k'], ['塩崎さん', 'h']],
-    l: [['大前さん', 'k', '11'], ['かれん', 'h', '11', 'F']],
-    d: [['そう', 'k', '17.5'], ['わかな', 'h', '18.5'], ['みゆ', 'h', '18.5']],
-  },
-  '2026-09-10': {
-    o: [['もっちゃん', 'k'], ['大前さん', 'h']],
-    l: [['塩崎さん', 'k', '11'], ['さなこ', 'h', '11.5']],
-    d: [['そう', 'k', '17.5'], ['なおや', 'k', '18.5'], ['ゆいか', 'h', '18.5']],
-  },
-  '2026-09-11': {
-    o: [['もっちゃん', 'k'], ['塩崎さん', 'h']],
-    l: [['大前さん', 'k', '11'], ['さなこ', 'h', '11.5']],
-    d: [['そう', 'k', '17.5'], ['ゆめ', 'k', '19'], ['あやね', 'h', '18.5'], ['さや', 'h', '18.5']],
-  },
-  '2026-09-12': {
-    o: [['ほのか', 'k'], ['りの', 'h']],
-    l: [['ごうき', 'k', '11'], ['ゆま', 'h', '11'], ['じゅの', 'h', '11.5']],
-    d: [['なおや', 'k', '17'], ['てる', 'k', '19'], ['あやね', 'h', '17'], ['ゆいか', 'h', '18.5']],
-  },
-  '2026-09-13': {
-    o: [['なおや', 'k'], ['かれん', 'h', '', 'F']],
-    l: [['そう', 'k', '11'], ['いな', 'h', '11.5'], ['みゆ', 'h', '11.5']],
-    d: [['ごうき', 'k', '17'], ['ゆいか', 'h', '18.5'], ['みづき', 'h', '18.5']],
-  },
-  '2026-09-14': {
-    o: [['もっちゃん', 'k'], ['大前さん', 'h']],
-    l: [['なおや', 'k', '11.5'], ['塩崎さん', 'h', '11']],
-    d: [['てる', 'k', '18'], ['みづき', 'h', '18.5'], ['ゆめ', 'h', '19']],
-  },
-};
-
-async function loadShiftSeed() {
-  const days = Object.keys(SHIFT_SEED);
-  const n = days.reduce((sum, k) => {
-    const v = SHIFT_SEED[k];
-    return sum + v.o.length + v.l.length + v.d.length;
-  }, 0);
-  const ok = await askConfirm({
-    item: 'PDFのシフトを 9/1〜9/15 に入れます',
-    message: `のべ${n}人分を入れます。\n`
-      + 'いま 9/1〜9/15 に入っている内容は、すべて消えて入れ替わります。',
-    okLabel: '入れる',
-    danger: true,
-  });
-  if (!ok) return;
-
-  const one = (a, slot) => ({
-    n: a[0],
-    t: a[2] || shiftDefaultTime(state.storeId, slot),
-    p: a[1],
-    ...(a[3] === 'F' ? { f: true } : {}),
-  });
-  days.forEach((dateStr) => {
-    const v = SHIFT_SEED[dateStr];
-    const now = shiftDayOf(shiftRec(), dateStr);
-    saveShiftDay(dateStr, {
-      open: shiftSort(v.o.map((a) => one(a, 'open'))),
-      lunch: shiftSort(v.l.map((a) => one(a, 'lunch'))),
-      dinner: shiftSort(v.d.map((a) => one(a, 'dinner'))),
-      memo: v.memo || '',
-      patty: '',
-      short: now.short,
-    });
-  });
-  render();
-  el.shiftWishNote.textContent = `PDFのシフトを入れました（のべ${n}人分）`;
-}
 
 /* -------- これまでのシフト表 -------- */
 
@@ -9876,7 +9799,6 @@ function bindEvents() {
   bindHalfWidthInput(el.shiftPickShort, 'code');
   el.shiftPrintBtn.addEventListener('click', printShiftSheet);
   el.shiftPastBtn.addEventListener('click', openShiftPast);
-  el.shiftSeedBtn.addEventListener('click', loadShiftSeed);
   // ★画面の幅が変わったら、並べる日数を決め直します。
   //   iPadを横にしたときや、窓の大きさを変えたときのためです。
   //   日数が変わったときだけ組み直します（毎回だと入力中に消えます）
