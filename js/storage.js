@@ -202,8 +202,20 @@ const IdbAdapter = {
   dump() { return this._mem; },
 
   load(obj) {
+    // ★これは「入れ替え」です。**減った分も消さなければなりません。**
+    //
+    //   前は新しい方のキーにしか印を付けていませんでした。書き出しは
+    //   `_mem[k] === undefined` のときに delete する作りなので、
+    //   **印の付かない古いキーは IndexedDB に残り続けます。**
+    //   手元の写しからは消えるので、その場では「0件」に見えます。
+    //   **開き直すと全部戻ります。**
+    //
+    //   2026-09-07、シフトが試験データ14,688件を「消した」と報告したのに
+    //   残っていた、という形で見つかりました。
+    //   ★消したあとは、**開き直してから数え直して**ください。
+    Object.keys(this._mem).forEach((k) => this._dirty.add(k));   // 前の分＝消える候補
     this._mem = { ...obj };
-    Object.keys(this._mem).forEach((k) => this._dirty.add(k));
+    Object.keys(this._mem).forEach((k) => this._dirty.add(k));   // 新しい分
     this._later();
   },
 
