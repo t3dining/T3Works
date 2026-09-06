@@ -1642,7 +1642,8 @@ function renderSalesTargets() {
     input.className = 'field__input';
     input.dataset.store = s.id;
     input.autocomplete = 'off';
-    input.placeholder = '例：205000000';
+    // ★入力例に本当の金額を書かないこと。ここは公開されるファイルです
+    input.placeholder = '例：100000000';
     input.value = map[s.id] ? String(map[s.id]) : '';
     // 打っている途中でも、5店舗の合計がその場で分かるようにします
     input.addEventListener('input', updateTargetTotal);
