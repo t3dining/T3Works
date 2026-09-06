@@ -14,7 +14,7 @@
 <title>T3 Works Manage｜T3Dining株式会社</title>
 <link rel="stylesheet" href="../css/style.css?v=34f4bfc4">
 <link rel="stylesheet" href="css/admin.css?v=d00e0644">
-<meta name="app-version" content="ab719ad1">
+<meta name="app-version" content="c4a77a45">
 </head>
 <body class="no-daytabs">
 
@@ -336,27 +336,6 @@
       きまりを変えるときは、<b>js/config.js</b> の <b>DRIVE_RATE</b> と <b>driveYen</b> を直してください。
     </p>
 
-    <details class="admin-tool">
-      <summary>Numbers の2026年分を取り込む</summary>
-      <p class="admin-note">
-        「2026_バグる_アルバイト_配達記録表」に入っていた
-        <b>1月〜8月の219件</b>を、そのままアプリに入れます。<br>
-        何度押しても<b>二重には増えません</b>（同じ番号に上書きするため）。<br>
-        すでにアプリで入れた記録は消えません。
-      </p>
-      <p class="admin-note">
-        ⚠ 支払い済みの月にご注意ください。Numbers では
-        <b>7月だけが切り上げ、ほかの月は四捨五入</b>で計算されていました。
-        アプリは全部<b>切り上げ</b>なので、1〜6月と8月を取り込むと
-        <b>当時の金額より少しだけ高く出ます</b>（8か月分で合計 +¥2,200／22人分）。<br>
-        すでに払った月の金額を動かしたくなければ、<b>8月だけ</b>を取り込んでください。
-      </p>
-      <div class="admin-actions">
-        <button type="button" class="btn btn--primary" id="driveImportLast">8月だけ取り込む</button>
-        <button type="button" class="btn" id="driveImport">1〜8月全部取り込む</button>
-      </div>
-      <p class="admin-note" id="driveImportNote"></p>
-    </details>
   </section>
 </section>
 
@@ -566,8 +545,7 @@
 <script src="../js/update.js?v=c530219e"></script>
 <!-- Numbers / スプレッドシートから持ってきた2026年分の記録
      （取り込みが済んだら、この2つと上の取り込み欄は消してOK） -->
-<script src="js/drive-import.js?v=c87d5902"></script>
-<script src="js/expense-import.js?v=6ebef9a0"></script>
-<script src="js/admin.js?v=ccc8b193"></script>
+<script src="js/expense-import.js"></script>
+<script src="js/admin.js?v=8a460f1c"></script>
 </body>
 </html>

@@ -48,7 +48,6 @@ const el = {};
   'trainItemsStore', 'trainItemsCount', 'trainEditor', 'trainAddSection',
   'nippouFields', 'saveNippou', 'nippouCount', 'nippouSaved',
   'nippouTest', 'saveNippouTest', 'nippouTestSaved',
-  'driveImport', 'driveImportLast', 'driveImportNote',
   'expImport', 'expImportLast', 'expImportNote',
   'closedStoreName', 'dowToggles', 'exFrom', 'exKind', 'exAdd', 'exHint', 'exList',
   'exportBtn', 'importFile',
@@ -1196,7 +1195,6 @@ function renderDrivers() {
   const names = Drivers.list();
   el.driversInput.value = names.join('\n');
   el.driversCount.textContent = `${names.length}人`;
-  el.driveImportNote.textContent = '';
 }
 
 function renderCatchStaff() {
@@ -1671,44 +1669,6 @@ function saveDrivers() {
 }
 
 /**
- * Numbers に入っていた2026年分を取り込む
- *
- * 項目の番号を「imp-2026-01-0」のように決め打ちにしてあるので、
- * 何度押しても同じところに上書きされ、二重には増えません。
- */
-async function importDriveRecords(only) {
-  const all = Object.keys(DRIVE_IMPORT);
-  const months = only ? [all[all.length - 1]] : all;
-  const total = months.reduce((n, m) => n + DRIVE_IMPORT[m].length, 0);
-
-  const ok = await askConfirm({
-    item: months.length === 1
-      ? `${months[0]}　${total}件`
-      : `${months[0]} 〜 ${months[months.length - 1]}　${total}件`,
-    message: 'Numbers に入っていた配達の記録を、配達記録アプリに入れます。よろしいですか？',
-    okLabel: '取り込む',
-  });
-  if (!ok) return;
-
-  months.forEach((month) => {
-    DRIVE_IMPORT[month].forEach((row, i) => {
-      const [d, by, one, km] = row;
-      Store.setItem(DRIVE_STORE, month, `imp-${month}-${i}`, {
-        done: true, d, by, one, km,
-      });
-    });
-  });
-
-  const km = months.reduce(
-    (t, m) => driveKm(t, ...DRIVE_IMPORT[m].map((r) => r[3])), 0
-  );
-  el.driveImportNote.textContent =
-    `${total}件（${months.length}か月分・合計 ${km.toFixed(1)}km）を取り込みました。`
-    + '配達記録アプリで確かめてください。';
-  renderSyncStatus();
-}
-
-/**
  * スプレッドシート「00＿2026__支払い金額管理表」の2026年分を取り込む
  *
  * 配達記録の取り込みと同じ考え方です。項目の番号を
@@ -1716,6 +1676,14 @@ async function importDriveRecords(only) {
  * 何度押しても同じところに上書きされ、二重には増えません。
  */
 async function importExpenseRecords(only) {
+  // ★取り込み用のファイルは**公開していません**（中身が業務データのためです）。
+  //   公開先のマネージには入っていないので、ここで止めます
+  if (typeof EXPENSE_IMPORT === 'undefined') {
+    el.expImportNote.textContent =
+      '取り込み用のファイルは、この画面では使えません。'
+      + 'Mac の手元からマネージを開いてください（中身に氏名と金額が入るため、公開していません）。';
+    return;
+  }
   const all = Object.keys(EXPENSE_IMPORT);
   const months = only ? [all[all.length - 1]] : all;
   const rows = months.reduce((list, m) => list.concat(EXPENSE_IMPORT[m]), []);
@@ -2358,8 +2326,6 @@ function bindEvents() {
   el.trainAddSection.addEventListener('click', addSection);
   el.saveNippou.addEventListener('click', saveNippouFolders);
   el.saveNippouTest.addEventListener('click', saveNippouTest);
-  el.driveImportLast.addEventListener('click', () => importDriveRecords(true));
-  el.driveImport.addEventListener('click', () => importDriveRecords(false));
   el.expImportLast.addEventListener('click', () => importExpenseRecords(true));
   el.expImport.addEventListener('click', () => importExpenseRecords(false));
   el.exAdd.addEventListener('click', addClosedException);
