@@ -993,7 +993,13 @@ function renderCash() {
     // ★記録ずみならその中身を、まだなら書きかけを出します。
     //   書きかけは「入れたけれど、まだ記録していない」分です
     const 書きかけ = cashHandOf(state.storeId, dateStr);
-    cashEdit.m = (saved && saved.m) ? { ...saved.m } : { ...(書きかけ.m || {}) };
+    // ★書きかけがあれば、そちらを出します。
+    //   記録した中身を先に見ていたころは、**記録したあとに直しても
+    //   次に開くと元に戻って**いました。書きかけの方が新しいので、こちらが正です。
+    //   （書きかけが無い古い日は、記録した中身から出します）
+    cashEdit.m = (書きかけ.m && Object.keys(書きかけ.m).length)
+      ? { ...書きかけ.m }
+      : { ...((saved && saved.m) || {}) };
     cashEdit.shiire = { ...(書きかけ.shiire || {}) };
     cashEdit.jinken = { ...(書きかけ.jinken || {}) };
     cashEdit.checks = [];
@@ -1121,7 +1127,10 @@ function renderNippouBox(done) {
     if (document.activeElement !== i) {
       i.value = (v === undefined || v === null || v === '' || v === 0) ? '' : String(v);
     }
-    i.readOnly = !!done;
+    // ★記録しても固めません。仕入・人件費と同じで、これらは
+    //   現金売上の記録とは別のもの（日報の別のマスへ書くもの）です。
+    //   固めると、記録したあと直せなくなります（実際に9月6日でそうなりました）。
+    i.readOnly = false;
   });
 
   renderNippouMinusNote();
