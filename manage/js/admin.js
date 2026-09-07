@@ -1518,6 +1518,23 @@ function saveShiftMemoTags() {
       + '\n\n（このまま保存すると、あふれた分が黙って消えてしまいます）');
     return;
   }
+  // ★空で保存するとき、その店舗が「まだ登録なし」なら聞き直します。
+  //
+  //   コードから名前を抜いたあと、**同期がまだ届いていない端末**では、
+  //   登録ずみの店舗も欄が空・「まだ登録なし」に見えます。
+  //   そこで保存を押すと、**ほかの端末に届いている登録を空で上書きします。**
+  //   （バグる5こ・popo4こが、押した人にも気づかれずに消えます）
+  //
+  //   コードで空と決めてある店舗（仕込み／営業の4店舗）では聞きません。
+  //   あそこは空で保存するのが正しい使い方だからです
+  const 決めてある = Array.isArray(SHIFT_MEMO_TAGS_STORES[state.storeId]);
+  if (!list.length && ShiftMemoTags.get(state.storeId) === null && !決めてある) {
+    if (!window.confirm(`${getStore(state.storeId).name} は、この端末では「まだ登録なし」です。\n`
+      + '空のまま保存すると、この店舗はボタンを1つも出さない設定になります。\n\n'
+      + '★ほかの端末で登録してある場合、それを消してしまいます。\n'
+      + '　同期が届いていないだけかもしれません。\n\n'
+      + 'それでも空で登録しますか。')) return;
+  }
   // ★1店舗だけ入れかえます。ほかの店舗の登録はそのまま残します
   ShiftMemoTags.setFor(state.storeId, list);
   renderShiftMemoTags();
