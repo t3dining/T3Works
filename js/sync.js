@@ -235,9 +235,14 @@ const Sync = {
     return { ok: false, error: this.lastError || '送るのに時間がかかっています' };
   },
 
-  /** 管理用PINが要る操作を送信箱から取り除く（現場アプリが詰まらないように） */
+  /** 管理用PINが要る操作を送信箱から取り除く（現場アプリが詰まらないように）
+   *
+   * ★一覧は `js/config.js` の `ADMIN_SETTINGS` 1か所だけです。
+   *   ここに手で並べてはいけません。**GASに足してこちらに足し忘れると、
+   *   その設定を送った端末の同期が、ずっと赤いまま止まります**（2026-09-07）。
+   */
   _dropAdminOps() {
-    const admin = ['checklists', 'weeklies', 'staffList', 'closedDows'];
+    const admin = typeof ADMIN_SETTINGS !== 'undefined' ? ADMIN_SETTINGS : [];
     const rest = this.outbox().filter((op) => !(op.t === 'setting' && admin.includes(op.n)));
     this._saveOutbox(rest);
   },

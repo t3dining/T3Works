@@ -8016,8 +8016,21 @@ function shiftCodeList(store, people) {
     + '<b>他店舗にも所属</b>を押して店舗を選ぶと、その人は提出ページで'
     + '<b>店舗を切り替えられる</b>ようになります。<br>'
     + '選んだ店舗の名簿にも<b>同じ番号で入る</b>ので、'
-    + '<b>向こうでも押された状態</b>になります（二重に登録しなくて済みます）。';
+    + '<b>向こうでも押された状態</b>になります（二重に登録しなくて済みます）。<br>'
+    + '番号を送ったら、<b>名前の左のチェック</b>を付けてください（どこまで送ったか分かります）。';
   wrap.appendChild(url);
+
+  // ★どこまで配ったか。26人にLINEで送るので、数が見えないと見失います
+  //   （マネージと同じ数え方です。同じ `s` の印を見ています）
+  const 送りずみ = people.filter((x) => x.s).length;
+  const 数 = document.createElement('p');
+  数.className = 'card__note';
+  数.style.cssText = 'font-weight:700;'
+    + (送りずみ === people.length ? 'color:var(--ok);' : '');
+  数.textContent = 送りずみ === people.length
+    ? `全員に送りました（${people.length}人）`
+    : `送りずみ ${送りずみ} / ${people.length}人`;
+  wrap.appendChild(数);
 
   people.forEach((p) => {
     const line = document.createElement('div');
@@ -8025,8 +8038,26 @@ function shiftCodeList(store, people) {
     // ★見た目は css/style.css（本部のもの）に足さず、ここで持たせます
     line.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;'
       + 'padding:8px 0;border-bottom:1px solid var(--line);';
+    // ★番号をその人に送ったか。押すところを広めに取ります（指で押すため）
+    const sent = document.createElement('label');
+    sent.style.cssText = 'display:flex;align-items:center;justify-content:center;'
+      + 'width:34px;height:34px;margin:-6px 0 -6px -6px;cursor:pointer;flex:0 0 auto;';
+    sent.title = p.s ? '送りずみ（押すと外れます）' : '送ったら押してください';
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = !!p.s;
+    box.style.cssText = 'width:20px;height:20px;accent-color:var(--ok);';
+    box.addEventListener('change', () => {
+      ShiftStaff.setSent(state.storeId, p.n, box.checked);
+      renderKeepScroll();
+    });
+    sent.appendChild(box);
+    line.appendChild(sent);
+
     const name = document.createElement('b');
     name.textContent = p.n + (isShiftTester(p.n) ? '（見本）' : '');
+    // 送りずみの人は、うすくして「もう済んだ」と分かるようにします
+    if (p.s) name.style.color = 'var(--text-sub)';
     line.appendChild(name);
 
     const code = document.createElement('span');
