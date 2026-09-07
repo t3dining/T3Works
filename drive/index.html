@@ -13,7 +13,7 @@
 <link rel="icon" type="image/png" sizes="64x64" href="../img/drive-icon-64.png?v=7088d4ae">
 <title>配達記録｜バグる</title>
 <link rel="stylesheet" href="../css/style.css?v=e7d408c8">
-<meta name="app-version" content="63d9cad9">
+<meta name="app-version" content="2fae2ef9">
 </head>
 <body class="no-daytabs app-drive" data-assets="../">
 
@@ -133,6 +133,19 @@
     <div class="field">
       <span class="field__label">名前</span>
       <div class="doer-grid" id="drvNames"></div>
+      <!-- 名前が1人もいないときだけ出ます。
+           2026年9月5日まで js/config.js に15人の初期値が書いてありましたが、
+           あれは誰でも読めるファイルだったので空にしました。その分、名前は
+           共有（スプレッドシート）から届くだけになっています。
+           届く前に開くと、ここが高さ0の空白になり「名前の欄が無い」と
+           しか見えません。黙って行き止まりにしないための一文です -->
+      <p class="drive-warn is-hidden" id="drvNoNames">
+        <span aria-hidden="true">⚠️</span>
+        <span><b>配達する人が、まだ1人も登録されていません。</b><br>
+        <b>T3 Works Manage</b>（バグる → 交通費）で名前を登録してください。<br>
+        この端末を使いはじめたばかりなら、<b>共有がつながると名前が出ます</b>。
+        ヘッダーのしるしが ✓ になってから、開き直してください</span>
+      </p>
     </div>
 
     <!-- 1日に何回も行くので、その分だけ欄を増やせるようにしています -->
@@ -241,7 +254,7 @@
 <script src="../js/storage.js?v=e7f9a4d4"></script>
 <script src="../js/sync.js?v=d55a7809"></script>
 <script src="../js/update.js?v=c530219e"></script>
-<script src="js/drive.js?v=9041f678"></script>
+<script src="js/drive.js?v=df79a93b"></script>
 
 </body>
 </html>

@@ -32,7 +32,7 @@ const el = {
   driveTotalWrap: $('driveTotalWrap'), driveTotals: $('driveTotals'),
   driveFoot: $('driveFoot'), driveList: $('driveList'), driveListHead: $('driveListHead'),
   driveModal: $('driveModal'), driveError: $('driveError'),
-  drvDate: $('drvDate'), drvNames: $('drvNames'),
+  drvDate: $('drvDate'), drvNames: $('drvNames'), drvNoNames: $('drvNoNames'),
   drvLegs: $('drvLegs'), drvAddLeg: $('drvAddLeg'), drvHint: $('drvHint'), drvWarn: $('drvWarn'),
   driveFormTitle: $('driveFormTitle'), driveSave: $('driveSave'),
   modal: $('modal'), syncChip: $('syncChip'), syncInfo: $('syncInfo'), syncLegend: $('syncLegend'),
@@ -303,6 +303,10 @@ function openForm(group) {
     b.addEventListener('click', () => { drvName = name; renderForm(); });
     el.drvNames.appendChild(b);
   });
+  /* 1人もいないときは、なぜ空なのかを出します。
+     名前は共有から届くだけになったので、届く前はここが本当に空になります。
+     何も出さないと、押せないまま行き止まりになります */
+  el.drvNoNames.classList.toggle('is-hidden', names.length > 0);
 
   /* 1回分の欄。直すときは、その日に入れた回数だけ並べます */
   el.drvLegs.innerHTML = '';
