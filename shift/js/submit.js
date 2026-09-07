@@ -333,19 +333,27 @@ function 待ちを出す(いま) {
  * ほかの店舗の分を、裏で先に取っておきます
  *
  * ★2店舗以上に入っている人だけです。取っておけば、切り替えが**待ち時間なし**になります。
- * ★1つずつ順に取ります。まとめて投げると Apps Script 側が詰まるためです。
+ *
+ * ★**まとめて投げます。**1つずつ順に取ると、6店舗で12秒かかりました。
+ *   まとめて投げれば2.4秒です（実測。2026-09-07）。
+ *   Apps Script を呼ぶこと自体に2秒かかり、**中身の処理はほとんど時間を使っていません**
+ *   （何も返さないGETでも2秒でした）。だから「軽くする」ではなく
+ *   「**呼ぶ回数を減らす／重ねる**」しか効きません。
+ * ★読むだけ（mode:'open'）なので、重ねても取り合いになりません。
+ *   書き込み（提出）はここを通りません。
  * ★失敗しても何も言いません。**本番の切り替えのときに、もう一度ちゃんと取ります。**
  */
 let 先に取った = false;
-async function 先に取っておく() {
+function 先に取っておく() {
   if (先に取った || me.stores.length < 2) return;
   先に取った = true;
   const いま = me.store;
-  for (const id of me.stores) {
-    if (id === いま || 店舗の控え[id]) continue;
-    const res = await call({ mode: 'open', store: id });
-    if (res && res.ok && res.store === id) 店舗の控え[id] = res;
-  }
+  me.stores.forEach((id) => {
+    if (id === いま || 店舗の控え[id]) return;
+    call({ mode: 'open', store: id }).then((res) => {
+      if (res && res.ok && res.store === id) 店舗の控え[id] = res;
+    });
+  });
 }
 
 /**
