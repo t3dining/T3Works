@@ -8287,8 +8287,12 @@ function shiftGridBlock(rec, wishes, days) {
       td.appendChild(box);
     }
 
-    td.appendChild(shiftMemoTagBox(dateStr, input));
-    // ★パティを使わない店舗（popo）では、ボタンごと出しません
+    // ★決まり文句が1つも無い店舗（仕込み／営業の4店舗）では、行ごと出しません。
+    //   空の箱を置くと、メモの下にすき間だけが残ります
+    if (shiftMemoTagsOf(state.storeId).length) {
+      td.appendChild(shiftMemoTagBox(dateStr, input));
+    }
+    // ★パティを使わない店舗（popo・仕込み／営業の4店舗）では、ボタンごと出しません
     if (shiftHasPatty(state.storeId)) {
       td.appendChild(shiftPattyBox(shiftDayOf(rec, dateStr), dateStr));
     }
@@ -8377,6 +8381,7 @@ function shiftCell(rec, wishes, day, dateStr, slot, lane, first) {
  *
  * ★「まさ休み」「こうだいpopo」など、毎回おなじ言葉を打つので
  *   ボタンにしています。押すたびに足す・外すが入れかわります。
+ * ★決まり文句が空の店舗では、呼ぶ側が行ごと出しません（shiftMemoTagsOf）。
  * ★印刷・PDF・JPEG にボタンは出ません（メモの中身だけが出ます）。
  */
 function shiftMemoTagBox(dateStr, input) {

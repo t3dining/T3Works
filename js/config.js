@@ -2714,6 +2714,37 @@ const SHIFT_SLOTS_DEFAULT = [
 ];
 
 /**
+ * 店舗ごとの「初めの形」（コードに書いておく分）
+ *
+ *  形は下の `_shiftset`（マネージで直す分）と**まったく同じ**です。
+ *  重ねる順は  SHIFT_SLOTS_DEFAULT → ここ → マネージで直した分  です。
+ *  ですから、ここに書いた店舗も**あとからマネージで自由に変えられます**。
+ *
+ *  ★こじゃれ・炭まろ・ちゃこる・おいでんは「仕込み／営業」の2つです
+ *    （2026-09-07 に ko-dai の指示）。ランチの枠は使いません。
+ *    id は open / dinner のままです。**id は記録に残るので変えません。**
+ *    画面に出る名前だけ「仕込み」「営業」にしています。
+ *  ★バグると popo はここに書きません。今までのままです。
+ */
+const SHIFT_SLOTS_2 = {
+  // 仕込み … 時刻は聞きません（open は askTime: false）。
+  //          そのまま営業まで続けて入る人が多いので、押すと営業も一緒に入ります
+  //          （→ shiftAfterOpen）
+  'slot:open':   { name: '仕込み', hint: '仕込みから入る' },
+  // ランチの枠は使いません。F（通し）も、ランチが無いので出ません
+  //  （→ shiftWishSlots）
+  'slot:lunch':  { use: false },
+  'slot:dinner': { name: '営業',   hint: '営業から入る' },
+};
+
+const SHIFT_SLOTS_STORES = {
+  kojare:   SHIFT_SLOTS_2,
+  sumimaro: SHIFT_SLOTS_2,
+  chacoru:  SHIFT_SLOTS_2,
+  oiden:    SHIFT_SLOTS_2,
+};
+
+/**
  * 店舗ごとの「枠と時刻」の入れ先
  *
  *  1店舗が1行です（`_shiftset/popo`）。中身は枠ごとの直しだけを持ちます。
@@ -2744,26 +2775,41 @@ function shiftSlotSetKey(slotId) {
 let shiftSlotsGiven = null;
 
 /**
- * 設定（枠ごとの直し）を、初めの形に**重ねて**1つの並びにします
+ * 設定を**重ねて**1つの並びにします
+ *
+ *  重ねる順は3枚です。**下ほど強い**です。
+ *
+ *    1. SHIFT_SLOTS_DEFAULT … 全店舗の初めの形
+ *    2. SHIFT_SLOTS_STORES  … その店舗の初めの形（コードに書いた分）
+ *    3. items               … マネージで直した分（`_shiftset/店舗id`）
  *
  * ★重ねる所はここ1つだけです。組む画面（記録から読む）と
  *   提出ページ（Apps Script からもらう）で別々に組み立てると、
  *   片方だけ直したときに見た目が食い違います。
+ * ★2枚目があるので、**マネージの「初めの形に戻す」を押すと**
+ *   全店舗の形（立ち上げ）ではなく、**その店舗の形（仕込み）に戻ります。**
+ *   戻すボタンは name に '' を書くので、空は「書いていない」と読みます。
  * ★空にはなりません。全部「使わない」にしても初めの形に戻します
  *   （枠が1つも無いと、シフトの画面が真っ白になってしまうため）。
  */
-function shiftMergeSlots(items) {
+function shiftMergeSlots(items, storeId) {
+  const mine = SHIFT_SLOTS_STORES[storeId] || {};
   const src = items && typeof items === 'object' ? items : {};
+  const 並び = (x) => (Array.isArray(x) && x.length ? x : null);
   const out = [];
   SHIFT_SLOTS_DEFAULT.forEach((slot) => {
-    const v = src[shiftSlotSetKey(slot.id)] || {};
-    if (v.use === false) return;
+    const key = shiftSlotSetKey(slot.id);
+    const b = mine[key] || {};   // その店舗の初めの形
+    const v = src[key] || {};    // マネージで直した分
+    const use = v.use === undefined ? b.use : v.use;
+    if (use === false) return;
     out.push({
       ...slot,
-      name: v.name || slot.name,
-      hint: v.hint === undefined ? slot.hint : v.hint,
-      times: Array.isArray(v.times) && v.times.length ? v.times : slot.times,
-      pick: v.pick || slot.pick,
+      name: v.name || b.name || slot.name,
+      hint: v.hint !== undefined ? v.hint
+        : (b.hint !== undefined ? b.hint : slot.hint),
+      times: 並び(v.times) || 並び(b.times) || slot.times,
+      pick: v.pick || b.pick || slot.pick,
     });
   });
   return out.length ? out : SHIFT_SLOTS_DEFAULT.slice();
@@ -2780,7 +2826,7 @@ function setShiftSlots(storeId, items) {
   const src = items && typeof items === 'object' ? items : {};
   shiftSlotsGiven = {
     storeId,
-    list: shiftMergeSlots(src),
+    list: shiftMergeSlots(src, storeId),
     // ★入れ方（時刻を入れるか、通しの境目はどこか）も一緒に控えます。
     //   ここを渡し忘れると、提出ページだけ古い決まりで動きます
     style: src[SHIFT_STYLE_KEY] || {},
@@ -2797,12 +2843,38 @@ function shiftSlotsOf(storeId) {
   //   読み込みが全部おわってからなので、ここで見れば間に合います
   try {
     if (typeof Store !== 'undefined' && storeId) {
-      return shiftMergeSlots(Store.getDay(SHIFT_SET_STORE, storeId).items);
+      return shiftMergeSlots(Store.getDay(SHIFT_SET_STORE, storeId).items, storeId);
     }
   } catch (e) {
     // 設定が読めなくても、初めの形で動かします
   }
-  return SHIFT_SLOTS_DEFAULT.slice();
+  // ★ここでも重ねます。SHIFT_SLOTS_DEFAULT をそのまま返すと、
+  //   設定が読めないときだけ、仕込み／営業の店舗にバグるの3つの枠が出ます
+  return shiftMergeSlots(null, storeId);
+}
+
+/**
+ * その店舗の「初めの形」（マネージで直す前の姿）
+ *
+ * ★マネージの編集画面が使います。**`SHIFT_SLOTS_DEFAULT` を直に読まないでください。**
+ *   直に読むと、仕込み／営業の4店舗で「立ち上げ・ランチ・ディナーの3つ」が
+ *   出てしまい、そのまま保存すると**店舗ごとの形が黙って消えます。**
+ * ★使わない枠も落とさずに返します（`use: false` を付けて返します）。
+ *   編集画面は「使う」のチェックを外した状態で出す必要があるためです。
+ */
+function shiftBaseSlots(storeId) {
+  const mine = SHIFT_SLOTS_STORES[storeId] || {};
+  return SHIFT_SLOTS_DEFAULT.map((slot) => {
+    const b = mine[shiftSlotSetKey(slot.id)] || {};
+    return {
+      ...slot,
+      use: b.use !== false,
+      name: b.name || slot.name,
+      hint: b.hint !== undefined ? b.hint : slot.hint,
+      times: Array.isArray(b.times) && b.times.length ? b.times : slot.times,
+      pick: b.pick || slot.pick,
+    };
+  });
 }
 
 /** その店舗で、その枠を使っているか */
@@ -2842,6 +2914,12 @@ const SHIFT_STYLE_DEFAULT = {
  */
 const SHIFT_STYLE_STORES = {
   popo: { range: true, step: 0.5, from: '8', to: '24', lunchTo: '17', patty: false },
+  // ★仕込み／営業の4店舗。パティはバグるの言葉なので出しません
+  //   （2026-09-07「メモ欄のボタンは全部消して、ただのメモ欄に」）
+  kojare:   { patty: false },
+  sumimaro: { patty: false },
+  chacoru:  { patty: false },
+  oiden:    { patty: false },
 };
 
 /** その店舗の入れ方（マネージで直した分も重ねます） */
@@ -2943,6 +3021,25 @@ function shiftSlotByTime(t) {
  * （両方に付けることはありません。付け替えると前のは外れます）
  */
 const SHIFT_PATTY_SLOTS = ['lunch', 'dinner'];
+
+/**
+ * 立ち上げ（仕込み）のあと、そのまま続けて入る枠
+ *
+ *  立ち上げだけ出して帰る人はいないので、提出ページで立ち上げを押すと
+ *  この枠も一緒に入ります。
+ *
+ *  ★枠の並び順で「次」を見ます。名前では見ません。
+ *      バグる（立ち上げ→ランチ→ディナー）  … ランチ
+ *      仕込み／営業の4店舗（仕込み→営業）    … 営業
+ *  ★立ち上げが無い店舗や、立ち上げが最後の店舗では null を返します。
+ *    呼ぶ側は、null なら何も足しません。
+ */
+function shiftAfterOpen(storeId) {
+  const slots = shiftSlotsOf(storeId);
+  const i = slots.findIndex((s) => s.id === 'open');
+  if (i < 0) return null;
+  return slots[i + 1] || null;
+}
 
 /**
  * 立ち上げからあふれた人を回す先（ランチの、一番早い時刻）
@@ -3122,6 +3219,9 @@ const SHIFT_MEMO_TAGS = [
  */
 const SHIFT_MEMO_TAGS_STORES = {
   popo: ['あお休み', 'こうだい終日', 'こうだいランチ', 'こうだいディナー'],
+  // ★空にするとボタンが1つも出ず、ただのメモ欄になります
+  //   （2026-09-07 に ko-dai の指示）。行ごと出しません（→ app.js）
+  kojare: [], sumimaro: [], chacoru: [], oiden: [],
 };
 
 /** その店舗の決まり文句 */

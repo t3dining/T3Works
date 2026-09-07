@@ -1463,9 +1463,12 @@ function renderShiftSlots() {
   el.shiftSlotCount.textContent = `${now.length}つ`;
   el.shiftSlotList.innerHTML = '';
 
-  SHIFT_SLOTS_DEFAULT.forEach((base) => {
+  // ★その店舗の初めの形から出します。SHIFT_SLOTS_DEFAULT を直に読むと、
+  //   仕込み／営業の4店舗で「立ち上げ・ランチ・ディナー」が出てしまい、
+  //   そのまま保存すると店舗ごとの形が黙って消えます
+  shiftBaseSlots(storeId).forEach((base) => {
     const v = saved[shiftSlotSetKey(base.id)] || {};
-    const on = v.use !== false;
+    const on = v.use === undefined ? base.use : v.use;
     const row = document.createElement('div');
     row.className = 'shift-slot';
     row.dataset.slot = base.id;
@@ -1597,13 +1600,17 @@ function saveShiftSlots() {
 }
 
 function resetShiftSlots() {
+  // ★戻る先は店舗によって違います。バグるは3つ、仕込み／営業の4店舗は2つです。
+  //   決め打ちで「3つに戻ります」と書くと、出る言葉と起きることが食いちがいます
+  const もと = shiftBaseSlots(state.storeId);
+  const 名前 = もと.filter((b) => b.use).map((b) => b.name).join('／');
   if (!window.confirm(`${getStore(state.storeId).name} の枠をはじめの形に戻します。\n`
-    + '立ち上げ／ランチ／ディナーの3つに戻ります。\n'
+    + `${名前} の${もと.filter((b) => b.use).length}つに戻ります。\n`
     + '組みおわったシフトは変わりません。')) return;
   // ★消すのではなく「直していない」状態に戻します。記録は消しません
-  SHIFT_SLOTS_DEFAULT.forEach((base) => {
+  もと.forEach((base) => {
     Store.setItem(SHIFT_SET_STORE, state.storeId, shiftSlotSetKey(base.id), {
-      use: true, name: '', hint: undefined, times: [], pick: '',
+      use: base.use, name: '', hint: undefined, times: [], pick: '',
     });
   });
   renderShiftSlots();

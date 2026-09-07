@@ -742,18 +742,24 @@ function dayCard(dateStr) {
   // ★立ち上げを押した人には、そのあとを聞きます。
   //   立ち上げだけ出して帰る人はいないので、ランチだけか通しかを
   //   ここで決めてもらいます（あとから組むときの聞き直しが減ります）
-  if (main === 'open') {
+  // ★聞くのは F（通し）がある店舗だけです。仕込み／営業の4店舗には
+  //   ランチが無いので F も無く、仕込みのあとは営業しかありません。
+  //   その場合は押した時点で営業も入っているので、聞くことがありません
+  const 立ち上げ = getShiftSlot(me.store, 'open');
+  const ランチ = getShiftSlot(me.store, 'lunch');
+  if (main === 'open' && ランチ && getShiftSlot(me.store, SHIFT_FULL_ID)) {
     const row = document.createElement('div');
     row.className = 'after';
     const label = document.createElement('span');
     label.className = 'after__label';
-    label.textContent = '立ち上げのあとは？';
+    // ★名前は枠から取ります。マネージで呼び名を変えても、ここが古く残りません
+    label.textContent = `${立ち上げ ? 立ち上げ.name : '立ち上げ'}のあとは？`;
     row.appendChild(label);
 
     const btns = document.createElement('div');
     btns.className = 'after__btns';
     [
-      { id: 'lunch', name: 'ランチだけ' },
+      { id: 'lunch', name: `${ランチ.name}だけ` },
       { id: SHIFT_FULL_ID, name: 'F（通し）' },
     ].forEach((a) => {
       const b = document.createElement('button');
@@ -821,9 +827,14 @@ function toggleSlot(dateStr, slotId) {
   }
 
   const list = [{ s: slotId, t: shiftDefaultTime(me.store, slotId) }];
-  // 立ち上げは、一番多い「そのままランチ」を先に入れておきます。
-  // 通しの人は、下の「F（通し）」を押せば入れかわります
-  if (slotId === 'open') list.push({ s: 'lunch', t: shiftDefaultTime(me.store, 'lunch') });
+  // 立ち上げ（仕込み）は、そのまま続けて入る枠を先に入れておきます。
+  //   バグる            … ランチ（通しの人は「F（通し）」を押せば入れかわります）
+  //   仕込み／営業の4店舗 … 営業
+  // ★枠の名前ではなく並び順で決めます（→ shiftAfterOpen）
+  if (slotId === 'open') {
+    const 次 = shiftAfterOpen(me.store);
+    if (次) list.push({ s: 次.id, t: shiftDefaultTime(me.store, 次.id) });
+  }
 
   picked[dateStr] = list;
   renderPeriod();
