@@ -19,20 +19,30 @@
      ★アイコンも**店舗を入れません**。前はバグるの牛の絵に「シフト」と
        帯を付けたものでした（`img/shift-icon-*.png`）。全店舗おなじURLなので、
        ほかの店舗の人のホーム画面にもバグるの牛が並びます。
-       いまは**カレンダーとチェックだけ**です。会社のロゴも入れません
-       （アルバイトが使うもので、社名を出す必要がないため）。
-       ★店舗が増えても、ここは直さなくて済みます（2026-09-07）。
-     ★theme-color も店舗の色（バグるの桃色）でした。アイコンの青にそろえています。 -->
+       いまは**金の板に「T3 CHRONA」**です（2026-09-07 差し替え）。
+       もとの絵は `素材/シフトアプリロゴ.png`。そこから作る手順は下のとおりです。
+       ★店舗が増えても、ここは直さなくて済みます。
+     ★アイコンの作り方（もとの絵を差し替えるときも同じ）
+       もとの絵は**角丸と影が描き込まれていて、まわりが透明**でした。
+       そのまま渡すと、iPhoneが**さらに自分で角を丸める**ので
+       角丸の中に角丸ができ、透明だったところが**黒いふち**になります。
+       なので**金の板の中だけを四角く切り出して**、64/180/512 を作っています。
+       角はiPhoneとAndroidが丸めてくれます。
+     ★512は最初 398KB ありました（ほかのアプリのアイコンは27KB前後）。
+       金のざらつきが原因です。色を5bitに丸めて 165KB にしています。
+       見た目は変わりません。
+     ★theme-color も店舗の色（バグるの桃色）→ 青、といじってきました。
+       いまはアイコンの紺にそろえています。 -->
 <link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="シフト提出">
-<meta name="theme-color" content="#2762a8">
-<link rel="apple-touch-icon" href="../img/shift-icon-180.png?v=a3141a17">
-<link rel="icon" href="../img/shift-icon-64.png?v=1c38e7e9">
+<meta name="theme-color" content="#1b2a42">
+<link rel="apple-touch-icon" href="../img/shift-icon-180.png?v=20a1a159">
+<link rel="icon" href="../img/shift-icon-64.png?v=d4b39ead">
 
 <link rel="stylesheet" href="css/submit.css?v=400a586d">
-<meta name="app-version" content="85969210">
+<meta name="app-version" content="825f0d48">
 </head>
 <body>
 
