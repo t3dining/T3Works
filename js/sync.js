@@ -9,6 +9,22 @@
  *  APP.syncUrl が空のあいだは、この機能は丸ごと無効（今までどおり端末内だけ）です。
  * ============================================================ */
 
+/**
+ * 設定の、画面に出す呼び名
+ *
+ * ★`shiftStaff` のような中の名前を、そのまま人に見せないための表です。
+ *   ここに無いものは、そのままの名前で出ます（出さないより、ましです）。
+ */
+function 設定の呼び名(n) {
+  const 表 = {
+    checklists: 'クローズの項目', weeklies: '週間掃除の項目',
+    staffList: '担当者リスト', closedDows: '定休日',
+    shiftStaff: 'シフトの名簿', salesTargets: '年間の売上目標',
+    shiftMemoTags: 'メモの決まり文句',
+  };
+  return 表[n] || n;
+}
+
 const Sync = {
   _outboxKey: APP.storageKey + ':outbox',
   // ★「どこまで同期したか」の印は Store（記録と同じ場所）に置きます。
@@ -243,8 +259,19 @@ const Sync = {
    */
   _dropAdminOps() {
     const admin = typeof ADMIN_SETTINGS !== 'undefined' ? ADMIN_SETTINGS : [];
+    const 捨てる = this.outbox().filter((op) => op.t === 'setting' && admin.includes(op.n));
     const rest = this.outbox().filter((op) => !(op.t === 'setting' && admin.includes(op.n)));
     this._saveOutbox(rest);
+    // ★捨てたことを黙っていてはいけません。
+    //   捨てたあと、次に取り込んだサーバーの分で**画面が元に戻ります。**
+    //   赤い帯も出ないので、直した人は「保存された」と思ったまま消えます
+    //   （2026-09-07、シフトが名簿で実地に見つけました）。
+    //   ★詰まりは外すが、**外したことは言う。**
+    if (捨てる.length) {
+      const 名 = [...new Set(捨てる.map((op) => 設定の呼び名(op.n)))].join('・');
+      this.lastError = `${名}は、この端末では保存できません`
+        + '（管理用のPINが要ります）。直した分は元に戻ります。';
+    }
   },
 
   /** いま覚えているPINが管理用かどうかを確かめる（管理アプリで使います） */
