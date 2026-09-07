@@ -2445,7 +2445,7 @@ function trainTotal(storeId) {
  *    2026-09-07、GAS側に3つ足したのにこちら側を足しておらず、
  *    実際にそうなりました（`shiftStaff` `salesTargets` `shiftMemoTags`）。
  * ---------------------------------------------------------- */
-const ADMIN_SETTINGS = ['checklists', 'weeklies', 'staffList', 'closedDows',
+const ADMIN_SETTINGS = ['checklists', 'weeklies', 'anytimes', 'staffList', 'closedDows',
   'salesTargets', 'shiftMemoTags'];
 // ★`shiftStaff`（シフトの名簿）は、2026-09-07 に**わざと外しました。**
 //   ko-dai さんの判断で、**各店長の端末から名簿を直せるようにする**ためです。

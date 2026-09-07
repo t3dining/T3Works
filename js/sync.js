@@ -18,6 +18,7 @@
 function 設定の呼び名(n) {
   const 表 = {
     checklists: 'クローズの項目', weeklies: '週間掃除の項目',
+    anytimes: '随時掃除の項目',
     staffList: '担当者リスト', closedDows: '定休日',
     shiftStaff: 'シフトの名簿', salesTargets: '年間の売上目標',
     shiftMemoTags: 'メモの決まり文句',
@@ -382,6 +383,7 @@ const Sync = {
       const 設定の入れ先 = {
         checklists: Checklists._key,
         weeklies: Weeklies._key,
+        anytimes: Anytimes._key,
         staffList: Staff._key,
         drivers: Drivers._key,
         catchStaff: CatchStaff._key,
@@ -592,6 +594,13 @@ function summaryFor(key) {
   Checklists.save = function (storeId, sections) {
     const all = _saveChecklist(storeId, sections);
     Sync.enqueue({ t: 'setting', n: 'checklists', v: all });
+    return all;
+  };
+
+  const _saveAnytime = Anytimes.save.bind(Anytimes);
+  Anytimes.save = function (storeId, items) {
+    const all = _saveAnytime(storeId, items);
+    Sync.enqueue({ t: 'setting', n: 'anytimes', v: all });
     return all;
   };
 

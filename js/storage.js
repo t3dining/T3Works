@@ -701,6 +701,51 @@ const Weeklies = {
     return all;
   },
 };
+/* -------- 随時掃除の項目（マネージで登録します） --------
+ *
+ *  「暇なとき」「汚くなったら」やる掃除です。週間掃除（Weeklies）と
+ *  同じ形にしてあります。**達成率には入りません。**
+ *
+ * ★記録は `店舗id/ANYTIME` に1つだけです。項目を足しても行は増えません
+ *   （5万文字の心配はありません）。
+ */
+const Anytimes = {
+  _key: APP.storageKey + ':anytimes',
+
+  _read() {
+    try {
+      const v = JSON.parse(localStorage.getItem(this._key) || 'null');
+      return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+    } catch (e) {
+      return {};
+    }
+  },
+
+  /** 保存されている全店舗分。管理アプリの一括保存で使います */
+  all() {
+    return this._read();
+  },
+
+  /** その店舗の項目。未設定なら config.js の初期値を使う */
+  items(storeId) {
+    const saved = this._read()[storeId];
+    if (Array.isArray(saved)) return saved;
+    return defaultAnytime(storeId);
+  },
+
+  /** まだ一度も編集されていない（config.js の初期値のまま）かどうか */
+  isDefault(storeId) {
+    return !Array.isArray(this._read()[storeId]);
+  },
+
+  save(storeId, items) {
+    const all = this._read();
+    all[storeId] = items;
+    localStorage.setItem(this._key, JSON.stringify(all));
+    return all;
+  },
+};
+
 
 /* -------- 教育の項目（マネージで変更し、全端末へ配られます） --------
  *
