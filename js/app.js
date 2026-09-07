@@ -7206,7 +7206,7 @@ function agoLabel(n) {
 
 function renderAnytimeBlock() {
   const storeId = state.storeId;
-  const items = getAnytime(storeId);
+  const items = getAnytime(storeId).filter(anytimeShows);
   // 項目が無い店舗では、この かたまり ごと出しません
   el.anytimeBlock.classList.toggle('is-hidden', items.length === 0);
   if (!items.length) return;

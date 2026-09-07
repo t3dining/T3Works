@@ -381,6 +381,12 @@ function startNameEdit(cell) {
         saveWeekly(next); // 画面はまるごと描き直されます
         return;
       }
+      if (secId === ANYTIME_SEC) {
+        const next = currentAnytime();
+        next.find((it) => it.id === itemId).label = text;
+        saveAnytime(next); // 画面はまるごと描き直されます
+        return;
+      }
       const next = currentSections();
       next.find((s) => s.id === secId).items.find((it) => it.id === itemId).label = text;
       saveSections(next); // 画面はまるごと描き直されます
@@ -571,6 +577,214 @@ function renderWeeklyEditor() {
 
     el.weeklyEditor.appendChild(card);
   });
+
+  renderAnytimeEditor(); // 同じ画面の下に続けます
+}
+
+/* ============================================================
+ *  随時掃除の編集（週間掃除と同じ画面の下に出します）
+ *
+ *  「暇なとき」「汚くなったら」のように、いつやると決まっていない掃除です。
+ *  週ごとの表を持たず、達成率にも入りません。「最後にやった日」だけを残します。
+ *
+ *  作りは週間掃除とそっくりです。区分がないので、区分IDは
+ *  ANYTIME_SEC という決まった文字にしています。
+ * ============================================================ */
+const ANYTIME_SEC = '__anytime__';
+
+/* 目安（掃除表に書いてあった頻度）。押すたびにこの順で回ります。
+   '' は「決めない」です */
+const ANYTIME_NOTES = ['', '暇なとき', '汚くなったら', '夏前'];
+
+/** いま編集中の店舗の随時掃除の項目（保存されていなければ config.js の初期値を複製） */
+function currentAnytime() {
+  return JSON.parse(JSON.stringify(Anytimes.items(state.storeId)));
+}
+
+/** 書き換えた内容を保存して、全端末へ送る */
+function saveAnytime(items) {
+  const cleaned = items
+    // 足したその場で消した項目は、どこにも出ないので残さない
+    .filter((it) => !(it.addedAt && it.retiredAt && it.addedAt >= it.retiredAt))
+    // 名前を付けたら「まだ名前がない」の印を外します。ここで外れて、はじめて現場に出ます
+    .map((it) => {
+      if (it.draft && it.label && it.label !== NEW_ITEM) {
+        const copy = { ...it };
+        delete copy.draft;
+        return copy;
+      }
+      return it;
+    });
+  Anytimes.save(state.storeId, cleaned);
+  renderWeeklyEditor(); // 週間掃除ごと描き直します
+}
+
+function renderAnytimeEditor() {
+  const live = currentAnytime().filter(alive);
+
+  /* 何のことか分かるように、はじめに1枚はさみます */
+  const head = document.createElement('div');
+  head.className = 'sec-card';
+  const hd = document.createElement('div');
+  hd.className = 'sec-card__head';
+  const ht = document.createElement('span');
+  ht.className = 'sec-card__name sec-card__name--fixed';
+  ht.textContent = '随時掃除';
+  hd.appendChild(ht);
+  const hc = document.createElement('span');
+  hc.className = 'admin-count';
+  hc.textContent = `${live.length}項目`;
+  hd.appendChild(hc);
+  head.appendChild(hd);
+  const hp = document.createElement('p');
+  hp.className = 'admin-empty';
+  hp.textContent =
+    '「暇なとき」「汚くなったら」のように、いつやると決まっていない掃除です。'
+    + '週の表には出ず、達成率にも入りません。「最後にやった日」だけを残します。';
+  head.appendChild(hp);
+  el.weeklyEditor.appendChild(head);
+
+  const found = groupWeekly(live);
+  const names = WEEKLY_GROUPS.slice();
+  found.forEach((g) => { if (!names.includes(g.name)) names.push(g.name); });
+
+  names.forEach((name) => {
+    const list = (found.find((g) => g.name === name) || { items: [] }).items;
+
+    const card = document.createElement('div');
+    card.className = 'sec-card';
+    card.dataset.secId = ANYTIME_SEC;
+
+    const cardHead = document.createElement('div');
+    cardHead.className = 'sec-card__head';
+    const title = document.createElement('span');
+    title.className = 'sec-card__name sec-card__name--fixed';
+    title.textContent = `随時 ― ${name}`;
+    cardHead.appendChild(title);
+    const count = document.createElement('span');
+    count.className = 'admin-count';
+    count.textContent = `${list.length}項目`;
+    cardHead.appendChild(count);
+    card.appendChild(cardHead);
+
+    if (!list.length) {
+      const p = document.createElement('p');
+      p.className = 'admin-empty';
+      p.textContent = 'まだ項目がありません。';
+      card.appendChild(p);
+    }
+
+    list.forEach((item, i) => {
+      card.appendChild(buildAnytimeRow(item, i, list.length));
+    });
+
+    if (list.some((it) => it.draft)) {
+      const note = document.createElement('p');
+      note.className = 'admin-empty';
+      note.textContent = '「新しい項目」は、名前を付けるまで現場（ワークス・マイン）に出ません。';
+      card.appendChild(note);
+    }
+
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'sec-card__add';
+    add.textContent = '＋ 項目を追加';
+    add.addEventListener('click', () => addAnytimeItem(name));
+    card.appendChild(add);
+
+    el.weeklyEditor.appendChild(card);
+  });
+}
+
+function buildAnytimeRow(item, index, count) {
+  const row = document.createElement('div');
+  row.className = 'item-row item-row--weekly';
+  row.dataset.itemId = item.id;
+  row.addEventListener('pointerdown', (e) => startLongPress(e, row));
+
+  row.appendChild(buildNameCell({ id: ANYTIME_SEC }, item));
+
+  /* 掃除する場所の入れ替え。押すたびに次の場所へ移ります */
+  const group = document.createElement('button');
+  group.type = 'button';
+  group.className = 'every-btn every-btn--group';
+  group.textContent = weeklyGroupOf(item);
+  group.title = '掃除する場所を変えます（押すたびに次の場所へ移ります）';
+  group.addEventListener('click', () => cycleAnytimeGroup(item.id));
+  row.appendChild(group);
+
+  /* 目安（「暇なとき」など）。押すたびに次のものへ移ります */
+  const note = document.createElement('button');
+  note.type = 'button';
+  note.className = 'every-btn';
+  note.textContent = item.note || '目安なし';
+  note.title = 'いつやるかの目安を変えます（押すたびに次のものへ移ります）';
+  note.addEventListener('click', () => cycleAnytimeNote(item.id));
+  row.appendChild(note);
+
+  row.appendChild(moveButton('↑', index > 0, () => moveItem(ANYTIME_SEC, item.id, -1)));
+  row.appendChild(moveButton('↓', index < count - 1, () => moveItem(ANYTIME_SEC, item.id, 1)));
+
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.className = 'icon-btn icon-btn--danger';
+  del.textContent = '×';
+  del.title = '削除';
+  del.addEventListener('click', () => removeAnytimeItem(item));
+  row.appendChild(del);
+
+  return row;
+}
+
+function addAnytimeItem(group) {
+  const next = currentAnytime();
+  next.push({
+    id: newId('at'),
+    label: NEW_ITEM,
+    group: group || WEEKLY_GROUPS[0], // 押したカードの場所に入れる
+    addedAt: todayStr(),
+    draft: true,                      // 名前を付けるまで現場には出しません（saveAnytime が外します）
+  });
+  saveAnytime(next);
+
+  // 追加した項目にすぐ名前を入れられるようにしておく
+  const cells = [...el.weeklyEditor.querySelectorAll('.item-row__name')];
+  const last = cells.reverse().find((c) => c.textContent === NEW_ITEM);
+  if (last) startNameEdit(last);
+}
+
+/** 掃除する場所を次のものへ移す（ホール→キッチン→トイレ→外→ホール…） */
+function cycleAnytimeGroup(itemId) {
+  const next = currentAnytime();
+  const item = next.find((it) => it.id === itemId);
+  if (!item) return;
+  const at = WEEKLY_GROUPS.indexOf(weeklyGroupOf(item));
+  item.group = WEEKLY_GROUPS[(at + 1) % WEEKLY_GROUPS.length] || WEEKLY_GROUPS[0];
+  saveAnytime(next);
+}
+
+/** 目安を次のものへ移す（目安なし→暇なとき→汚くなったら→夏前→目安なし…） */
+function cycleAnytimeNote(itemId) {
+  const next = currentAnytime();
+  const item = next.find((it) => it.id === itemId);
+  if (!item) return;
+  const at = ANYTIME_NOTES.indexOf(item.note || '');
+  const 次 = ANYTIME_NOTES[(at + 1) % ANYTIME_NOTES.length];
+  // 一覧に無い目安（手で入れたもの）だったときは、先頭へ戻します
+  if (次) item.note = 次;
+  else delete item.note;
+  saveAnytime(next);
+}
+
+async function removeAnytimeItem(item) {
+  const ok = await askConfirm({
+    item: item.label,
+    message: 'この項目を現場に出さないようにします。「最後にやった日」の記録は消えません。',
+  });
+  if (!ok) return;
+  const next = currentAnytime();
+  next.find((it) => it.id === item.id).retiredAt = todayStr();
+  saveAnytime(next);
 }
 
 function buildWeeklyRow(item, index, count) {
@@ -823,6 +1037,12 @@ function applyItemOrder(secId, orderedIds) {
     if (sorted) saveWeekly(sorted);
     return;
   }
+  if (secId === ANYTIME_SEC) {
+    const next = currentAnytime();
+    const sorted = sortByOrder(next, orderedIds);
+    if (sorted) saveAnytime(sorted);
+    return;
+  }
 
   const next = currentSections();
   const sec = next.find((s) => s.id === secId);
@@ -864,14 +1084,15 @@ function moveSection(secId, dir) {
 }
 
 function moveItem(secId, itemId, dir) {
-  if (secId === WEEKLY_SEC) {
-    const next = currentWeekly();
+  if (secId === WEEKLY_SEC || secId === ANYTIME_SEC) {
+    const 随時 = secId === ANYTIME_SEC;
+    const next = 随時 ? currentAnytime() : currentWeekly();
     // 同じ場所（ホールならホール）の中だけで入れ替えます
     const item = next.find((it) => it.id === itemId);
     if (!item) return;
     const g = weeklyGroupOf(item);
     const sameGroup = (it) => alive(it) && weeklyGroupOf(it) === g;
-    if (swapWithin(next, sameGroup, itemId, dir)) saveWeekly(next);
+    if (swapWithin(next, sameGroup, itemId, dir)) (随時 ? saveAnytime : saveWeekly)(next);
     return;
   }
   const next = currentSections();
@@ -1999,13 +2220,14 @@ function addClosedException() {
 /* ============================================================
  *  店舗選択（最初の画面）
  * ============================================================ */
-/** その店舗の「◯区分 / ◯項目」と、週間掃除の項目数を数える */
+/** その店舗の「◯区分 / ◯項目」と、週間掃除・随時掃除の項目数を数える */
 function countOf(storeId) {
   const secs = Checklists.sections(storeId).filter(alive);
   return {
     sections: secs.length,
     items: secs.reduce((n, s) => n + s.items.filter(alive).length, 0),
     weekly: Weeklies.items(storeId).filter(alive).length,
+    anytime: Anytimes.items(storeId).filter(alive).length,
   };
 }
 
@@ -2045,7 +2267,8 @@ function renderStorePicker() {
     sub.className = 'store-card__sub';
     sub.textContent =
       (dows.length ? `毎週${dows.map((d) => DOW[d]).join('・')}曜定休` : '定休日なし') +
-      `　週間掃除 ${n.weekly}項目`;
+      `　週間掃除 ${n.weekly}項目` +
+      (n.anytime ? `　随時 ${n.anytime}項目` : '');
 
     b.append(chip, name, status, sub);
     b.addEventListener('click', () => openStore(store.id));

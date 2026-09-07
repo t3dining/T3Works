@@ -975,13 +975,25 @@ function defaultAnytime(storeId) {
   return ANYTIME_OVERRIDES[storeId] || ANYTIME_DEFAULT;
 }
 
-/**
- * 店舗の随時掃除の項目
- * いまは config.js だけを見ています（管理アプリでの編集はまだありません）。
- * 編集できるようにするときは、getWeekly と同じ形でここに足します。
- */
+/** 店舗の随時掃除の項目を取得（管理アプリで変更された内容が優先されます） */
 function getAnytime(storeId) {
-  return defaultAnytime(storeId);
+  return typeof Anytimes !== 'undefined' ? Anytimes.items(storeId) : defaultAnytime(storeId);
+}
+
+/**
+ * その項目を現場（ワークス・マイン）に出すか
+ *
+ * 週間掃除と同じ考え方です。マネージは消したものも含めて全部見えます。
+ *
+ *   ・`draft`     … マネージで足しただけで、まだ名前がない
+ *   ・`retiredAt` … 消した項目
+ *
+ * ★随時掃除は週ごとの表を持たず、達成率にも入りません。
+ *   「最後にやった日」だけを見せる作りなので、消したら現場からは下ろします。
+ *   記録（`店舗id/ANYTIME`）は消しません。同じ id で足し直せば戻ります。
+ */
+function anytimeShows(item) {
+  return !item.draft && !item.retiredAt;
 }
 
 /** 随時掃除の記録は、日付ではなく1つのまとまりに入れます（storeId/ANYTIME） */
