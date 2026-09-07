@@ -177,7 +177,7 @@ const Sync = {
         if (json.code === 'bad_pin' || json.code === 'no_pin') this.clearPin();
         // 管理用PINが要る操作が現場アプリの送信箱に紛れ込んだ場合、
         // 何度送っても通らず、以降の同期が止まってしまう。捨てて先へ進む。
-        if (json.code === 'need_admin') this._dropAdminOps();
+        if (json.code === 'need_admin') this._dropAdminOps(sending);
         return;
       }
 
@@ -257,10 +257,25 @@ const Sync = {
    *   ここに手で並べてはいけません。**GASに足してこちらに足し忘れると、
    *   その設定を送った端末の同期が、ずっと赤いまま止まります**（2026-09-07）。
    */
-  _dropAdminOps() {
+  _dropAdminOps(送った) {
     const admin = typeof ADMIN_SETTINGS !== 'undefined' ? ADMIN_SETTINGS : [];
-    const 捨てる = this.outbox().filter((op) => op.t === 'setting' && admin.includes(op.n));
-    const rest = this.outbox().filter((op) => !(op.t === 'setting' && admin.includes(op.n)));
+    let あたる = (op) => op.t === 'setting' && admin.includes(op.n);
+
+    // ★一覧に当たるものが1つも無いのに断られたときは、**送った設定を全部捨てます。**
+    //
+    //   一覧はアプリとGASの2か所にあります。**片方だけ新しい時間**が必ずできます
+    //   （アプリを公開してから、GASを貼るまでのあいだ）。そのとき
+    //   GASは断るのにアプリは「捨てるものが無い」と思い、**永久に詰まります。**
+    //   2026-09-07、`shiftStaff` を外したときに実際にこの窓が開きました。
+    //   ★一覧が合っているかに関わらず、**断られたら詰まらせない**を優先します。
+    if (!this.outbox().some(あたる)) {
+      const 送った設定 = new Set((送った || [])
+        .filter((op) => op.t === 'setting').map((op) => op.n));
+      if (送った設定.size) あたる = (op) => op.t === 'setting' && 送った設定.has(op.n);
+    }
+
+    const 捨てる = this.outbox().filter(あたる);
+    const rest = this.outbox().filter((op) => !あたる(op));
     this._saveOutbox(rest);
     // ★捨てたことを黙っていてはいけません。
     //   捨てたあと、次に取り込んだサーバーの分で**画面が元に戻ります。**
