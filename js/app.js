@@ -7865,6 +7865,32 @@ let shiftLinkOpen = '';
  * ★アプリを裏に回したときも閉じます（置いたまま離れたとき用）。
  */
 let shiftRosterOpenFor = '';
+/**
+ * この端末は管理用PINか（null＝まだ聞いていない）
+ *
+ * ★名簿（`shiftStaff`）は**管理用PINが要る設定**です（`ADMIN_SETTINGS`）。
+ *   ふつうのPINの端末で名前や番号を直すと、
+ *     ① 画面ではいったん変わる
+ *     ② サーバーが断る（`need_admin`）→ 送信箱から**黙って捨てられる**
+ *     ③ 次に取り込んだときに、**元に戻る**
+ *   という順で消えます。**赤い帯も出ません。**
+ *   （2026-09-07、実地で①②③をなぞって確かめました）
+ *   なので、直せない端末では**先にそう出します。**
+ */
+let shiftRosterAdmin = null;
+let shiftRosterAsking = false;
+
+function shiftRosterProbe() {
+  if (shiftRosterAdmin !== null || shiftRosterAsking) return;
+  // ★PINを入れていない端末では聞きません（聞いても答えが出ません）
+  if (typeof Sync === 'undefined' || !Sync.enabled || !Sync.enabled() || !Sync.pin()) return;
+  shiftRosterAsking = true;
+  Sync.probeAdmin().then((r) => {
+    shiftRosterAsking = false;
+    // 通信できなかったときは「分からない」のままにします（勝手に警告を出さない）
+    if (r && !r.error) { shiftRosterAdmin = !!r.admin; renderKeepScroll(); }
+  }).catch(() => { shiftRosterAsking = false; });
+}
 
 /** 名簿を閉じる（出していたものは全部忘れます） */
 function shiftRosterClose() {
@@ -7935,6 +7961,19 @@ function renderShiftRoster(組む) {
     row.appendChild(open);
     box.appendChild(row);
     return;
+  }
+
+  shiftRosterProbe();
+  if (shiftRosterAdmin === false) {
+    // ★直せない端末。押しても消えるので、先に言います
+    const 警告 = document.createElement('p');
+    警告.className = 'card__note';
+    警告.style.cssText = 'font-weight:700;color:var(--ng);'
+      + 'border:1px solid var(--ng);border-radius:9px;padding:9px 11px;';
+    警告.innerHTML = '★この端末では、<b>名前・番号・チェックを直しても保存されません。</b><br>'
+      + '名簿を直すには<b>管理用のPIN</b>が要ります（マネージと同じPINです）。<br>'
+      + '見るだけなら、このままで大丈夫です。';
+    box.appendChild(警告);
   }
 
   const note = document.createElement('p');
