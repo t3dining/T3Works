@@ -2446,7 +2446,11 @@ function trainTotal(storeId) {
  *    実際にそうなりました（`shiftStaff` `salesTargets` `shiftMemoTags`）。
  * ---------------------------------------------------------- */
 const ADMIN_SETTINGS = ['checklists', 'weeklies', 'staffList', 'closedDows',
-  'shiftStaff', 'salesTargets', 'shiftMemoTags'];
+  'salesTargets', 'shiftMemoTags'];
+// ★`shiftStaff`（シフトの名簿）は、2026-09-07 に**わざと外しました。**
+//   ko-dai さんの判断で、**各店長の端末から名簿を直せるようにする**ためです。
+//   緩むところ（ふつうのPINで名前も番号も書ける）を先に数えて伝えたうえでの決定です。
+//   ★戻すときは `gas/コード.gs` と**同時に**。片方だけだと同期が止まります。
 
 const CELL_MAX = 50000;
 const CELL_SOFT = 40000;
