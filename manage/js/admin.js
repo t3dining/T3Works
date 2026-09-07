@@ -43,6 +43,7 @@ const el = {};
   'catchStaffFields', 'saveCatchStaff', 'catchStaffCount', 'catchStaffSaved',
   'shiftStaffInput', 'saveShiftStaff', 'shiftStaffCount', 'shiftStaffSaved',
   'shiftSlotList', 'saveShiftSlots', 'resetShiftSlots', 'shiftSlotCount', 'shiftSlotSaved',
+  'memoTagText', 'memoTagLabel', 'saveMemoTags', 'memoTagCount', 'memoTagSaved',
   'shiftCodeList', 'shiftSubmitUrl', 'viewShift',
   'viewTrain', 'trainStoreName', 'trainCount', 'trainInput', 'saveTrain', 'trainSaved',
   'trainItemsStore', 'trainItemsCount', 'trainEditor', 'trainAddSection',
@@ -1455,6 +1456,75 @@ function shiftTimesFromText(text) {
     .filter((v) => v !== '' && isFinite(Number(v)) && Number(v) >= 0 && Number(v) < 24);
 }
 
+/* -------- メモの決まり文句 --------
+ *
+ *  シフト表のメモ欄の下に出るボタンです（「◯◯休み」など）。
+ *
+ *  ★もとは js/config.js に直接書いてありました。あのファイルは GitHub Pages で
+ *    誰でも読めるので、社員3人の名前が公開されていました。ここへ移して、
+ *    スプレッドシート側（非公開）で持つようにしました（2026-09-07）。
+ *  ★**空で保存**すると「ボタンを出さない」という登録になります。
+ *    「まだ登録していない」とは別です（ワークスの出し分けがこれを見ます）。
+ */
+function renderShiftMemoTags() {
+  // ★入れ物（storage.js の ShiftMemoTags）が無いあいだは、この一かたまりを出しません。
+  //   公開は分野をまたいでまとめて上がるので、**本部の直しが当たる前に
+  //   このファイルだけが先に出ることがあります。**そのときマネージを
+  //   赤い帯で止めないための逃げ道です（2026-09-07）
+  const 使える = typeof ShiftMemoTags !== 'undefined';
+  const 箱 = el.memoTagText.closest('.admin-block');
+  if (箱) 箱.classList.toggle('is-hidden', !使える);
+  if (!使える) return;
+
+  const storeId = state.storeId;
+  // ★出すのは「登録した分」ではなく「いま出ているもの」です。
+  //   登録がまだの店舗で「登録した分」を出すと欄が空になり、
+  //   **開いて保存を押しただけで、出ていたボタンが消えます**（実地で捕まえました）
+  const いま = shiftMemoTagsOf(storeId);
+  const 登録 = ShiftMemoTags.get(storeId);
+  el.memoTagLabel.textContent = `${getStore(storeId).name} の決まり文句（1行に1つ）`;
+  el.memoTagCount.textContent = 登録 === null
+    ? (いま.length ? `${いま.length}こ（まだ登録していません。保存すると登録されます）` : 'まだ登録なし')
+    : (登録.length ? `${登録.length}こ` : 'ボタンを出しません');
+  el.memoTagText.value = いま.join('\n');
+  el.memoTagCount.classList.remove('is-over');
+}
+
+/** 欄に入っている決まり文句（打っている途中でも読めます） */
+function memoTagInputs() {
+  return String(el.memoTagText.value || '')
+    .split('\n').map((t) => t.trim()).filter(Boolean);
+}
+
+/** 打っている途中の数を出します（保存はしません） */
+function updateMemoTagCount() {
+  const n = memoTagInputs().length;
+  const 多い = n > SHIFT_MEMO_TAGS_MAX;
+  el.memoTagCount.textContent = 多い
+    ? `${n}こ　★${SHIFT_MEMO_TAGS_MAX}こまでです`
+    : `${n}こ`;
+  el.memoTagCount.classList.toggle('is-over', 多い);
+}
+
+function saveShiftMemoTags() {
+  if (typeof ShiftMemoTags === 'undefined') return;   // ★上と同じ理由
+  const list = memoTagInputs();
+  // ★入れ物は SHIFT_MEMO_TAGS_MAX で切ります。**切られると黙って消えるので、
+  //   ここで先に止めます。**「開いて保存を押しただけで消えた」と同じ形の穴です
+  if (list.length > SHIFT_MEMO_TAGS_MAX) {
+    window.alert(`決まり文句は ${SHIFT_MEMO_TAGS_MAX} こまでです。`
+      + `\nいま ${list.length} こ入っています。`
+      + `\n${list.length - SHIFT_MEMO_TAGS_MAX} こ減らしてから、もう一度押してください。`
+      + '\n\n（このまま保存すると、あふれた分が黙って消えてしまいます）');
+    return;
+  }
+  // ★1店舗だけ入れかえます。ほかの店舗の登録はそのまま残します
+  ShiftMemoTags.setFor(state.storeId, list);
+  renderShiftMemoTags();
+  el.memoTagSaved.classList.remove('is-hidden');
+  setTimeout(() => el.memoTagSaved.classList.add('is-hidden'), 2500);
+}
+
 function renderShiftSlots() {
   const storeId = state.storeId;
   const 時刻で入れる = shiftUsesRange(storeId);
@@ -2176,6 +2246,7 @@ function renderAll() {
     renderDrivers();
   } else if (state.view === 'shift') {
     renderShiftStaff();
+    renderShiftMemoTags();
     renderShiftSlots();
   } else if (state.view === 'train') {
     renderChecklistEditor();
@@ -2399,6 +2470,8 @@ function bindEvents() {
   el.saveCatchStaff.addEventListener('click', saveCatchStaff);
   el.saveShiftStaff.addEventListener('click', saveShiftStaff);
   el.saveShiftSlots.addEventListener('click', saveShiftSlots);
+  el.saveMemoTags.addEventListener('click', saveShiftMemoTags);
+  el.memoTagText.addEventListener('input', updateMemoTagCount);
   el.resetShiftSlots.addEventListener('click', resetShiftSlots);
   el.saveTrain.addEventListener('click', saveTrainees);
   el.trainAddSection.addEventListener('click', addSection);

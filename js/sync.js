@@ -343,6 +343,7 @@ const Sync = {
         trainings: Trainings._key,
         nippouFolders: NippouFolders._key,
         salesTargets: SalesTargets._key,
+        shiftMemoTags: ShiftMemoTags._key,
         closedDows: Closed._dowsKey,
         closedExceptions: Closed._exKey,
       };
@@ -610,6 +611,15 @@ function summaryFor(key) {
   SalesTargets.save = function (map) {
     const clean = _saveTargets(map);
     Sync.enqueue({ t: 'setting', n: 'salesTargets', v: clean });
+    return clean;
+  };
+
+  // ★シフトのメモの決まり文句。中身は社員の名前なので、公開物（js/config.js）から
+  //   外してここから同期に乗せます（2026-09-07）
+  const _saveMemoTags = ShiftMemoTags.save.bind(ShiftMemoTags);
+  ShiftMemoTags.save = function (map) {
+    const clean = _saveMemoTags(map);
+    Sync.enqueue({ t: 'setting', n: 'shiftMemoTags', v: clean });
     return clean;
   };
 

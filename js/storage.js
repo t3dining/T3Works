@@ -1134,6 +1134,60 @@ const NippouTest = {
 };
 
 /**
+ * シフトのメモの決まり文句（店舗ごと。マネージで登録します）
+ *
+ *  シフト表のメモ欄の下に出るボタンです。押すたびにメモへ足す・外すが入れかわります。
+ *
+ * ★もとは js/config.js に直書きされていて、GitHub Pages で**誰でも読めていました**
+ *   （2026年9月7日に設定へ移しました）。中身は**社員の名前**です。
+ *   ★このコメントに**実際の名前を書かないでください。**
+ *   **config.js には書き戻さないでください。**
+ * ★**空の配列も残します。**「ボタンを出さない」という登録だからです。
+ *   「まだ登録していない」（キーが無い）とは別のものとして扱います。
+ * ★all() は**登録した分だけ**返します。コードに書いてある分をここで重ねると、
+ *   「登録した」と「まだ登録していない」が見分けられなくなります。
+ *   重ねるのは config.js の shiftMemoTagsOf() の役目です。
+ */
+const ShiftMemoTags = {
+  _key: APP.storageKey + ':shiftMemoTags',
+
+  all() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(this._key) || 'null');
+      if (saved && typeof saved === 'object') return saved;
+    } catch (e) {
+      /* 壊れていたら初期値に戻す */
+    }
+    return {};
+  },
+
+  /** その店舗の決まり文句。**登録が無ければ null**（空の配列とは別です） */
+  get(storeId) {
+    const v = this.all()[storeId];
+    return Array.isArray(v) ? v : null;
+  },
+
+  /** 登録が1つでもあるか */
+  any() { return Object.keys(this.all()).length > 0; },
+
+  save(map) {
+    const clean = {};
+    Object.keys(map || {}).forEach((k) => {
+      if (!Array.isArray(map[k])) return;
+      clean[k] = map[k].map((t) => String(t).trim()).filter(Boolean).slice(0, 12);
+    });
+    localStorage.setItem(this._key, JSON.stringify(clean));
+    return clean;
+  },
+
+  /** 1店舗だけ入れかえます（ほかの店舗の登録はそのまま残します） */
+  setFor(storeId, list) {
+    if (!storeId) return this.all();
+    return this.save({ ...this.all(), [storeId]: Array.isArray(list) ? list : [] });
+  },
+};
+
+/**
  * 年間の売上目標（店舗ごと。マネージで登録します）
  *
  * ★もとは js/config.js に金額が直書きされていて、GitHub Pages で

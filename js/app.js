@@ -8160,6 +8160,16 @@ function renderShift() {
   // ★組み立ててから、一度に入れかえます。消してから1つずつ足すと、
   //   そのあいだに幅や高さを読む処理が入ったとき、また同じことが起きます
   const できあがり = document.createDocumentFragment();
+  // ★決まり文句がまだ登録されていない店舗には、そう出します。
+  //   コードから名前を抜いたので、登録するまでボタンは出ません。
+  //   黙って消すと「直したのか壊れたのか」が分かりません（2026-09-07）
+  if (shiftMemoTagsAsk(state.storeId)) {
+    const 知らせ = document.createElement('p');
+    知らせ.className = 'shift-said';
+    知らせ.textContent = 'メモの決まり文句は、マネージの「メモの決まり文句」で登録します'
+      + '（登録するまで、メモ欄の下のボタンは出ません）';
+    できあがり.appendChild(知らせ);
+  }
   for (let i = 0; i < days.length; i += cols) {
     できあがり.appendChild(shiftGridBlock(rec, wishes, days.slice(i, i + cols)));
   }

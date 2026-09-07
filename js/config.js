@@ -3224,9 +3224,60 @@ const SHIFT_MEMO_TAGS_STORES = {
   kojare: [], sumimaro: [], chacoru: [], oiden: [],
 };
 
-/** その店舗の決まり文句 */
+/**
+ * 1店舗に登録できる決まり文句の数
+ *
+ * ★`js/storage.js` の `ShiftMemoTags.save` が `slice(0, ここの数)` で切ります。
+ *   **切られると黙って消えるので、マネージが先に止めます**（→ saveShiftMemoTags）。
+ * ★2か所に同じ数があるので、`test.js` が storage.js を読んで見くらべます。
+ *   片方だけ変えると検査が落ちます。
+ */
+const SHIFT_MEMO_TAGS_MAX = 12;
+
+/**
+ * その店舗の決まり文句
+ *
+ * ★読むところはここ1つだけです。**マネージの登録が先**で、
+ *   登録が無いときだけ、上に書いてある分を使います。
+ * ★提出ページ（shift/）は storage.js を読み込みません。
+ *   `typeof` で見てから触ります（`Store` と同じ形です）。
+ */
 function shiftMemoTagsOf(storeId) {
+  try {
+    if (typeof ShiftMemoTags !== 'undefined') {
+      const v = ShiftMemoTags.get(storeId);
+      if (v) return v;
+    }
+  } catch (e) {
+    // 読めなくても、画面は出します
+  }
   return SHIFT_MEMO_TAGS_STORES[storeId] || SHIFT_MEMO_TAGS;
+}
+
+/**
+ * その店舗の決まり文句が「登録されている」か
+ *
+ * ★**空で登録した（＝ボタンを出さない）**と、**まだ登録していない**は
+ *   別のものです。前者は何も出さず、後者は「マネージで登録します」と出します。
+ *   黙って消えると、直したのか壊れたのかが分かりません。
+ */
+function shiftMemoTagsSet(storeId) {
+  try {
+    if (typeof ShiftMemoTags !== 'undefined' && ShiftMemoTags.get(storeId)) return true;
+  } catch (e) {
+    // 同上
+  }
+  return Array.isArray(SHIFT_MEMO_TAGS_STORES[storeId]);
+}
+
+/**
+ * 「マネージで登録します」と出すか
+ *
+ * ★出すのは、**1つも出ていなくて、しかも登録もされていない**ときだけです。
+ *   ボタンが出ている店舗に出すと、言っていることが画面と食いちがいます。
+ */
+function shiftMemoTagsAsk(storeId) {
+  return !shiftMemoTagsOf(storeId).length && !shiftMemoTagsSet(storeId);
 }
 const SHIFT_MEMO_SEP = '・';
 

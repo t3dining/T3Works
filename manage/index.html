@@ -13,8 +13,8 @@
 <link rel="icon" type="image/png" sizes="64x64" href="../img/manage-icon-64.png?v=2b8a9145">
 <title>T3 Works Manage｜T3Dining株式会社</title>
 <link rel="stylesheet" href="../css/style.css?v=d29d7614">
-<link rel="stylesheet" href="css/admin.css?v=d00e0644">
-<meta name="app-version" content="05b72172">
+<link rel="stylesheet" href="css/admin.css?v=14132345">
+<meta name="app-version" content="f3acb765">
 </head>
 <body class="no-daytabs">
 
@@ -306,6 +306,33 @@
     <div id="shiftCodeList"></div>
   </section>
 
+  <!-- ===== メモの決まり文句（シフト表のメモ欄の下に出るボタン） ===== -->
+  <section class="admin-block">
+    <div class="admin-block__head">
+      <h2 class="admin-block__title">メモの決まり文句</h2>
+      <span class="admin-count" id="memoTagCount"></span>
+    </div>
+    <p class="admin-note">
+      シフト表の<b>メモ欄の下に出るボタン</b>です。押すたびにメモへ足す・外すが入れかわります。<br>
+      <b>社員の動き</b>（「◯◯休み」「◯◯ランチ」など）を毎回打たずに済ませるためのものです。
+      店舗ごとに登録します。<b>1行に1つ</b>入れてください。<br>
+      <b>12こまで</b>です。それより多いと保存できません（あふれた分が黙って消えないためです）。<br>
+      <b>空のまま保存すると、その店舗はボタンを1つも出しません</b>（ただのメモ欄になります）。
+      「空で登録した」と「まだ登録していない」は別のものとして持ちます。<br>
+      ★<b>ここに入れた名前は、公開されるファイルには入りません。</b>
+      前はアプリのコードに直接書いてあり、インターネットの誰でも読める状態でした。
+    </p>
+    <label class="field">
+      <span class="field__label" id="memoTagLabel">この店舗の決まり文句（1行に1つ）</span>
+      <textarea class="field__input" id="memoTagText" rows="5" autocomplete="off"
+        placeholder="1行に1つ&#10;例）◯◯休み"></textarea>
+    </label>
+    <div class="admin-actions">
+      <button type="button" class="btn btn--primary" id="saveMemoTags">決まり文句を保存</button>
+      <span class="admin-saved is-hidden" id="memoTagSaved">保存しました</span>
+    </div>
+  </section>
+
   <section class="admin-block">
     <div class="admin-block__head">
       <h2 class="admin-block__title">シフトの枠と時刻</h2>
@@ -560,13 +587,13 @@
   <button type="button" class="update-bar__btn">更新する</button>
 </div>
 
-<script src="../js/config.js?v=f2b04e70"></script>
-<script src="../js/storage.js?v=afed3e09"></script>
-<script src="../js/sync.js?v=04239fba"></script>
+<script src="../js/config.js?v=c2b147b6"></script>
+<script src="../js/storage.js?v=049daacb"></script>
+<script src="../js/sync.js?v=d55a7809"></script>
 <script src="../js/update.js?v=c530219e"></script>
 <!-- Numbers / スプレッドシートから持ってきた2026年分の記録
      （取り込みが済んだら、この2つと上の取り込み欄は消してOK） -->
 <script src="js/expense-import.js"></script>
-<script src="js/admin.js?v=1338b927"></script>
+<script src="js/admin.js?v=08bf42ef"></script>
 </body>
 </html>

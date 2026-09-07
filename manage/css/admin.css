@@ -360,3 +360,7 @@ body.is-dragging { cursor: grabbing; user-select: none; }
   font-weight: 700;
 }
 .shift-code__btn:disabled { opacity: .55; cursor: default; }
+
+/* 決まり文句が入れ物の数より多いとき。押しても保存しないので、赤で知らせます
+   （あふれた分が黙って消えるのを止めています → saveShiftMemoTags） */
+.admin-count.is-over { color: #c0392b; font-weight: 700; }
