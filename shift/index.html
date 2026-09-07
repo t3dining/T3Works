@@ -15,17 +15,24 @@
        書いてあったので、ほかの店舗の人にもそう見えていました。
        番号を入れたあとは、下の applyOpen がタブの名前を店舗名に変えます
      ★ホーム画面に追加ずみの人の名前は、ここを直しても変わりません
-       （追加したときの名前が焼き付きます）。 -->
+       （追加したときの名前が焼き付きます）。
+     ★アイコンも**店舗を入れません**。前はバグるの牛の絵に「シフト」と
+       帯を付けたものでした（`img/shift-icon-*.png`）。全店舗おなじURLなので、
+       ほかの店舗の人のホーム画面にもバグるの牛が並びます。
+       いまは**カレンダーとチェックだけ**です。会社のロゴも入れません
+       （アルバイトが使うもので、社名を出す必要がないため）。
+       ★店舗が増えても、ここは直さなくて済みます（2026-09-07）。
+     ★theme-color も店舗の色（バグるの桃色）でした。アイコンの青にそろえています。 -->
 <link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="シフト提出">
-<meta name="theme-color" content="#bf5480">
-<link rel="apple-touch-icon" href="../img/shift-icon-180.png?v=68ba81bc">
-<link rel="icon" href="../img/shift-icon-64.png?v=0937bb3b">
+<meta name="theme-color" content="#2762a8">
+<link rel="apple-touch-icon" href="../img/shift-icon-180.png?v=a3141a17">
+<link rel="icon" href="../img/shift-icon-64.png?v=1c38e7e9">
 
 <link rel="stylesheet" href="css/submit.css?v=400a586d">
-<meta name="app-version" content="7118dad6">
+<meta name="app-version" content="85969210">
 </head>
 <body>
 

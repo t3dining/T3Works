@@ -8,7 +8,7 @@
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#f4f5f7",
-  "theme_color": "#bf5480",
+  "theme_color": "#2762a8",
   "icons": [
     {
       "src": "../img/shift-icon-64.png",
