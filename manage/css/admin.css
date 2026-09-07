@@ -245,10 +245,28 @@ body.is-dragging { cursor: grabbing; user-select: none; }
    1人に1つの番号が、そのまま提出ページの入口になります。
    本人に送る文面をコピーできるよう、名前・番号・ボタンを1行にしています */
 .shift-codes { display: grid; gap: 6px; margin: 0 0 14px; }
+/* ★スマホでは2段にします。
+   前は「印・名前・持ち場・番号・コピー・作り直す・他店舗」の7つを1行に並べていて、
+   幅430pxのiPhoneでは横にあふれ、**名前もボタンも1文字ずつ縦に折れて**いました。
+   （@media (max-width: 420px) で折り返していましたが、**430pxの端末では効きません**。
+     幅の決め打ちをやめ、**はじめから2段**にして、広い画面だけ1行に戻します） */
 .shift-code {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
   padding: 7px 10px;
   background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px;
+}
+/* ボタンのかたまり。狭い画面では丸ごと下の行に落ちます */
+.shift-code__acts {
+  flex: 1 0 100%;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+}
+/* ★どのボタンも、途中で折りません。折れると1文字ずつ縦に並びます */
+.shift-code__acts .btn,
+.shift-code__acts .lane-btn,
+.shift-code__acts .shift-code__btn { white-space: nowrap; }
+@media (min-width: 640px) {
+  /* パソコン・iPadの横。もとどおり1行に並べます */
+  .shift-code__acts { flex: 0 0 auto; margin-left: auto; }
 }
 /* 番号を送ったかの印。押すところを広めに取ります */
 .shift-code__sent {
@@ -265,12 +283,9 @@ body.is-dragging { cursor: grabbing; user-select: none; }
   font-size: 15px; font-weight: 700; letter-spacing: .08em;
   font-variant-numeric: tabular-nums;
 }
-@media (max-width: 420px) {
-  /* 幅が足りないときは、名前と番号を上の行に、ボタンを下の行に折ります */
-  .shift-code { flex-wrap: wrap; }
-  .shift-code__name { flex: 1 1 auto; }
-  .shift-code__num { flex: 1 1 auto; }
-}
+/* 番号は右はしにそろえます（名前の長さがまちまちでも、数字の位置が動かない） */
+.shift-code__num { flex: 0 0 auto; margin-left: auto; }
+.shift-code__name { overflow-wrap: anywhere; }
 
 /* -------- つまんで並べ替える取っ手 --------
    長押しでも動かせますが、それだけでは「動かせる」と伝わりませんでした。

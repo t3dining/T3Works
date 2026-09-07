@@ -1356,18 +1356,30 @@ function renderShiftCodes() {
     // ★他店舗にも所属。ワークスの名簿と同じものです。
     //   押して選ぶと、向こうの店舗の名簿にも同じ番号で入ります
     const よそ = shiftLinkedStores(p.c).filter((id) => id !== storeId);
+    const よそ名 = よそ.map((id) => (getStore(id) || {}).short || id);
     const link = document.createElement('button');
     link.type = 'button';
     link.className = 'shift-code__btn' + (よそ.length ? ' is-on' : '');
-    link.textContent = よそ.length
-      ? `他店舗にも所属：${よそ.map((id) => (getStore(id) || {}).short || id).join('・')}`
-      : '他店舗にも所属';
+    // ★店舗名を全部つなぐと、5店舗の人で1行に収まりません（スマホで崩れました）。
+    //   2つまでは名前、それより多ければ「ほか◯」にして、全部は title に入れます
+    link.textContent = よそ名.length === 0 ? '他店舗にも所属'
+      : (よそ名.length <= 2 ? `他店舗：${よそ名.join('・')}`
+        : `他店舗：${よそ名.slice(0, 2).join('・')} ほか${よそ名.length - 2}`);
+    link.title = よそ名.length ? `他店舗にも所属：${よそ名.join('・')}`
+      : 'この人が入っている店舗を選びます';
     link.addEventListener('click', () => {
       shiftLinkOpen = shiftLinkOpen === p.c ? '' : p.c;
       renderShiftStaff();
     });
 
-    row.append(sent, name, lanes, code, copy, again, link);
+    // ★ボタンは1つのかたまりにまとめます。
+    //   前は7つを1行に並べていて、スマホ（幅430px）では横にあふれ、
+    //   名前もボタンも**1文字ずつ縦に折れて**いました（2026-09-07 ko-dai の指摘）。
+    //   まとめておけば、狭い画面では丸ごと下の行に落ちます
+    const acts = document.createElement('div');
+    acts.className = 'shift-code__acts';
+    acts.append(lanes, copy, again, link);
+    row.append(sent, name, code, acts);
     box.appendChild(row);
 
     if (shiftLinkOpen === p.c) box.appendChild(shiftLinkPicker(storeId, p));
