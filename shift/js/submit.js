@@ -686,11 +686,13 @@ function dayNote(dateStr) {
  *   ここでは見せません。出勤時刻から自動で決まるためです。
  */
 function rangeRow(dateStr, entry) {
-  const times = shiftRangeTimes(me.store);
+  // ★出勤と退勤で、選べる幅が違います（popo は 出勤10:00〜24:00／退勤13:00〜27:00）
+  const 出勤の時刻 = shiftRangeTimes(me.store);
+  const 退勤の時刻 = shiftRangeTimes(me.store, 'out');
   const row = document.createElement('div');
   row.className = 'range';
 
-  const make = (name, いま, onPick, より後) => {
+  const make = (name, いま, onPick, より後, times) => {
     const wrap = document.createElement('label');
     wrap.className = 'range__one';
     const cap = document.createElement('span');
@@ -718,8 +720,8 @@ function rangeRow(dateStr, entry) {
   const from = entry ? String(entry.t || '') : '';
   const to = entry ? String(entry.e || '') : '';
 
-  row.appendChild(make('出勤', from, (v) => setRange(dateStr, v, to), undefined));
-  row.appendChild(make('退勤', to, (v) => setRange(dateStr, from, v), from));
+  row.appendChild(make('出勤', from, (v) => setRange(dateStr, v, to), undefined, 出勤の時刻));
+  row.appendChild(make('退勤', to, (v) => setRange(dateStr, from, v), from, 退勤の時刻));
   return row;
 }
 

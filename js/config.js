@@ -2916,6 +2916,8 @@ const SHIFT_STYLE_KEY = 'style';
 
 const SHIFT_STYLE_DEFAULT = {
   range: false, step: 0.5, from: '8', to: '24', lunchTo: '17', patty: true,
+  // 退勤で選べる幅。書かなければ出勤と同じ（from / to）を使います
+  endFrom: '', endTo: '',
 };
 
 /**
@@ -2928,7 +2930,14 @@ const SHIFT_STYLE_DEFAULT = {
  *   Fは名前を灰色に塗るだけで、**バグるのような「F」の字は出しません**。
  */
 const SHIFT_STYLE_STORES = {
-  popo: { range: true, step: 0.5, from: '8', to: '24', lunchTo: '17', patty: false },
+  // ★出勤と退勤で、選べる幅が違います（2026-09-07 ko-dai の指示）。
+  //   出勤 10:00〜24:00 ／ 退勤 13:00〜27:00。
+  //   27:00 は「翌朝3時」の書き方です。日付をまたぐ時刻を 25・26・27 と続けて
+  //   書くのは、飲食のシフト表のふつうの書き方で、`shiftTimeText` もそのまま出します
+  popo: {
+    range: true, step: 0.5, from: '10', to: '24',
+    endFrom: '13', endTo: '27', lunchTo: '17', patty: false,
+  },
   // ★仕込み／営業の4店舗。パティはバグるの言葉なので出しません
   //   （2026-09-07「メモ欄のボタンは全部消して、ただのメモ欄に」）
   kojare:   { patty: false },
@@ -2948,7 +2957,7 @@ function shiftStyleOf(storeId) {
       const v = (Store.getDay(SHIFT_SET_STORE, storeId).items || {})[SHIFT_STYLE_KEY];
       if (v) {
         const out = { ...base };
-        ['step', 'from', 'to', 'lunchTo'].forEach((k) => { if (v[k]) out[k] = v[k]; });
+        ['step', 'from', 'to', 'endFrom', 'endTo', 'lunchTo'].forEach((k) => { if (v[k]) out[k] = v[k]; });
         ['range', 'patty'].forEach((k) => { if (typeof v[k] === 'boolean') out[k] = v[k]; });
         return out;
       }
@@ -2972,13 +2981,16 @@ function shiftHasPatty(storeId) {
 /**
  * 選べる時刻の一覧（'8', '8.5', '9' … ）
  *
- * ★出勤にも退勤にも同じ一覧を使います。
+ * ★出勤と退勤で、別の幅にできます（`shiftRangeTimes(店舗id, 'out')` が退勤）。
+ *   popo は 出勤 10:00〜24:00 ／ 退勤 13:00〜27:00 です。
  */
-function shiftRangeTimes(storeId) {
+function shiftRangeTimes(storeId, どちら) {
   const st = shiftStyleOf(storeId);
   const step = Number(st.step) > 0 ? Number(st.step) : 0.5;
-  const from = Number(st.from);
-  const to = Number(st.to);
+  // ★退勤（'out'）だけ別の幅にできます。書いていなければ出勤と同じです
+  const 退勤 = どちら === 'out';
+  const from = Number(退勤 && st.endFrom ? st.endFrom : st.from);
+  const to = Number(退勤 && st.endTo ? st.endTo : st.to);
   const out = [];
   if (!isFinite(from) || !isFinite(to) || to <= from) return out;
   for (let t = from; t <= to + 1e-9; t += step) {

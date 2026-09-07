@@ -8832,7 +8832,10 @@ function renderShiftPick() {
   }
 
   /* 退勤時刻（時刻を入れる店舗だけ） */
-  renderShiftEndTimes(時刻で入れる, dateStr, slotId, index, entry, 選べる時刻);
+  // ★退勤は、出勤とは別の幅から選びます（popo は 13:00〜27:00）。
+  //   出勤の一覧をそのまま渡すと、深夜の時刻が出せません
+  renderShiftEndTimes(時刻で入れる, dateStr, slotId, index, entry,
+    時刻で入れる ? shiftRangeTimes(state.storeId, 'out') : 選べる時刻);
 
   /* --- ここまで --- */
   /* 持ち場（キッチン／ホール） */
