@@ -7880,7 +7880,19 @@ let shiftRosterOpenFor = '';
 let shiftRosterAdmin = null;
 let shiftRosterAsking = false;
 
+/**
+ * 名簿を直すのに、管理用PINが要るか
+ *
+ * ★`ADMIN_SETTINGS` を見ます。**ここで判断を書き固めません。**
+ *   本部が `shiftStaff` を外したら、この画面の警告も**自動で消えます**。
+ *   2か所に書くと、片方だけ直したときに画面がうそをつきます（今日3回ありました）。
+ */
+function shiftRosterNeedsAdmin() {
+  return typeof ADMIN_SETTINGS !== 'undefined' && ADMIN_SETTINGS.includes('shiftStaff');
+}
+
 function shiftRosterProbe() {
+  if (!shiftRosterNeedsAdmin()) return;   // 要らないなら、聞きに行きません
   if (shiftRosterAdmin !== null || shiftRosterAsking) return;
   // ★PINを入れていない端末では聞きません（聞いても答えが出ません）
   if (typeof Sync === 'undefined' || !Sync.enabled || !Sync.enabled() || !Sync.pin()) return;
@@ -7964,7 +7976,7 @@ function renderShiftRoster(組む) {
   }
 
   shiftRosterProbe();
-  if (shiftRosterAdmin === false) {
+  if (shiftRosterNeedsAdmin() && shiftRosterAdmin === false) {
     // ★直せない端末。押しても消えるので、先に言います
     const 警告 = document.createElement('p');
     警告.className = 'card__note';
