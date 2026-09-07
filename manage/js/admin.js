@@ -1462,6 +1462,8 @@ function copyShiftCode(p, btn) {
 }
 
 function saveShiftStaff() {
+  // ★ワークスと同じ確かめです。打ちまちがいで人が消えるのは、こちらでも同じです
+  if (!shiftRosterConfirm(state.storeId, el.shiftStaffInput.value)) return;
   ShiftStaff.saveFromText(state.storeId, el.shiftStaffInput.value);
   renderShiftStaff();
   el.shiftStaffSaved.classList.remove('is-hidden');

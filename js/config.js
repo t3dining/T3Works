@@ -3310,6 +3310,42 @@ function shiftMemoTagsOf(storeId) {
 }
 
 /**
+ * 名前の欄を保存したときに、名簿から消える人
+ *
+ * ★消えた人の番号は、そこで使えなくなります。**名前を戻しても新しい番号**になり、
+ *   前の番号では提出ページに入れません。**画面には何も出ません。**
+ * ★これは「作り直す」を押さなくても起きます。**名前を1文字打ちまちがえるだけ**で、
+ *   別人が増えて、元の人が消えます（2026-09-07、本部が実物で数えました）。
+ *   だから保存の前に聞きます。→ shiftRosterConfirm
+ */
+function shiftRosterVanishing(storeId, text) {
+  if (typeof ShiftStaff === 'undefined') return [];
+  const これから = new Set(String(text || '').split('\n')
+    .map((x) => x.trim()).filter(Boolean));
+  return ShiftStaff.people(storeId).map((p) => p.n).filter((n) => !これから.has(n));
+}
+
+/**
+ * 消える人がいたら聞く（押してよければ true）
+ *
+ * ★止めるためのものではありません。**うっかりを拾う**ためのものです。
+ *   店長が名簿を直せる、というのは ko-dai の決めごとです（2026-09-07）。
+ *   権限は狭めず、事故だけ拾います。
+ */
+function shiftRosterConfirm(storeId, text) {
+  const 消える = shiftRosterVanishing(storeId, text);
+  if (!消える.length) return true;
+  return window.confirm(
+    `${消える.join('・')} が名簿から消えます。\n\n`
+    + '★その人の番号は使えなくなります。\n'
+    + '　あとで名前を戻しても、番号は新しくなります\n'
+    + '　（前の番号では、提出ページに入れません）。\n\n'
+    + '名前を打ちまちがえたときも、同じことが起きます。\n'
+    + '組みおわったシフトは、そのまま残ります。\n\n'
+    + '進めますか。');
+}
+
+/**
  * その店舗の決まり文句が「登録されている」か
  *
  * ★**空で登録した（＝ボタンを出さない）**と、**まだ登録していない**は

@@ -7994,7 +7994,9 @@ function renderShiftRoster(組む) {
     + 'その番号を本人に送ってください。<br>'
     + '<b>番号は本人だけのもの</b>です。ほかの人に見せないでください'
     + '（番号を知っていれば、その人として出せてしまいます）。<br>'
-    + '名前を消しても、<b>組みおわったシフトはそのまま残ります</b>。'
+    + '名前を消しても、<b>組みおわったシフトはそのまま残ります</b>。<br>'
+    + '★<b>消した名前を戻すと、番号は新しくなります。</b>前の番号では入れません。'
+    + '名前を打ちまちがえたときも同じです（消える人がいるときは、保存の前に聞きます）。'
     + (組む ? '' : '<br>この店舗は、まだシフトを組んでいません。名前と番号だけ先に用意できます。');
   box.appendChild(note);
 
@@ -8012,6 +8014,9 @@ function renderShiftRoster(組む) {
   save.className = 'btn btn--primary';
   save.textContent = '名前を保存';
   save.addEventListener('click', () => {
+    // ★消える人がいたら、先に聞きます。名前を1文字打ちまちがえただけでも、
+    //   その人は名簿から消え、番号が使えなくなります（画面には何も出ません）
+    if (!shiftRosterConfirm(state.storeId, area.value)) return;
     ShiftStaff.saveFromText(state.storeId, area.value);
     renderKeepScroll();
   });
