@@ -1553,24 +1553,22 @@ function renderShiftSlots() {
   // ★その店舗の初めの形から出します。SHIFT_SLOTS_DEFAULT を直に読むと、
   //   仕込み／営業の4店舗で「立ち上げ・ランチ・ディナー」が出てしまい、
   //   そのまま保存すると店舗ごとの形が黙って消えます
-  shiftBaseSlots(storeId).forEach((base) => {
+  // ★**使わない枠は、行ごと出しません。**「使う」のチェックは外しました
+  //   （2026-09-07 ko-dai の指示。切り替える場面が無いため）。
+  //   どの枠を使うかはコード（SHIFT_SLOTS_STORES）で店舗ごとに固定です
+  shiftBaseSlots(storeId).filter((base) => base.use).forEach((base) => {
     const v = saved[shiftSlotSetKey(base.id)] || {};
-    const on = v.use === undefined ? base.use : v.use;
     const row = document.createElement('div');
     row.className = 'shift-slot';
     row.dataset.slot = base.id;
 
-    const head = document.createElement('label');
+    const head = document.createElement('div');
     head.className = 'shift-slot__use';
-    const box = document.createElement('input');
-    box.type = 'checkbox';
-    box.checked = on;
-    box.dataset.k = 'use';
     const who = document.createElement('b');
     // ★id も出します。記録に残っているのはこちらなので、
     //   名前を変えたあとに「どの枠を直しているのか」が分かるようにします
-    who.textContent = `使う（${base.id}）`;
-    head.append(box, who);
+    who.textContent = `${base.name}（${base.id}）`;
+    head.appendChild(who);
     row.appendChild(head);
 
     const add = (label, key, value, ph) => {
@@ -1659,7 +1657,8 @@ function saveShiftSlots() {
       const f = row.querySelector(`[data-k="${k}"]`);
       return f ? (f.type === 'checkbox' ? f.checked : f.value.trim()) : '';
     };
-    const 直す = { use: !!get('use'), name: get('name'), hint: get('hint') };
+    // ★use は書きません。どの枠を使うかはコードで決まります
+    const 直す = { name: get('name'), hint: get('hint') };
     // ★時刻の欄は、時刻を入れる店舗では出していません。
     //   出していない欄を空で書くと、前に入れてあった時刻を消してしまいます
     if (row.querySelector('[data-k="times"]')) {
@@ -1695,9 +1694,9 @@ function resetShiftSlots() {
     + `${名前} の${もと.filter((b) => b.use).length}つに戻ります。\n`
     + '組みおわったシフトは変わりません。')) return;
   // ★消すのではなく「直していない」状態に戻します。記録は消しません
-  もと.forEach((base) => {
+  もと.filter((base) => base.use).forEach((base) => {
     Store.setItem(SHIFT_SET_STORE, state.storeId, shiftSlotSetKey(base.id), {
-      use: base.use, name: '', hint: undefined, times: [], pick: '',
+      name: '', hint: undefined, times: [], pick: '',
     });
   });
   renderShiftSlots();

@@ -2760,9 +2760,11 @@ const SHIFT_SLOTS_STORES = {
  *
  *  1店舗が1行です（`_shiftset/popo`）。中身は枠ごとの直しだけを持ちます。
  *
- *    slot:open   { use: true,  name: '仕込み', hint: '…',
+ *    slot:open   { name: '仕込み', hint: '…',
  *                  times: ['16','16.5'], pick: '16' }
- *    slot:lunch  { use: false }                       ← 使わない枠
+ *
+ *  ★**どの枠を使うかは、ここでは変えられません**（コード＝`SHIFT_SLOTS_STORES`）。
+ *    前は `use: false` を入れられましたが、切り替える場面が無いので外しました。
  *
  *  ★上の SHIFT_SLOTS_DEFAULT に**重ねて**読みます。書いていないところは
  *    初めの形のままです。あとで項目を足しても、前の設定が壊れません。
@@ -2812,8 +2814,10 @@ function shiftMergeSlots(items, storeId) {
     const key = shiftSlotSetKey(slot.id);
     const b = mine[key] || {};   // その店舗の初めの形
     const v = src[key] || {};    // マネージで直した分
-    const use = v.use === undefined ? b.use : v.use;
-    if (use === false) return;
+    // ★使う／使わないは**コードで決めます。マネージからは変えられません**
+    //   （2026-09-07 ko-dai の指示。「切り替える場面がない」ため画面から外しました）。
+    //   前に保存された `use` は読みません。残っていても効きません
+    if (b.use === false) return;
     out.push({
       ...slot,
       name: v.name || b.name || slot.name,
