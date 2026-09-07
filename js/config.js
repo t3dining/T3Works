@@ -4560,12 +4560,50 @@ function getWeekly(storeId) {
  *
  * 追加した日を含む週から出て、削除した日を含む週まで残ります
  * （日別のチェックと同じで、過去の記録は当時のまま残します）。
+ *
+ * ★現場（ワークス・マイン）に出さないものが2つあります（2026-09-07）。
+ *   ・マネージで足しただけで、まだ名前を付けていない項目（draft）
+ *   ・足したあと一度も記録されないまま消された項目（weeklyNeverUsed）
+ *   バグるで「新しい項目」が2つ、マネージには無いのに現場の表にだけ
+ *   残り続けていました。マネージは今までどおり全部見えます。
  */
-function weeklyAppliesTo(item, startStr) {
+function weeklyAppliesTo(item, startStr, storeId) {
   const endStr = weekEndOf(startStr);
+  if (item.draft) return false;
   if (item.addedAt && endStr < item.addedAt) return false;
   if (item.retiredAt && startStr >= item.retiredAt) return false;
+  if (item.retiredAt && weeklyNeverUsed(storeId, item)) return false;
   return true;
+}
+
+/* 足してから消すまでが、これより長い項目は見ません（週）。
+   長く使われた項目を数え直すと、過去の達成率が動いてしまうためです */
+const WEEKLY_NEVER_USED_MAX_WEEKS = 26;
+
+/**
+ * 足したあと、一度も記録されないまま消された項目か
+ *
+ * こういう項目はマネージには出ないのに、現場の表にだけ残ります。
+ * 守るべき記録が1つもないので、ワークスとマインからも下げます。
+ *
+ * ★見るのは「足した日」と「消した日」の両方が分かるものだけです。
+ *   もとから config.js にある項目（足した日がない）は見ません。
+ * ★確かめられないときは false（＝今までどおり出す）を返します。
+ *   見えなくする方へは倒しません。
+ */
+function weeklyNeverUsed(storeId, item) {
+  if (!item.addedAt || !item.retiredAt) return false;
+  if (!storeId || typeof Store === 'undefined') return false;
+
+  const [ay, am, ad] = item.addedAt.split('-').map(Number);
+  let w = weekStartOf(ay, am, ad);
+  for (let i = 0; i < WEEKLY_NEVER_USED_MAX_WEEKS; i++) {
+    if (w >= item.retiredAt) return true;      // 最後まで記録がありませんでした
+    const rec = Store.getDay(storeId, weekRecKey(w));
+    if (rec && rec.items && rec.items[item.id]) return false;  // 1回でも触られています
+    w = addDaysStr(w, 7);
+  }
+  return false;                                 // 長く使われた項目。今までどおり残します
 }
 
 /** 週間掃除の記録キー。日別の記録（storeId/YYYY-MM-DD）とぶつからないよう W を付けます */
@@ -4672,13 +4710,13 @@ function periodSlots(storeId, periodStart) {
   const out = [];
   getWeekly(storeId).forEach((item) => {
     if (isBiweekly(item)) {
-      if (weeks.some((w) => weeklyAppliesTo(item, w))) {
+      if (weeks.some((w) => weeklyAppliesTo(item, w, storeId))) {
         out.push({ item, week: periodStart, span: 2 });
       }
       return;
     }
     weeks.forEach((w) => {
-      if (weeklyAppliesTo(item, w)) out.push({ item, week: w, span: 1 });
+      if (weeklyAppliesTo(item, w, storeId)) out.push({ item, week: w, span: 1 });
     });
   });
   return out;

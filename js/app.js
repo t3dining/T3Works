@@ -6531,7 +6531,7 @@ function renderWeekView() {
   el.weekNavSub.textContent = period === periodStartOf(nowWeek) ? 'この2週間' : '2週間分';
 
   /* ---- 表 ---- */
-  const items = getWeekly(storeId).filter((it) => weeks.some((w) => weeklyAppliesTo(it, w)));
+  const items = getWeekly(storeId).filter((it) => weeks.some((w) => weeklyAppliesTo(it, w, storeId)));
   const empty = items.length === 0;
   el.weekEmpty.classList.toggle('is-hidden', !empty);
   el.weekNoteCard.classList.toggle('is-hidden', empty);
@@ -6628,7 +6628,7 @@ function weekCell(storeId, item, week, nowWeek) {
   if (week === nowWeek) td.classList.add('is-now');
   if (week > nowWeek) td.classList.add('is-future');
 
-  if (!weeklyAppliesTo(item, week)) {
+  if (!weeklyAppliesTo(item, week, storeId)) {
     td.classList.add('is-future');
     td.innerHTML = '<span class="cell-mark cell-mark--none">–</span>';
     return td;

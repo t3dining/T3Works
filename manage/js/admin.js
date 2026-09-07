@@ -492,7 +492,17 @@ function currentWeekly() {
 /** 書き換えた内容を保存して、全端末へ送る */
 function saveWeekly(items) {
   // 追加したその週に削除された項目は、どの週にも出ないので残さない
-  const cleaned = items.filter((it) => !(it.addedAt && it.retiredAt && it.addedAt >= it.retiredAt));
+  const cleaned = items
+    .filter((it) => !(it.addedAt && it.retiredAt && it.addedAt >= it.retiredAt))
+    // 名前を付けたら「まだ名前がない」の印を外します。ここで外れて、はじめて現場に出ます
+    .map((it) => {
+      if (it.draft && it.label && it.label !== NEW_ITEM) {
+        const copy = { ...it };
+        delete copy.draft;
+        return copy;
+      }
+      return it;
+    });
   Weeklies.save(state.storeId, cleaned);
   renderWeeklyEditor();
 }
@@ -543,6 +553,14 @@ function renderWeeklyEditor() {
     list.forEach((item, i) => {
       card.appendChild(buildWeeklyRow(item, i, list.length));
     });
+
+    /* 名前がまだの項目は現場に出ません。同期が壊れたと思われないよう、ここに書きます */
+    if (list.some((it) => it.draft)) {
+      const note = document.createElement('p');
+      note.className = 'admin-empty';
+      note.textContent = '「新しい項目」は、名前を付けるまで現場（ワークス・マイン）に出ません。';
+      card.appendChild(note);
+    }
 
     const add = document.createElement('button');
     add.type = 'button';
@@ -604,6 +622,7 @@ function addWeeklyItem(group) {
     label: NEW_ITEM,
     group: group || WEEKLY_GROUPS[0], // 押したカードの場所に入れる
     addedAt: todayStr(),              // 今週から出す（過ぎた週にはさかのぼらせない）
+    draft: true,                      // 名前を付けるまで現場には出しません（saveWeekly が外します）
   });
   saveWeekly(next);
 
