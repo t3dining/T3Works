@@ -210,8 +210,18 @@ function applyOpen(res) {
   el('helpBtn').classList.remove('is-hidden');
   show('form');
   renderPeriod();
-  // ★2店舗以上の人は、ほかの店舗の分を裏で取っておきます（1回だけ）。
-  //   切り替えたときの2秒の待ちが、これで無くなります
+
+  // ★ほかの店舗の分が、この返事に一緒に入っていたら控えます（`res.all`）。
+  //   そうすると**入った時点で、どの店舗も0秒**で開けます。
+  if (res.all && typeof res.all === 'object') {
+    Object.keys(res.all).forEach((id) => {
+      const one = res.all[id];
+      if (one && one.ok && one.store === id) 店舗の控え[id] = one;
+    });
+    先に取った = true;   // もう裏で取りに行く必要がありません
+  }
+  // ★`all` が入っていない返事（GASを貼り直す前）でも動くように、
+  //   そのときだけ裏で取りに行きます。**貼り直しの前後どちらでも動きます**
   先に取っておく();
 }
 
