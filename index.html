@@ -13,8 +13,8 @@
 <link rel="icon" type="image/png" sizes="512x512" href="img/works-icon-512.png?v=dddd764f">
 <link rel="icon" type="image/png" sizes="64x64" href="img/works-icon-64.png?v=0f9cbed2">
 <title>T3 Works｜T3Dining株式会社</title>
-<link rel="stylesheet" href="css/style.css?v=d29d7614">
-<meta name="app-version" content="3698d770">
+<link rel="stylesheet" href="css/style.css?v=e7d408c8">
+<meta name="app-version" content="bbd1ca1c">
 </head>
 <body>
 
@@ -555,6 +555,9 @@
         </div>
       </dl>
       <p class="report-summary" id="expenseSummary"></p>
+      <!-- いま何文字か。**マインだけ**に出します（現場には要らない数字なので）。
+           4万文字の帯を待たずに、余裕が減ってきたことが分かるようにするためです -->
+      <p class="expense-size is-hidden" id="expenseSize"></p>
 
       <!-- 経理担当も現場の T3 Works を使うので、両方に出します。
            間違って触られないための手当ては、精算履歴の中の「かぎ」で行います -->
@@ -1478,13 +1481,13 @@
   </div>
 </div>
 
-<script src="js/config.js?v=f0f5f5f2"></script>
+<script src="js/config.js?v=012bde1e"></script>
 <script src="js/storage.js?v=e7f9a4d4"></script>
 <script src="js/sync.js?v=d55a7809"></script>
 <script src="js/update.js?v=c530219e"></script>
 <!-- 会議資料の中身。スプレッドシートから取り込んだ数字と議事メモです -->
 <!-- シフト表を絵に描くところ。提出ページ（shift/）でも同じものを使います -->
 <script src="js/shift-sheet.js?v=2b29c50a"></script>
-<script src="js/app.js?v=65ce07d4"></script>
+<script src="js/app.js?v=2cfd06cd"></script>
 </body>
 </html>

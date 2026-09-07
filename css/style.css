@@ -591,6 +591,17 @@ body.is-shift-wide .page { max-width: 1900px; }
 .report-nav { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
 .report-nav__date { font-size: 14.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .report-summary { margin: 10px 0 0; font-size: 13px; font-weight: 700; color: var(--text-sub); }
+
+/* いま何文字か（マインの立替金だけ）。ふだんは目立たせません。
+   4万文字を超えたときだけ、色を付けて気づけるようにします */
+.expense-size {
+  margin: 8px 0 0; font-size: 11.5px; font-weight: 600;
+  color: var(--text-weak); font-variant-numeric: tabular-nums;
+}
+.expense-size.is-hidden { display: none; }
+.expense-size.is-near {
+  color: var(--ng); font-weight: 800;
+}
 .report-summary.is-all-done { color: var(--ok); }
 /* 帳簿の表紙に数字を出している画面では、この一文は記録が無いときだけ出します */
 .report-summary.is-hidden { display: none; }

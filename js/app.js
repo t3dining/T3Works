@@ -104,6 +104,7 @@ const el = {
   anytimeBlock: $('anytimeBlock'), anytimeList: $('anytimeList'),
   viewExpense: $('viewExpense'), expenseMonth: $('expenseMonth'),
   expenseSummary: $('expenseSummary'), expenseList: $('expenseList'),
+  expenseSize: $('expenseSize'),
   expenseModal: $('expenseModal'), expDate: $('expDate'), expBy: $('expBy'),
   expLabel: $('expLabel'), expYen: $('expYen'), expChips: $('expChips'),
   expWhoNote: $('expWhoNote'),
@@ -3320,6 +3321,46 @@ function expenseRec() {
   return Store.getDay(EXPENSE_STORE, expenseMonthKey(state.y, state.m));
 }
 
+/**
+ * いま何文字か（★マインだけに出します）
+ *
+ *  立替金は**1か月まるごとで1行**なので、件数が増えるほど1マスが太ります。
+ *  5万文字を超えると、その月は**書けなくなります**（ほかの記録は無事です）。
+ *
+ * ★これは「測るだけ」です。上限は動きません。
+ *   区切りを足すかどうかは、**実際の数字を見てから**決めます
+ *   （9月から「渡した相手」が入るので、1件が何件に分かれるかは
+ *     使ってみないと分かりません。2026-09-07 の時点では推測でした）。
+ *
+ * ★数え方はGASと同じです。あちらは記録まるごとを `JSON.stringify` して
+ *   1マスに書くので、こちらも同じものを数えます。
+ */
+function renderExpenseSize() {
+  const 箱 = el.expenseSize;
+  if (!箱) return;
+  // 現場のワークスには出しません。読んでも手の打ちようがない数字なので
+  if (document.body.dataset.mode !== 'mine') {
+    箱.classList.add('is-hidden');
+    return;
+  }
+  let 文字数 = 0;
+  try {
+    文字数 = JSON.stringify(expenseRec()).length;
+  } catch (e) {
+    箱.classList.add('is-hidden');
+    return;
+  }
+  const 余裕 = CELL_MAX / Math.max(文字数, 1);
+  箱.classList.remove('is-hidden');
+  箱.classList.toggle('is-near', 文字数 > CELL_SOFT);
+  箱.textContent =
+    `${文字数.toLocaleString()} / ${CELL_MAX.toLocaleString()} 文字`
+    + `（余裕 ${余裕 >= 10 ? Math.round(余裕) : 余裕.toFixed(1)}倍）`
+    + (文字数 > CELL_SOFT
+      ? '　★4万文字を超えました。区切りを足す時期です'
+      : '');
+}
+
 /** 1件分の明細だけ取り出す（精算済みの印は除く） */
 function expenseEntries(rec) {
   const items = rec.items || {};
@@ -3468,6 +3509,7 @@ function renderExpense() {
   // 数字を出しているので、下の一文は「記録がない」ときの案内だけにします
   el.expenseSummary.textContent = paying.length ? '' : 'この月の記録はまだありません。';
   el.expenseSummary.classList.toggle('is-hidden', paying.length > 0);
+  renderExpenseSize();
 
   /* ---- 上の表：人ごとの合計と精算（スプレッドシートの「N月合計」） ---- */
   el.expenseTotalWrap.classList.toggle('is-hidden', people.length === 0);
