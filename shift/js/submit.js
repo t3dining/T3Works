@@ -85,6 +85,21 @@ let closed = { dows: [], ex: {} };
 /** 確定したシフト。確定するまでは null（途中は見せません） */
 let built = null;
 
+/* -------- 店舗の切り替えを速くするための控え --------
+ *
+ *  サーバーに聞き直すのに**2秒ほど**かかります（実測 1.9〜2.3秒）。
+ *  押してから2秒なにも変わらないと「押せていない」と思われるので、
+ *    ① 押したことは待たずに画面へ出す
+ *    ② ほかの店舗の分は、入ったあとに**裏で先に取っておく**
+ *  の2つでしのぎます。
+ *
+ *  ★控えを使うのは「まだ何も選んでいないとき」だけです。
+ *    選びかけの希望を、あとから届いた返事で消さないためです。
+ */
+const 店舗の控え = {};
+/** 押した回数。古い返事を捨てるための番号です（速く2回押されたとき用） */
+let 店舗の切替 = 0;
+
 /* ============================================================
  *  サーバーとのやりとり
  * ============================================================ */
@@ -195,6 +210,9 @@ function applyOpen(res) {
   el('helpBtn').classList.remove('is-hidden');
   show('form');
   renderPeriod();
+  // ★2店舗以上の人は、ほかの店舗の分を裏で取っておきます（1回だけ）。
+  //   切り替えたときの2秒の待ちが、これで無くなります
+  先に取っておく();
 }
 
 /** 番号を入れ直す（端末を人に渡すときなど） */
@@ -245,17 +263,89 @@ function renderStoreSwitch() {
     b.textContent = (store && store.name) || id;
     b.addEventListener('click', async () => {
       if (id === me.store) return;
+      const 番 = (店舗の切替 += 1);
       me.store = id;
       // 選びかけの希望は持ち越しません（店舗ごとに別のシフトなので）
       picked = {};
       notes = {};
       built = null;
+
+      const 控え = 店舗の控え[id];
+      let 出したまま = null;
+      if (控え) {
+        // 裏で取ってあったので、待たずに出せます
+        applyOpen(控え);
+        // ★控えを出した直後の姿を控えます。あとで「人が触ったか」を見分けるためです
+        //   （picked が空かどうかでは見分けられません。控えを当てた時点で入るので）
+        出したまま = JSON.stringify([picked, notes]);
+      } else {
+        // ★押したことを、返事を待たずに画面へ出します。
+        //   ここが無いと、2秒のあいだ何も変わらず、何度も押されます
+        renderStoreSwitch();
+        待ちを出す(true);
+      }
+
       const res = await call({ mode: 'open' });
-      if (res.ok) applyOpen(res);
-      else setErr('gateErr', res.error || 'つながりませんでした');
+      // ★もっと新しい押しがあれば、古い返事は捨てます
+      //   （速く2回押すと、返事の順番が入れかわることがあります）
+      if (番 !== 店舗の切替) return;
+      待ちを出す(false);
+      if (!res.ok) { setErr('gateErr', res.error || 'つながりませんでした'); return; }
+      店舗の控え[id] = res;
+      // ★控えを出したあとに届いた返事は、**人が触っていないときだけ**当てます。
+      //   触っていたら当てません。選びかけの希望が消えてしまうためです
+      const 触っていない = 出したまま === null
+        || JSON.stringify([picked, notes]) === 出したまま;
+      if (触っていない) applyOpen(res);
+      先に取っておく();
     });
     box.appendChild(b);
   });
+}
+
+/**
+ * 待っていることを見せる／消す
+ *
+ * ★2秒のあいだ、押したボタンは光ったまま、下に小さくぐるぐるを出します。
+ *   そのあいだは押せません（二重に押すと返事の順番が入れかわるため）。
+ */
+function 待ちを出す(いま) {
+  const box = document.getElementById('storeSwitch');
+  if (box) box.classList.toggle('is-waiting', !!いま);
+  let 帯 = document.getElementById('storeWait');
+  if (!帯) {
+    if (!いま || !box) return;
+    帯 = document.createElement('p');
+    帯.id = 'storeWait';
+    帯.className = 'switch-wait';
+    const spin = document.createElement('span');
+    spin.className = 'switch-wait__spin';
+    const 字 = document.createElement('span');
+    字.textContent = 'お店を切り替えています…';
+    帯.append(spin, 字);
+    box.parentNode.insertBefore(帯, box.nextSibling);
+    return;
+  }
+  帯.classList.toggle('is-hidden', !いま);
+}
+
+/**
+ * ほかの店舗の分を、裏で先に取っておきます
+ *
+ * ★2店舗以上に入っている人だけです。取っておけば、切り替えが**待ち時間なし**になります。
+ * ★1つずつ順に取ります。まとめて投げると Apps Script 側が詰まるためです。
+ * ★失敗しても何も言いません。**本番の切り替えのときに、もう一度ちゃんと取ります。**
+ */
+let 先に取った = false;
+async function 先に取っておく() {
+  if (先に取った || me.stores.length < 2) return;
+  先に取った = true;
+  const いま = me.store;
+  for (const id of me.stores) {
+    if (id === いま || 店舗の控え[id]) continue;
+    const res = await call({ mode: 'open', store: id });
+    if (res && res.ok && res.store === id) 店舗の控え[id] = res;
+  }
 }
 
 /**

@@ -17,6 +17,10 @@
   --text-sub:  #6b7280;
   --text-weak: #9aa1ac;
   --accent:    #2b7fd4;
+  /* 選んでいるものの色。--accent と白の差は 4.13:1 しかなく、
+     13pxの太字には足りません。この画面のほかの色（4.4〜6.5:1）に
+     そろえて、少し濃くしてあります（5.9:1） */
+  --pick:      #1f66ad;
   --ok:        #2f9e44;
   --ng:        #d64545;
   --open:      #b4631a;
@@ -199,7 +203,14 @@ body {
 }
 /* F は1文字なので、ほかの枠より狭くてかまいません */
 .slot--full { flex: 0 0 46px; }
-.slot.is-on { color: #fff; }
+/* ★選んでいるものは、色とふちで分かるようにします。
+   前はここが `color: #fff` だけで、**背景の色は枠のボタン（--open など）にしか
+   付いていませんでした。**店舗の切り替えと見本の切り替えには色が無いので、
+   選んだものが**白地に白文字＝消えて**いました（2026-09-07 ko-dai の指摘）。
+   下の `.slot--open.is-on` などは、この後ろに書いてあるので上書きされます */
+.slot.is-on {
+  background: var(--pick); border-color: var(--pick); color: #fff;
+}
 .slot--open.is-on   { background: var(--open);   border-color: var(--open); }
 .slot--full.is-on   { background: var(--full);   border-color: var(--full); }
 .slot--lunch.is-on  { background: var(--lunch);  border-color: var(--lunch); }
@@ -485,3 +496,26 @@ body.is-help { overflow: hidden; }
   background: var(--card);
   color: var(--text);
 }
+
+/* ============================================================
+ *  店舗の切り替えを待っているあいだ
+ *
+ *  サーバーに聞き直すのに**2秒ほどかかります**。そのあいだ画面が
+ *  変わらないと「押せていない」と思って何度も押されるので、
+ *  押したことをすぐ出し、待っていることも見せます（2026-09-07）。
+ * ============================================================ */
+.switch-wait {
+  display: flex; align-items: center; gap: 7px;
+  margin: -4px 0 8px; font-size: 12px; font-weight: 700; color: var(--text-sub);
+}
+.switch-wait.is-hidden { display: none; }
+.switch-wait__spin {
+  width: 13px; height: 13px; border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  border-top-color: var(--accent);
+  animation: switch-spin .8s linear infinite;
+}
+@keyframes switch-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .switch-wait__spin { animation-duration: 2.4s; } }
+/* 待っているあいだは押せません（二重に押すと、返事が入れかわります） */
+.day__slots.is-waiting .slot { opacity: .55; pointer-events: none; }
