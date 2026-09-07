@@ -8068,7 +8068,7 @@ function shiftCodeList(store, people) {
 
   const url = document.createElement('p');
   url.className = 'card__note';
-  url.innerHTML = `提出ページのURLは <b>${new URL(SHIFT_SUBMIT_PATH, location.href).href}</b>（全員おなじです）。<br>`
+  url.innerHTML = `提出ページのURLは <b>${shiftSubmitUrl()}</b>（全員おなじです）。<br>`
     + '<b>他店舗にも所属</b>を押して店舗を選ぶと、その人は提出ページで'
     + '<b>店舗を切り替えられる</b>ようになります。<br>'
     + '選んだ店舗の名簿にも<b>同じ番号で入る</b>ので、'
@@ -8170,7 +8170,7 @@ function shiftCodeList(store, people) {
     if (isShiftTester(p.n)) {
       const open = document.createElement('a');
       open.className = 'btn btn--small';
-      open.href = `${SHIFT_SUBMIT_PATH}?見本=${encodeURIComponent(p.c)}`;
+      open.href = shiftSubmitUrl(p.c);
       open.target = '_blank';
       open.rel = 'noopener';
       open.textContent = 'アルバイトの画面を見る';

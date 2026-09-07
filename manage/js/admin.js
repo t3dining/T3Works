@@ -1295,7 +1295,7 @@ function renderShiftCodes() {
   const people = ShiftStaff.people(storeId);
   el.shiftCodeList.innerHTML = '';
   // 提出ページのURL。マネージは1つ下の階層にあるので ../ で戻ります
-  el.shiftSubmitUrl.textContent = new URL('../' + SHIFT_SUBMIT_PATH, location.href).href;
+  el.shiftSubmitUrl.textContent = shiftSubmitUrl();   // ★階層の判断は config.js の1か所
 
   if (!people.length) {
     el.shiftCodeList.innerHTML = '<p class="admin-note">名前を保存すると、ここに番号が出ます。</p>';

@@ -4081,6 +4081,32 @@ function shiftTakenWrite(set) {
  */
 const SHIFT_SUBMIT_PATH = 'shift/';
 
+/**
+ * 提出ページのURL（アプリがどの階層にあっても、同じ場所を指します）
+ *
+ * ★`SHIFT_SUBMIT_PATH` をそのまま `location.href` に重ねてはいけません。
+ *   アプリは階層がちがいます。
+ *
+ *     /T3Works/            ワークス   → /T3Works/shift/        ○
+ *     /T3Works/mine/       マイン     → /T3Works/mine/shift/   ★404
+ *     /T3Works/manage/     マネージ   → /T3Works/manage/shift/ ★404
+ *
+ *   2026-09-07、マインの「アルバイトの画面を見る」が404になりました。
+ *   マネージだけ `'../' +` と手で書いてあり、**同じ判断が2か所にありました。**
+ *   ここ1か所にして、どの画面からも同じものを使います。
+ *
+ * ★`code` を渡すと、見本で入るURLになります。
+ */
+const SHIFT_APP_DIRS = ['mine', 'manage', 'drive', 'owner', 'story'];
+
+function shiftSubmitUrl(code) {
+  const 上へ = new RegExp('/(' + SHIFT_APP_DIRS.join('|') + ')/[^/]*$')
+    .test(location.pathname) ? '../' : '';
+  const u = new URL(上へ + SHIFT_SUBMIT_PATH, location.href);
+  if (code) u.search = '見本=' + encodeURIComponent(code);
+  return u.href;
+}
+
 /** 番号の桁数。増やすと当てにくくなりますが、打つのが手間になります */
 const SHIFT_CODE_LENGTH = 6;
 
