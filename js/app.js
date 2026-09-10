@@ -63,6 +63,9 @@ const el = {
   syncChip: $('syncChip'), syncInfo: $('syncInfo'), syncField: $('syncField'),
   syncLegend: $('syncLegend'),
   pinModal: $('pinModal'), pinInput: $('pinInput'), pinError: $('pinError'),
+  codeInput: $('codeInput'), codeField: $('codeField'), codeHint: $('codeHint'),
+  pinMessage: $('pinMessage'),
+  codeLater: $('codeLater'), appWho: $('appWho'),
   dayNum: $('dayNum'), dayDow: $('dayDow'), dayRollover: $('dayRollover'),
   progressBar: $('dayProgressBar'), progressText: $('dayProgressText'),
   checklist: $('checklistArea'), note: $('dayNote'), updated: $('dayUpdated'),
@@ -10077,6 +10080,7 @@ let lastDayPulled = '';
 function render() {
   el.appTitle.textContent = APP_NAME;
   el.appCompany.textContent = APP.company;
+  renderWho();
 
   // 会社ロゴ（読めなければ枠ごと隠す）
   const logoSrc = APP.logo ? ASSET_BASE + APP.logo : '';
@@ -10328,22 +10332,69 @@ function renderSyncStatus() {
   }
 }
 
+/* ★ヘッダーに「〇〇さんのアカウント」を出します。
+     名前はサーバーが返したものです（端末は名簿を持ちません）。 */
+function renderWho() {
+  const 名 = Sync.myName();
+  el.appWho.textContent = 名 ? `${名}さんのアカウント` : '';
+  el.appWho.classList.toggle('is-hidden', !名);
+}
+
 function openPinModal(message) {
   el.pinInput.value = '';
   el.pinError.textContent = message || '';
+  // ★PINが入っているなら、聞くのは番号だけです
+  const pin済み = !!Sync.pin();
+  el.pinInput.closest('.pin-row').classList.toggle('is-hidden', pin済み);
+  document.getElementById('pinTitle').textContent = pin済み
+    ? 'あなたの番号を入れてください' : '合言葉（PIN）を入力してください';
+  el.pinMessage.innerHTML = pin済み
+    ? '誰が入力したかが分かるようにするための、あなただけの番号です。<br>'
+      + '一度入れれば、この端末では次回から不要です。'
+    : '全店舗で共有しているデータを開くために必要です。<br>'
+      + '一度入力すれば、この端末では次回から不要です。';
+  el.codeInput.value = Sync.code();
+  // 「あとで」は、**PINが通っているあいだだけ**出します。
+  // ★ここを出しておかないと、番号を配り終える前に全員が止まります
+  el.codeLater.classList.toggle('is-hidden', !pin済み);
   el.pinModal.classList.remove('is-hidden');
-  setTimeout(() => el.pinInput.focus(), 50);
+  setTimeout(() => (pin済み ? el.codeInput : el.pinInput).focus(), 50);
+}
+
+/** 番号だけを聞きたいとき（PINは通っている） */
+function askStaffCode(message) {
+  openPinModal(message || '');
 }
 
 async function submitPin() {
   // 全角で入れても通るように、半角に直してから確かめます
+  if (Sync.pin()) {
+    // PINは通っています。番号だけ確かめます
+    const code = toHalfWidth(el.codeInput.value).trim();
+    if (!code) { el.pinError.textContent = '番号を入れてください。'; return; }
+    el.pinError.textContent = '確認中…';
+    Sync.setCode(code);
+    const res = await Sync.ping();
+    if (Sync.code() && !res.error) {
+      el.pinModal.classList.add('is-hidden');
+      renderWho();
+      Sync.start(); render();
+    } else {
+      // ★番号がまちがっていても、PINは消しません
+      el.pinError.textContent = res.error || 'この番号は使えません。';
+    }
+    return;
+  }
   const pin = toHalfWidth(el.pinInput.value).trim();
   if (!pin) { el.pinError.textContent = 'PINを入力してください。'; return; }
   el.pinError.textContent = '確認中…';
   Sync.setPin(pin);
+  const code = toHalfWidth(el.codeInput.value).trim();
+  if (code) Sync.setCode(code);
   await Sync.flush();
   if (Sync.pin()) {
     el.pinModal.classList.add('is-hidden');
+    renderWho();
     Sync.start();
     render();
   } else {
@@ -10774,6 +10825,14 @@ function bindEvents() {
   $('pinChange').addEventListener('click', () => { closeModal(); openPinModal(); });
   $('pinOk').addEventListener('click', submitPin);
   el.pinInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !imeEnter(e)) submitPin(); });
+  el.codeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !imeEnter(e)) submitPin(); });
+  bindHalfWidthInput(el.codeInput, 'code');
+  // ★「番号はあとで」。全員に配り終えるまでのあいだ、誰も止めないための逃げ道です。
+  //   マネージで必須に切り替えたあとは、サーバーが止めるのでここは効きません
+  el.codeLater.addEventListener('click', () => {
+    el.pinModal.classList.add('is-hidden');
+    Sync.start(); render();
+  });
   bindHalfWidthInput(el.pinInput, 'code');
   // 貼り付けた内容が正しいか目で確かめられるようにする
   $('pinReveal').addEventListener('click', () => {

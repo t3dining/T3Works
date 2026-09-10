@@ -13,8 +13,8 @@
 <link rel="icon" type="image/png" sizes="512x512" href="img/works-icon-512.png?v=dddd764f">
 <link rel="icon" type="image/png" sizes="64x64" href="img/works-icon-64.png?v=0f9cbed2">
 <title>T3 Works｜T3Dining株式会社</title>
-<link rel="stylesheet" href="css/style.css?v=c90cdc55">
-<meta name="app-version" content="23e7619a">
+<link rel="stylesheet" href="css/style.css?v=018776f0">
+<meta name="app-version" content="629ad08f">
 </head>
 <body>
 
@@ -26,6 +26,10 @@
       <span class="app-title__text">
         <span class="app-title__main" id="appTitle">T3 Works</span>
         <span class="app-title__sub" id="appCompany">T3Dining株式会社</span>
+        <!-- ★誰として入っているか。名前が入ったときだけ出ます。
+             社名の行はスマホでは消えるので、**こちらは消しません**
+             （ko-dai さんはiPhoneで見ます） -->
+        <span class="app-title__who is-hidden" id="appWho"></span>
       </span>
     </button>
     <div class="header-actions">
@@ -1394,16 +1398,29 @@
   <div class="modal__backdrop"></div>
   <div class="modal__panel modal__panel--confirm" role="dialog" aria-modal="true" aria-labelledby="pinTitle">
     <h2 class="modal__title" id="pinTitle">合言葉（PIN）を入力してください</h2>
-    <p class="confirm__message">全店舗で共有しているデータを開くために必要です。<br>一度入力すれば、この端末では次回から不要です。</p>
+    <p class="confirm__message" id="pinMessage">全店舗で共有しているデータを開くために必要です。<br>一度入力すれば、この端末では次回から不要です。</p>
     <!-- 英字も入力できるよう、数字キーボード固定（inputmode="numeric"）は外してあります -->
     <div class="pin-row">
       <input type="password" id="pinInput" class="field__input" autocomplete="off"
              autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="PIN">
       <button type="button" class="pin-reveal" id="pinReveal" title="入力内容を表示">表示</button>
     </div>
+    <!-- ★1人ずつの番号。PINのあとに入れます。
+         いまは**入れなくても使えます**（サーバーがまだ必須にしていません）。
+         全員が入れ終わってから、マネージで必須に切り替えます -->
+    <div class="field" id="codeField">
+      <label class="field__label" for="codeInput">あなたの番号（6桁）</label>
+      <input type="text" id="codeInput" class="field__input" inputmode="numeric"
+             autocomplete="off" autocapitalize="off" autocorrect="off"
+             spellcheck="false" placeholder="000000" maxlength="6">
+      <p class="field__hint" id="codeHint">
+        マネージで作った、あなただけの番号です。分からないときは店長に聞いてください。
+      </p>
+    </div>
     <p class="pin-error" id="pinError"></p>
     <div class="modal__actions modal__actions--confirm">
       <button type="button" class="btn btn--primary" id="pinOk">開く</button>
+      <button type="button" class="btn" id="codeLater">番号はあとで</button>
     </div>
   </div>
 </div>
@@ -1481,13 +1498,13 @@
   </div>
 </div>
 
-<script src="js/config.js?v=23f6d46b"></script>
+<script src="js/config.js?v=7dbdbe90"></script>
 <script src="js/storage.js?v=79b5bf12"></script>
-<script src="js/sync.js?v=259cc0a9"></script>
+<script src="js/sync.js?v=26a3e61e"></script>
 <script src="js/update.js?v=c530219e"></script>
 <!-- 会議資料の中身。スプレッドシートから取り込んだ数字と議事メモです -->
 <!-- シフト表を絵に描くところ。提出ページ（shift/）でも同じものを使います -->
 <script src="js/shift-sheet.js?v=2b29c50a"></script>
-<script src="js/app.js?v=c729c401"></script>
+<script src="js/app.js?v=2bbf68b2"></script>
 </body>
 </html>

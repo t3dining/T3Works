@@ -38,6 +38,10 @@ const Sync = {
   /** サーバー側で保存できなかった／上限に近い記録の知らせ */
   serverWarn: '',
   _pinKey: APP.storageKey + ':pin',
+  // ★自分の番号と、自分の名前だけを持ちます。**名簿は持ちません**
+  //   （名簿を配ると、6店舗の端末に全員分の合言葉の写しが置かれます）
+  _codeKey: APP.storageKey + ':staffCode',
+  _nameKey: APP.storageKey + ':staffName',
 
   timer: null,
   _loopTimer: null,
@@ -71,6 +75,27 @@ const Sync = {
   },
   pin() {
     return localStorage.getItem(this._pinKey) || '';
+  },
+  /** 自分の番号（PINのあとに入れるもの）。まだ入れていなければ空 */
+  code() {
+    return localStorage.getItem(this._codeKey) || '';
+  },
+  setCode(code) {
+    localStorage.setItem(this._codeKey, String(code).trim());
+  },
+  clearCode() {
+    localStorage.removeItem(this._codeKey);
+    localStorage.removeItem(this._nameKey);
+  },
+  /** サーバーが「あなたは誰か」と返してきた名前。ヘッダーに出すだけに使います */
+  myName() {
+    return localStorage.getItem(this._nameKey) || '';
+  },
+  /** サーバーの返事から、自分の名前を覚えます（判定はサーバーがしています） */
+  _rememberWho(json) {
+    if (json && json.who && json.who.name) {
+      localStorage.setItem(this._nameKey, String(json.who.name));
+    }
   },
   setPin(pin) {
     localStorage.setItem(this._pinKey, String(pin).trim());
@@ -151,6 +176,7 @@ const Sync = {
       const timer = setTimeout(() => stop.abort(), this.hangMs);
       const body = JSON.stringify({
         pin: this.pin(),
+        code: this.code(),
         action: 'sync',
         since: Store.meta('since') || '',
         settingsAll: !this._settingsPulled,
@@ -180,8 +206,18 @@ const Sync = {
         // 管理用PINが要る操作が現場アプリの送信箱に紛れ込んだ場合、
         // 何度送っても通らず、以降の同期が止まってしまう。捨てて先へ進む。
         if (json.code === 'need_admin') this._dropAdminOps(sending);
+        /* ★番号が要る／使えないと言われたとき。
+             ★PINは消しません。**PINは合っている**からです。
+               ここでPINまで消すと、番号を直したい人がPINからやり直しになります。
+             ★送信箱も捨てません。番号を入れれば、そのまま送られます。 */
+        if (json.code === 'need_staff_code') {
+          this.clearCode();
+          this.needStaffCode = true;
+        }
         return;
       }
+      this.needStaffCode = false;
+      this._rememberWho(json);
 
       // 送れた分だけ送信箱から取り除く（送信中に増えた分は残す）
       const rest = this.outbox().slice(sending.length);
@@ -297,10 +333,15 @@ const Sync = {
       const res = await fetch(APP.syncUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ pin: this.pin(), action: 'ping' }),
+        body: JSON.stringify({ pin: this.pin(), code: this.code(), action: 'ping' }),
       });
       const json = await res.json();
-      if (!json.ok) return { admin: false, error: json.error || '' };
+      if (!json.ok) {
+        if (json.code === 'need_staff_code') { this.clearCode(); this.needStaffCode = true; }
+        return { admin: false, error: json.error || '', code: json.code || '' };
+      }
+      this.needStaffCode = false;
+      this._rememberWho(json);
       return { admin: !!json.admin, error: '' };
     } catch (e) {
       return { admin: false, error: '通信できませんでした。電波の良いところでもう一度お試しください。' };
@@ -326,7 +367,7 @@ const Sync = {
         method: 'POST',
         signal: stop.signal,
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ pin: this.pin(), action, ...extra }),
+        body: JSON.stringify({ pin: this.pin(), code: this.code(), action, ...extra }),
       });
       return await res.json();
     } catch (e) {
@@ -398,7 +439,7 @@ const Sync = {
         closedExceptions: Closed._exKey,
       };
       /* ★社員のアカウント（番号）だけは、**マネージにしか入れません。**
-           番号は合言葉です。ふつうの設定と同じに配ると、**6店舗ぜんぶの端末に
+           番号は合言葉です。ふつうの設定と同じに配ると、**6店舗全部の端末に
            全員分の合言葉の写しが置かれます。**
            2026-09-10、ko-dai さんが登録した直後にこの形になっていました
            （サーバーは設定を選ばずに全部返します）。
