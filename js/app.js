@@ -9295,6 +9295,10 @@ function openShiftWishes() {
 
   const table = document.createElement('table');
   table.className = 'wish-table';
+  // ★枠の一覧は**1回だけ**作ります。shiftSlotsOf は毎回 Store を読むので、
+  //   名前×日（10人×15日＝150回）で呼ぶと、古い端末で目に見えて重くなります
+  //   （shiftWishInto に書いてあるのと同じ理由です）
+  const 枠一覧 = shiftSlotsOf(state.storeId);
 
   /* 見出し（日付） */
   const head = document.createElement('tr');
@@ -9352,7 +9356,7 @@ function openShiftWishes() {
       //     ③ 出したが、まだ入れていない      … 薄い　17:00
       //     ④ 出していないのに、入れた        … 濃い　＊18:00
       const 組 = [];
-      shiftSlotsOf(state.storeId).forEach((sl) => {
+      枠一覧.forEach((sl) => {
         const 入れた = mine.filter((e) => e.slot === sl.id);
         const 出した = list.filter((e) => shiftSlotFor(e.s) === sl.id);
         if (入れた.length) {
