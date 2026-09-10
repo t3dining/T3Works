@@ -3115,6 +3115,28 @@ body[data-mode="mine"] .nippou.mine-only { display: block; }
 .shift-grid__slot--lunch  { color: var(--shift-lunch); }
 .shift-grid__slot--dinner { color: var(--shift-dinner); }
 .shift-grid__slot--memo   { color: var(--text-sub); }
+
+/* -------- 枠の変わり目（立ち上げ｜ランチ｜ディナー） --------
+     枠が変わるところに太い線を引き、枠の名前の欄にその枠の色をうっすら敷きます。
+     行に is-slot-top を付けるのは js/app.js の shiftGridBlock です（シフトの持ち物）。
+
+     ★下の3つは、`.shift-grid__slot--open` だけでは**効きません。**
+       上の `.shift-grid tr > th:first-child` に background があり、
+       そちらの方が強いので --surface-2 で塗りつぶされます。
+       クラス2つ＋要素2つにして、**書く順番に頼らずに**勝つようにしてあります
+       （2026-09-10、シフトの案を当てるときに本部が気づきました。
+        ブラウザで4通り試して確かめています） */
+.shift-grid tr.is-slot-top > th,
+.shift-grid tr.is-slot-top > td { border-top: 2px solid var(--line); }
+.shift-grid tr > th.shift-grid__slot.shift-grid__slot--open {
+  background: color-mix(in srgb, var(--shift-open) 8%, var(--surface-2));
+}
+.shift-grid tr > th.shift-grid__slot.shift-grid__slot--lunch {
+  background: color-mix(in srgb, var(--shift-lunch) 8%, var(--surface-2));
+}
+.shift-grid tr > th.shift-grid__slot.shift-grid__slot--dinner {
+  background: color-mix(in srgb, var(--shift-dinner) 8%, var(--surface-2));
+}
 .shift-grid td.is-closed {
   background: var(--line-2); color: var(--text-sub);
   text-align: center; vertical-align: middle; font-size: 12px;
@@ -3629,7 +3651,13 @@ body.print-shift .shift-sheet__name.is-full .shift-sheet__who::after { font-size
 .wish-chip--full.is-yet   { color: #7a4b8f; }
 .wish-chip--lunch.is-yet  { color: var(--shift-lunch); }
 .wish-chip--dinner.is-yet { color: var(--shift-dinner); }
-.wish-chip.is-extra { outline: 2px solid var(--text); outline-offset: -2px; }
+/* ★ふちの色は var(--text) では**見えません。**--text は明るい画面では暗く、
+     暗い画面では明るい色です。チップの色はその逆に動くので、いつも同系色に
+     なっていました（8通りのうち6通りが読めない濃さでした）。
+     var(--surface) はチップと逆に動くので、7通りで読めます
+     （残る1つはダークの「通し」。あの色だけ画面に合わせて変わらないためです）。
+     字の ＊ が本命の印なので、こちらは添えものです（2026-09-10） */
+.wish-chip.is-extra { outline: 2px solid var(--surface); outline-offset: -2px; }
 
 
 /* -------- シフト：早上がりと、パティ --------

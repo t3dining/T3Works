@@ -8304,6 +8304,9 @@ function renderShift() {
   }
   el.shiftDays.innerHTML = '';
   el.shiftDays.appendChild(できあがり);
+
+  // 足りない日をLINEに送る文。★表を直せば数も文も変わります
+  shiftShortCopyBox(rec);
 }
 
 /**
@@ -8354,6 +8357,10 @@ function shiftGridBlock(rec, wishes, days) {
   /* 枠ごとの行 */
   shiftSlotsOf(state.storeId).forEach((slot, si) => {
     const tr = document.createElement('tr');
+    // ★枠の変わり目に太い線を引きます（立ち上げ｜ランチ｜ディナー）。
+    //   線そのものは css/style.css の `.shift-grid tr.is-slot-top`（本部）です。
+    //   1つめの枠には付けません。上の「持ち場」の行との境目は、もう付いています
+    if (si > 0) tr.className = 'is-slot-top';
     const th = document.createElement('th');
     th.className = `shift-grid__slot shift-grid__slot--${slot.id}`;
     th.textContent = slot.name;
@@ -9264,6 +9271,92 @@ function removeShiftPick() {
   saveShiftDay(dateStr, now);
   closeShiftPick();
   render();
+}
+
+/* -------- 足りない日を、LINEに送る文にする -------- */
+
+/**
+ * その半月で、まだ人が足りない日
+ *
+ * ★赤い「あき」（マスの ＋）に入れた人数から作ります。押して人を入れれば
+ *   その分だけ減るので、**表を直せば文も直ります**（別に打ち直しません）。
+ * ★持ち場（キッチン／ホール）は分けません。枠ごとに足します。
+ * ★**過ぎた日は入れません。**「9/1に来てください」とは頼めないためです。
+ */
+function shiftShortDays(rec) {
+  const 今日 = TODAY_STR;   // ★過ぎた日は入れません
+  const 枠一覧 = shiftSlotsOf(state.storeId);
+  const out = [];
+  shiftDays(state.y, state.m, shiftHalf).forEach((dateStr) => {
+    if (dateStr < 今日) return;
+    if (shiftClosedOn(dateStr)) return;
+    const day = shiftDayOf(rec, dateStr);
+    const 枠 = [];
+    枠一覧.forEach((slot) => {
+      const n = SHIFT_LANES.reduce((sum, lane) => sum + shiftShortOf(day, slot.id, lane.id), 0);
+      if (n > 0) 枠.push({ name: slot.name, n });
+    });
+    if (枠.length) out.push({ dateStr, 枠 });
+  });
+  return out;
+}
+
+/** 上の一覧を、そのまま送れる文にします */
+function shiftShortText(list) {
+  const 行 = list.map(({ dateStr, 枠 }) => {
+    const [, m, d] = dateStr.split('-').map(Number);
+    const dow = new Date(dateStr.replace(/-/g, '/')).getDay();
+    const 中身 = 枠.map((k) => `${k.name}${shiftZen(k.n)}人`).join('、');
+    return `${m}/${d}(${DOW[dow]})${中身}`;
+  });
+  return `${SHIFT_SHORT_HEAD}\n${行.join('\n')}\n\n${SHIFT_SHORT_FOOT}`;
+}
+
+/**
+ * 「足りない日をLINEにコピー」のボタン
+ *
+ * ★`index.html` は本部のファイルなので、置き場所を書き足さずに
+ *   提出の集まりぐあいの下へ差し込みます。
+ * ★足りない日が1日も無いときは、ボタンごと出しません。押しても何も起きない
+ *   ボタンがあると、「壊れているのか」と迷います。
+ */
+function shiftShortCopyBox(rec) {
+  const 前の = document.getElementById('shiftShortCopy');
+  if (前の) 前の.remove();
+  const list = shiftShortDays(rec);
+  if (!list.length) return;
+
+  const box = document.createElement('div');
+  box.id = 'shiftShortCopy';
+  box.className = 'shift-top__acts';
+
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'btn';
+  const 直す = () => { b.textContent = `足りない日をLINEにコピー（${list.length}日分）`; };
+  直す();
+  b.addEventListener('click', async () => {
+    const text = shiftShortText(list);
+    try {
+      await navigator.clipboard.writeText(text);
+      b.textContent = 'コピーしました';
+      setTimeout(直す, 1800);
+    } catch (e) {
+      // コピーできない端末では、文をそのまま出して選べるようにします
+      if (box.querySelector('textarea')) return;
+      const ta = document.createElement('textarea');
+      ta.readOnly = true;
+      ta.rows = text.split('\n').length + 1;
+      ta.style.width = '100%';
+      ta.value = text;
+      box.style.display = 'block';
+      box.appendChild(ta);
+      ta.select();
+      b.textContent = 'ここから写してください';
+    }
+  });
+  box.appendChild(b);
+  el.shiftWishNote.insertAdjacentElement('afterend', box);
 }
 
 /* -------- 提出の一覧 -------- */
