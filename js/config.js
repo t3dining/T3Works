@@ -1976,6 +1976,7 @@ const SEISAN_PAY = [
 const SEISAN_CREDIT = [
   { key: 'uberCard', hit: ['Uber', 'ウーバー', 'uber'], skip: [] },
   { key: 'demaeCard', hit: ['出前館', '出前舘'], skip: [] },
+  { key: 'rocket', hit: ['ロケット', 'ロケ', 'Rocket'], skip: [] },
   // ★iD・QUICPay は最後に見ます。「クレジット」の字を含むので、
   //   先に見ると Uber や出前館の行にも当たってしまいます
   { key: 'cardId', hit: ['QUICPay', 'QUIC', 'iD', 'ID'], skip: ['Uber', 'ウーバー', '出前'] },
@@ -1992,6 +1993,14 @@ const SEISAN_OTHER = [
   { key: 'recruit', hit: ['ホットペッパー', 'ホットペッパ', 'ホットペ', 'ペッパー'], skip: [] },
   { key: 'gurunavi', hit: ['ぐるなび', 'グルナビ', 'ぐるな'], skip: [] },
   { key: 'tabelog', hit: ['食べログ', '食ベログ', '食べロ', 'タベログ'], skip: [] },
+  // ★商品券は紙では「商品券A」「商品券B」「商品券C」と出ます（日報では
+  //   西町商品券・プレミアム商品券・プレミアム商品券デジタル）。
+  //   **A・B・Cの一文字までそろって初めて当たり**にします。
+  //   「商品券」だけで当てると、AをBの行に入れてしまうおそれがあります。
+  //   読めなければ、明細は丸ごと空のままです（まちがった数は入れません）。
+  { key: 'ticketA', hit: ['商品券A', '商品券Ａ'], skip: [] },
+  { key: 'ticketB', hit: ['商品券B', '商品券Ｂ'], skip: [] },
+  { key: 'ticketC', hit: ['商品券C', '商品券Ｃ'], skip: [] },
   { key: 'emoney', hit: ['電子マネー', '電子マネ', '電子又', '電子'], skip: [] },
 ];
 
@@ -2146,8 +2155,9 @@ function parseSeisan(text) {
     // 読めたものが1つも無くても、合計が0なら全部0円です
     if (残り === 0) 読めない.forEach((k) => { v[k] = 0; });
   };
-  埋める('creditAll', ['uberCard', 'cardId', 'demaeCard']);
-  埋める('other', ['recruit', 'gurunavi', 'tabelog', 'emoney']);
+  埋める('creditAll', ['uberCard', 'cardId', 'demaeCard', 'rocket']);
+  埋める('other', ['recruit', 'gurunavi', 'tabelog',
+    'ticketA', 'ticketB', 'ticketC', 'emoney']);
 
   /* ---- 検算 ---- */
   const checks = [];
@@ -2163,12 +2173,14 @@ function parseSeisan(text) {
       v.cash + v.creditAll + v.other + v.kake, v.gross,
       ['gross', 'cash', 'creditAll', 'other', 'kake']);
   }
-  if (has('creditAll') && has('uberCard') && has('cardId') && !埋めた元.creditAll) {
+  const クレキー = ['uberCard', 'cardId', 'demaeCard', 'rocket'];
+  if (has('creditAll') && クレキー.some(has) && !埋めた元.creditAll) {
     add('クレジット明細の合計 ＝ クレジット',
-      v.uberCard + v.cardId + (v.demaeCard || 0), v.creditAll,
-      ['creditAll', 'uberCard', 'cardId', 'demaeCard']);
+      クレキー.reduce((a, k) => a + (v[k] || 0), 0), v.creditAll,
+      ['creditAll'].concat(クレキー));
   }
-  const その他キー = ['recruit', 'gurunavi', 'tabelog', 'emoney'];
+  const その他キー = ['recruit', 'gurunavi', 'tabelog',
+    'ticketA', 'ticketB', 'ticketC', 'emoney'];
   if (has('other') && その他キー.some(has)) {
     add('その他支払明細の合計 ＝ その他支払',
       その他キー.reduce((a, k) => a + (v[k] || 0), 0), v.other,
@@ -2215,6 +2227,8 @@ function parseSeisan(text) {
 /** 画面に出す名前 */
 const SEISAN_NAMES = {
   recruit: 'ホットペッパー', gurunavi: 'ぐるなび', tabelog: '食べログ',
+  ticketA: '商品券A', ticketB: '商品券B', ticketC: '商品券C',
+  rocket: 'ロケットナウ',
   cash: '現金', creditAll: 'クレジット', cardId: 'クレジット・iD・QUICPay',
   uberCard: 'Uberクレジット', demaeCard: '出前館クレジット',
   other: 'その他支払', emoney: '電子マネー', kake: '売掛金',
@@ -2304,6 +2318,9 @@ function parseJournalFor(storeId, text) {
  *     B6  出前館クレジット ← 出前館クレジット（無い日は 0）
  *     B10 電子マネー      ← 電子マネー
  *     B12 ウーバークレジット ← Uberクレジット
+ *     B13 西町商品券      ← 商品券A
+ *     B14 プレミアム商品券 ← 商品券B
+ *     B15 プレミアム商品券デジタル ← 商品券C
  *     B16 売掛金          ← 売掛金
  *     B26 純売上          ← 純売上
  *     B30 当日客数        ← 客数（人）
@@ -2318,6 +2335,10 @@ const SEISAN_TO_NIPPOU = {
   recruit: 'recruit',      // ホットペッパー → リクルートポイント（B7）
   gurunavi: 'gurunavi',    // ぐるなび       → ぐるなびポイント（B8）
   tabelog: 'tabelog',      // 食べログ       → 食べログポイント（B9）
+  rocket: 'rocket',        // ロケットナウ   → ロケットナウ（B18）
+  ticketA: 'ticketA',      // 商品券A        → 西町商品券（B13）
+  ticketB: 'ticketB',      // 商品券B        → プレミアム商品券（B14）
+  ticketC: 'ticketC',      // 商品券C        → プレミアム商品券デジタル（B15）
   net: 'net',              // 純売上
   guests: 'guests',        // 当日客数
 };
@@ -2342,6 +2363,11 @@ const NIPPOU_LABELS = {
   recruit:   'リクルートポイント',   // ホットペッパー（B7）
   gurunavi:  'ぐるなびポイント',     // ぐるなび（B8）
   tabelog:   '食べログポイント',     // 食べログ（B9）
+  // ★商品券。紙は「商品券A/B/C」ですが、日報の行の名前はこちらです
+  //   （popo の日報と同じ並びだと ko-dai さんに教わりました・2026-09-10）
+  ticketA:   '西町商品券',                  // 商品券A（B13）
+  ticketB:   'プレミアム商品券',            // 商品券B（B14）
+  ticketC:   'プレミアム商品券デジタル',    // 商品券C（B15）
 };
 
 /* ------------------------------------------------------------
