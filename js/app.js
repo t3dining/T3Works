@@ -9286,15 +9286,29 @@ function removeShiftPick() {
 function shiftShortDays(rec) {
   const 今日 = TODAY_STR;   // ★過ぎた日は入れません
   const 枠一覧 = shiftSlotsOf(state.storeId);
+  // ★立ち上げは**ランチに足して**出します（2026-09-10、ko-dai の指示）。
+  //   「立ち上げ2人、ランチ2人」と分けて書くより「ランチ4人」の方が、
+  //   受け取った人が自分に当てはめやすいためです。
+  //   ★ランチを使っていない店舗（仕込み／営業の4店舗）では**足しません**。
+  //     足し先が無く、「仕込み」はランチとは別の時間帯だからです。
+  //     画面の表と、赤いあきの数え方は今までどおりです。**送る文だけの話です**
+  const 足し先 = 枠一覧.some((sl) => sl.id === 'lunch') ? 'lunch' : null;
   const out = [];
   shiftDays(state.y, state.m, shiftHalf).forEach((dateStr) => {
     if (dateStr < 今日) return;
     if (shiftClosedOn(dateStr)) return;
     const day = shiftDayOf(rec, dateStr);
-    const 枠 = [];
+    const まとめ = {};
     枠一覧.forEach((slot) => {
       const n = SHIFT_LANES.reduce((sum, lane) => sum + shiftShortOf(day, slot.id, lane.id), 0);
-      if (n > 0) 枠.push({ name: slot.name, n });
+      if (n <= 0) return;
+      const 行き先 = 足し先 && slot.id === 'open' ? 足し先 : slot.id;
+      まとめ[行き先] = (まとめ[行き先] || 0) + n;
+    });
+    // 並びは枠の順のままにします（ランチ→ディナー）
+    const 枠 = [];
+    枠一覧.forEach((slot) => {
+      if (まとめ[slot.id]) 枠.push({ name: slot.name, n: まとめ[slot.id] });
     });
     if (枠.length) out.push({ dateStr, 枠 });
   });
