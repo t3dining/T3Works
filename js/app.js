@@ -1944,9 +1944,31 @@ const NIPPOU_PARTS = {
   jinken:   { name: '人件費' },
 };
 
+/**
+ * こじゃれ（精算レポート）の、日報へ渡すもの
+ *
+ * ★引き算をしません。紙が最初から分けて出しているので、そのまま入れます。
+ *   4店舗のように引くと、二重に引いてしまいます。
+ * ★検算に通った数だけを渡します（通らなかったものは入れません）。
+ */
+function seisanPartData() {
+  const j = cashEdit.j || {};
+  const sure = cashEdit.sure || {};
+  const values = {};
+  Object.keys(SEISAN_TO_NIPPOU).forEach((もと) => {
+    const さき = SEISAN_TO_NIPPOU[もと];
+    if (j[もと] === null || j[もと] === undefined) return;
+    if (!sure[もと]) return;                       // 検算に守られていない数は入れません
+    values[NIPPOU_LABELS[さき]] = j[もと];
+  });
+  return { values, calc: {}, extra: [] };
+}
+
 /** その区分で、日報へ渡すものを作ります */
 function nippouPartData(part) {
   if (part === 'journal') {
+    // ★こじゃれは紙の作りがちがうので、別の道を通ります
+    if (journalFormatOf(state.storeId) === 'seisan') return seisanPartData();
     const n = nippouValues(cashEdit.j || {}, cashEdit.m);
     const values = {};
     CASH_NIPPOU_ROWS.forEach((r) => {
@@ -2467,7 +2489,7 @@ async function cashReadPhoto(dataUrl, dateStr, file) {
     // ★同じ文字から、日報に入れる5つも読みます。
     //   検算が通らなければ使いません（現金だけの読み取りは、これまでどおり動きます）
     if (JOURNAL_STORES.includes(state.storeId)) {
-      const jr = parseJournal(res.text || '');
+      const jr = parseJournalFor(state.storeId, res.text || '');
       // ★検算が通らなくても入れます。ここを null にすると箱ごと消えてしまい、
       //   うまくいかなかったことすら分からなくなります（実際にそうなりました）
       cashEdit.j = jr.v;

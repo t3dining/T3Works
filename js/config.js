@@ -1790,6 +1790,31 @@ function parseJournal(text) {
  *    **紙自身の計算で検算**して、通ったものだけを使います。
  * ---------------------------------------------------------- */
 
+/**
+ * 精算レポートの行から、金額を取り出します
+ *
+ * ★実物のOCRでは「4,740円」が **「4.740m」** になっていました
+ *   （カンマが点に、円が m に）。¥ や 円 が付いている前提では読めません。
+ * ★「1点」「0点」は件数なので、金額として拾いません。
+ */
+function seisanMoneyOf(line) {
+  const s = cashNormalize(line).replace(/[（）]/g, '').trim();
+  if (!s) return null;
+  if (/^[(]?\s*\d+\s*点[)]?$/.test(s)) return null;
+  const 見つけ = [];
+  const re = /(\d[\d,.\s]*)\s*([点組人円¥m]?)/g;
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    const n = Number(String(m[1]).replace(/[,.\s]/g, ''));
+    if (Number.isFinite(n)) 見つけ.push({ n, 単位: m[2] });
+  }
+  if (!見つけ.length) return null;
+  const 金 = 見つけ.filter((x) => x.単位 === '円' || x.単位 === '¥' || x.単位 === 'm');
+  if (金.length) return 金[金.length - 1].n;
+  const 残り = 見つけ.filter((x) => !'点組人'.includes(x.単位));
+  return 残り.length ? 残り[残り.length - 1].n : null;
+}
+
 /** 精算レポートの節の目印 */
 const SEISAN_MARKS = [
   { key: 'uriage', hit: ['売上'] },
@@ -1813,72 +1838,82 @@ function seisanMarkOf(line) {
 }
 
 /**
- * 精算レポートを、節ごとに切り分けます
+ * 支払内訳の4つを読みます（現金・クレジット・その他支払・売掛金）
  *
- * ★節で切るのが肝心です。「クレジット」という字は
- *   支払内訳にも、クレジット明細の中にもあります。
- *   節を見ないと、内わけの金額を合計として拾ってしまいます。
+ * ★名前・件数・金額が別々の行に出ます（現金 / 2点 / 57,368円）。
+ * ★「売掛金 / 0点 / 円」のように **0が落ちる**ことがありました。
+ *   件数が 0点 なら金額も 0円 です。紙がそう言っているので、
+ *   当てずっぽうではありません。
  */
-function seisanSections(lines) {
+function seisanPayRows(lines, から) {
   const out = {};
-  let いま = null;
-  for (let i = 0; i < lines.length; i++) {
-    const m = seisanMarkOf(lines[i]);
-    if (m) { いま = m; if (!out[m]) out[m] = []; continue; }
-    if (いま) out[いま].push(lines[i]);
+  const 当たる = (line) => {
+    const p = cashPlain(line);
+    for (const f of SEISAN_PAY) {
+      if (f.skip.some((ng) => p.includes(cashPlain(ng)))) continue;
+      if (f.hit.some((h) => p.includes(cashPlain(h)))) return f;
+    }
+    return null;
+  };
+  for (let i = から; i < lines.length; i++) {
+    const f = 当たる(lines[i]);
+    if (!f || out[f.key] !== undefined) continue;
+    const ここ = seisanMoneyOf(lines[i]);
+    if (ここ !== null) { out[f.key] = ここ; continue; }
+    let 件数 = null;
+    for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
+      if (当たる(lines[j])) break;
+      const c = /^[(]?\s*(\d+)\s*点[)]?$/.exec(cashNormalize(lines[j]).trim());
+      if (c) { 件数 = Number(c[1]); continue; }
+      const val = seisanMoneyOf(lines[j]);
+      if (val !== null) { out[f.key] = val; break; }
+    }
+    if (out[f.key] === undefined && 件数 === 0) out[f.key] = 0;
   }
   return out;
 }
 
 /**
- * その節から「名前 → 金額」を読みます
+ * 明細（クレジット・その他支払）を読みます
  *
- *   ① 名前と同じ行に金額があれば、それ
- *   ② 無ければ、次の行から（次の名前に当たる手前まで）
- *   ③ どちらでも取れないときは、名前だけが並んだあとに
- *      金額がまとめて出る形とみなし、順番で対応づけます
+ * ★実物のOCRはこうでした。**見出しが名前と金額のあいだに入りこみます。**
+ *
+ *     [ク  下明細]          ← 見出しが大破
+ *     Uberク沙下            ← 名前
+ *     死下,10·QUICPay       ← 名前
+ *     [老の他支払明細]      ← ここに割りこむ
+ *     1点 / 4.740m / 15,862円 / 電子▽一 / 1点 / 16,764円
+ *
+ *   節で切ると、名前と金額が別の節に分かれてしまいます。
+ *   そこで**節を見ず、支払内訳の下を丸ごと見て**、出てきた順に結びます。
+ *
+ * ★順番で結ぶのは危ういので、**必ず紙の合計で検算します**。
+ *   合わなければ使いません。
  */
-function seisanPairs(行, 名前たち) {
+function seisanDetailRows(lines, から) {
+  const 名前 = [];
+  const 金額 = [];
   const 当たる = (line) => {
     const p = cashPlain(line);
-    for (const f of 名前たち) {
+    for (const f of SEISAN_CREDIT.concat(SEISAN_OTHER)) {
       if (f.skip && f.skip.some((ng) => p.includes(cashPlain(ng)))) continue;
       if (f.hit.some((h) => p.includes(cashPlain(h)))) return f;
     }
     return null;
   };
-
-  const out = {};
-  const 名の順 = [];
-  const 金の順 = [];
-
-  for (let i = 0; i < 行.length; i++) {
-    const f = 当たる(行[i]);
-    const 金 = cashMarkedOf(行[i]);
-    if (f) {
-      名の順.push(f.key);
-      // ① 同じ行
-      if (金 !== null) { if (out[f.key] === undefined) out[f.key] = 金; continue; }
-      // ② 次の行から（次の名前の手前まで）
-      for (let j = i + 1; j < Math.min(i + 4, 行.length); j++) {
-        if (当たる(行[j])) break;
-        const v = cashMarkedOf(行[j]);
-        if (v !== null) { if (out[f.key] === undefined) out[f.key] = v; break; }
-      }
-      continue;
-    }
-    if (金 !== null) 金の順.push(金);
+  for (let i = から; i < lines.length; i++) {
+    const f = 当たる(lines[i]);
+    const 金 = seisanMoneyOf(lines[i]);
+    if (f) { 名前.push(f.key); if (金 !== null) 金額.push(金); continue; }
+    if (金 !== null) 金額.push(金);
   }
-
-  // ③ 名前だけ並んで、金額が後からまとめて出た形
-  if (名の順.length >= 2 && 名の順.every((k) => out[k] === undefined)
-      && 金の順.length === 名の順.length) {
-    名の順.forEach((k, n) => { out[k] = 金の順[n]; });
+  const out = {};
+  if (名前.length && 名前.length === 金額.length) {
+    名前.forEach((k, n) => { out[k] = 金額[n]; });
   }
   return out;
 }
 
-/** 精算レポートで読む項目 */
 const SEISAN_URIAGE = [
   { key: 'gross', hit: ['総売上'], skip: [] },
   { key: 'net', hit: ['純売上'], skip: [] },
@@ -1914,50 +1949,76 @@ const SEISAN_OTHER = [
  */
 function parseSeisan(text) {
   const lines = String(text || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  const 節 = seisanSections(lines);
   const v = {};
-  const 入れる = (o) => { Object.keys(o).forEach((k) => { if (o[k] !== undefined) v[k] = o[k]; }); };
 
-  入れる(seisanPairs(節.uriage || lines, SEISAN_URIAGE));
-  入れる(seisanPairs(節.shiharai || [], SEISAN_PAY));
-  入れる(seisanPairs(節.credit || [], SEISAN_CREDIT));
-  入れる(seisanPairs(節.other || [], SEISAN_OTHER));
-
-  // 客数は「組数・客数  5組  21人」。**人**の方を取ります（組ではありません）
-  for (const line of (節.uriage || lines)) {
-    const p = cashPlain(line);
-    if (!p.includes('客数')) continue;
-    const 人 = journalUnitOf(line, '人');
-    if (人 !== null) { v.guests = 人; break; }
+  // 支払内訳がどこから始まるか。ここから下が「支払の話」です
+  let 支払から = -1;
+  for (let i = 0; i < lines.length && 支払から < 0; i++) {
+    if (cashPlain(lines[i]).includes('支払内訳')) 支払から = i;
   }
-  // 別の行に分かれていたときは、少し下まで探します
-  if (v.guests === undefined) {
-    const 元 = 節.uriage || lines;
-    for (let i = 0; i < 元.length; i++) {
-      if (!cashPlain(元[i]).includes('客数')) continue;
-      for (let j = i; j < Math.min(i + 4, 元.length); j++) {
-        const 人 = journalUnitOf(元[j], '人');
-        if (人 !== null) { v.guests = 人; break; }
-      }
-      break;
+  if (支払から < 0) {
+    return { v, checks: [], fixed: [], sure: {}, cut: false, ok: false,
+      missing: ['支払内訳'], why: '支払内訳の欄が見つかりません' };
+  }
+
+  // ① 支払内訳の4つ
+  Object.assign(v, seisanPayRows(lines, 支払から));
+
+  // ② 明細。★節を見ず、支払内訳の下を丸ごと見て、順に結びます
+  let 明細から = 支払から;
+  for (let i = 支払から; i < lines.length; i++) {
+    if (cashPlain(lines[i]).includes('売掛')) { 明細から = i + 1; break; }
+  }
+  Object.assign(v, seisanDetailRows(lines, 明細から));
+
+  /* ③ 総売上・純売上
+     ★OCRで「総売上」の総が落ち、「純売上」が「純亮上」になっていました。
+       字が当てにならないので、**売上の欄に出る最初の2つの金額**を使います
+       （紙は必ずこの順に出ます）。取りちがえても、下の検算で捕まります。 */
+  const 売上まで = [];
+  for (let i = 0; i < 支払から; i++) {
+    const p = cashPlain(lines[i]);
+    if (/オーダ|才一夕|内税|組数|客数|単価|値引|割引|明細/.test(p)) break;
+    const m = seisanMoneyOf(lines[i]);
+    if (m !== null) 売上まで.push(m);
+  }
+  if (売上まで.length >= 2) { v.gross = 売上まで[0]; v.net = 売上まで[1]; }
+  else if (売上まで.length === 1) { v.gross = 売上まで[0]; }
+
+  /* ④ 客数。「組数・客数  5組  21人」の**人**の方 */
+  for (let i = 0; i < 支払から; i++) {
+    if (!/客数/.test(cashPlain(lines[i]))) continue;
+    for (let j = i; j < Math.min(i + 4, 支払から); j++) {
+      const 人 = journalUnitOf(lines[j], '人');
+      if (人 !== null) { v.guests = 人; break; }
     }
+    break;
   }
-  // 客単価（検算に使います。組単価・点単価とまちがえないように）
-  for (const line of (節.uriage || lines)) {
-    const p = cashPlain(line);
-    if (!p.includes('客単価') || p.includes('組単価') || p.includes('点単価')) continue;
-    const m = cashMarkedOf(line);
-    if (m !== null) { v.per = m; break; }
+
+  /* ⑤ 客単価（組単価・点単価とまちがえないように） */
+  for (let i = 0; i < 支払から; i++) {
+    if (!cashPlain(lines[i]).includes('客単価')) continue;
+    for (let j = i; j < Math.min(i + 3, 支払から); j++) {
+      const m = seisanMoneyOf(lines[j]);
+      if (m !== null) { v.per = m; break; }
+    }
+    break;
   }
-  // 内税（純売上の検算に使います）。「(内税 8%対象 …)」の次の行に税額が出ます
+
+  /* ⑥ 内税（純売上の検算に使います）
+     ★紙は「対象額 → 件数 → 税額」の順に出ます。
+       対象額を飛ばすため、**件数の行を通り過ぎてから**拾います。 */
   const 税 = [];
-  const 元2 = 節.uriage || lines;
-  for (let i = 0; i < 元2.length; i++) {
-    if (!/内税/.test(cashPlain(元2[i]))) continue;
-    for (let j = i + 1; j < Math.min(i + 3, 元2.length); j++) {
-      if (/内税/.test(cashPlain(元2[j]))) break;
-      const m = cashMarkedOf(元2[j]);
-      if (m !== null) { 税.push(m); break; }
+  for (let i = 0; i < 支払から; i++) {
+    if (!/内税/.test(cashPlain(lines[i]))) continue;
+    let 点を見た = false;
+    for (let j = i + 1; j < Math.min(i + 6, 支払から); j++) {
+      if (/内税/.test(cashPlain(lines[j]))) break;
+      if (/^[(]?\s*\d+\s*点[)]?$/.test(cashNormalize(lines[j]).trim())) { 点を見た = true; continue; }
+      const m = seisanMoneyOf(lines[j]);
+      if (m === null) continue;
+      if (!点を見た) continue;          // これは対象額です。飛ばします
+      税.push(m); break;
     }
   }
   if (税.length) v.tax = 税.reduce((a, b) => a + b, 0);
@@ -2113,7 +2174,55 @@ function nippouTestFor(storeId) {
 /** 日報に5つを自動で入れられる店舗（ジャーナルの様式が同じもの）
  *  ★こじゃれは精算レポートという別の様式で、まだ読めません。
  *    読み取り全文をもらえれば足せます。おいでんテラスも未確認です。 */
-const JOURNAL_STORES = ['sumimaro', 'chacoru', 'baguru', 'popo'];
+const JOURNAL_STORES = ['sumimaro', 'chacoru', 'baguru', 'popo', 'kojare'];
+
+/**
+ * 店舗ごとの紙の様式
+ *
+ *   nikkei … 日計レポート（炭まろ・ちゃこる・バグる・popo）
+ *   seisan … 精算レポート（こじゃれ）
+ *
+ * ★おいでんテラスは未確認なので、まだ入れていません。
+ */
+const JOURNAL_FORMAT = { kojare: 'seisan' };
+function journalFormatOf(storeId) { return JOURNAL_FORMAT[storeId] || 'nikkei'; }
+
+/**
+ * 紙の様式に合わせて読み取ります
+ *
+ * ★呼ぶ側（js/app.js）は、どちらの紙かを知らなくて済みます。
+ */
+function parseJournalFor(storeId, text) {
+  return journalFormatOf(storeId) === 'seisan' ? parseSeisan(text) : parseJournal(text);
+}
+
+/**
+ * こじゃれ（精算レポート）の、日報への入れ方
+ *
+ * ★4店舗とちがい、**引き算をしません。**
+ *   4店舗の紙は「クレジット」に出前館やウーバーが混ざっているので引きますが、
+ *   こじゃれの紙は**最初から分けて出ている**ので、そのまま入れます。
+ *   引くと二重に引いてしまいます。
+ *
+ *     B3  現金売上        ← 現金
+ *     B4  クレジット      ← クレジット・iD・QUICPay（Uber と出前館を除いた分）
+ *     B6  出前館クレジット ← 出前館クレジット（無い日は 0）
+ *     B10 電子マネー      ← 電子マネー
+ *     B12 ウーバークレジット ← Uberクレジット
+ *     B16 売掛金          ← 売掛金
+ *     B26 純売上          ← 純売上
+ *     B30 当日客数        ← 客数（人）
+ */
+const SEISAN_TO_NIPPOU = {
+  cash: 'cash',            // 現金        → 現金売上
+  cardId: 'credit',        // iD・QUICPay → クレジット
+  demaeCard: 'demaeCard',  // 出前館クレジット
+  emoney: 'emoney',        // 電子マネー
+  uberCard: 'uberCard',    // Uberクレジット
+  kake: 'kake',            // 売掛金
+  net: 'net',              // 純売上
+  guests: 'guests',        // 当日客数
+};
 
 /** 日報のA列にある項目名。★行番号ではなく、この名前で行を探します
  *  （店舗によって行がずれています。popoは商品券の行が1つ多く、
@@ -2130,6 +2239,7 @@ const NIPPOU_LABELS = {
   uberCash:  'ウーバー現金',
   uberCard:  'ウーバークレジット',
   rocket:    'ロケットナウ',
+  kake:      '売掛金',            // ★こじゃれの精算レポートで使います（B16）
 };
 
 /* ------------------------------------------------------------
