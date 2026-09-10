@@ -2141,11 +2141,34 @@ function cashSureValues() {
   return Object.keys(out).length ? out : null;
 }
 
+/**
+ * 表に出す行
+ *
+ * ★こじゃれ（精算レポート）は、紙が最初から内わけを持っているので
+ *   **8つ**入ります。5つしか出さないと、Uberや売掛金が入ったのか
+ *   画面で確かめられません（実際に「表に出ていない」と言われました）。
+ * ★ほかの4店舗は、これまでどおり5つです。
+ */
+function cashNippouRowsFor(storeId) {
+  if (journalFormatOf(storeId) !== 'seisan') return CASH_NIPPOU_ROWS;
+  return [
+    { key: 'cash', name: '現金売上', もと: 'cash' },
+    { key: 'credit', name: 'クレジット', もと: 'cardId' },
+    { key: 'demaeCard', name: '出前館クレジット', もと: 'demaeCard' },
+    { key: 'emoney', name: '電子マネー', もと: 'emoney' },
+    { key: 'uberCard', name: 'ウーバークレジット', もと: 'uberCard' },
+    { key: 'kake', name: '売掛金', もと: 'kake' },
+    { key: 'net', name: '純売上', もと: 'net' },
+    { key: 'guests', name: '当日客数', もと: 'guests', plain: true },
+  ];
+}
+
 function renderNippouTable() {
   const j = cashEdit.j || {};
   const n = nippouValues(j, cashEdit.m);
+  const seisan = journalFormatOf(state.storeId) === 'seisan';
   el.cashNippou.innerHTML = '';
-  CASH_NIPPOU_ROWS.forEach((row) => {
+  cashNippouRowsFor(state.storeId).forEach((row) => {
     const tr = document.createElement('tr');
     const th = document.createElement('th');
     th.textContent = row.name;
@@ -2154,14 +2177,17 @@ function renderNippouTable() {
     const to = document.createElement('td');
     to.className = 'is-to';
 
-    const raw = j[row.key];
-    const cut = (NIPPOU_MINUS[row.key] || []).reduce((a, k) => a + cashMinusOr0(cashEdit.m[k]), 0);
+    // ★こじゃれは紙から読んだ数をそのまま入れます（引き算をしません）
+    const もと = seisan ? row.もと : row.key;
+    const raw = j[もと];
+    const cut = seisan ? 0
+      : (NIPPOU_MINUS[row.key] || []).reduce((a, k) => a + cashMinusOr0(cashEdit.m[k]), 0);
     const fmt = (v) => (v === null || v === undefined ? '—'
       : row.plain ? String(v) : Number(v).toLocaleString('ja-JP'));
-    const usable = !!(cashEdit.sure || {})[row.key];
+    const usable = !!(cashEdit.sure || {})[もと];
     from.textContent = fmt(raw);
     minus.textContent = cut ? `− ${cut.toLocaleString('ja-JP')}` : '';
-    to.textContent = usable ? fmt(n[row.key]) : '—';
+    to.textContent = usable ? fmt(seisan ? raw : n[row.key]) : '—';
     if (!usable) to.classList.add('is-ng');
     tr.append(th, from, minus, to);
     el.cashNippou.appendChild(tr);

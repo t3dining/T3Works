@@ -1870,6 +1870,55 @@ function seisanPayRows(lines, から) {
     }
     if (out[f.key] === undefined && 件数 === 0) out[f.key] = 0;
   }
+
+  /* ★名前が先にまとまって並び、そのあとに件数と金額が続く形
+       現金 / クレジット / その他支払 / 売掛金
+       2210 / 点点点点                        ← 崩れた残骸。飛ばします
+       2点 / 57,368円 / 2点 / 20,602円 / 1点 / 16,764円 / 0点 / 円
+     こじゃれの紙で実際に出ました（2026-09-10）。
+     ★このときは「円の付いた金額」だけを数えます。
+       上の「2210」のような裸の数字は、件数がくっついたゴミだからです。
+     ★「0点」のあとに金額が無ければ 0円 です（紙がそう言っています）。 */
+  const まだ = SEISAN_PAY.filter((f) => out[f.key] === undefined).map((f) => f.key);
+  if (まだ.length === SEISAN_PAY.length) {
+    const 名の順 = [];
+    let 最後の名 = -1;
+    for (let i = から; i < lines.length; i++) {
+      const p = cashPlain(lines[i]);
+      if (/明細/.test(p)) break;
+      for (const f of SEISAN_PAY) {
+        if (f.skip.some((ng) => p.includes(cashPlain(ng)))) continue;
+        if (f.hit.some((h) => p.includes(cashPlain(h)))) {
+          if (名の順.indexOf(f.key) < 0) { 名の順.push(f.key); 最後の名 = i; }
+          break;
+        }
+      }
+    }
+    if (名の順.length >= 2 && 最後の名 >= 0) {
+      let n = 0;
+      let 件数 = null;
+      for (let i = 最後の名 + 1; i < lines.length && n < 名の順.length; i++) {
+        const raw = cashNormalize(lines[i]).trim();
+        if (/明細/.test(cashPlain(lines[i]))) break;
+        const c = /^[(]?\s*(\d+)\s*点[)]?$/.exec(raw);
+        if (c) {
+          // 前の件数が0のまま金額が来なかったら、その名前は0円です
+          if (件数 === 0) { out[名の順[n]] = 0; n += 1; }
+          件数 = Number(c[1]);
+          continue;
+        }
+        // ★円・¥・m の付いた金額だけを数えます（裸の数字は数えません）
+        if (!/[円¥m]/.test(raw)) continue;
+        const v2 = seisanMoneyOf(lines[i]);
+        if (v2 === null) {
+          if (件数 === 0) { out[名の順[n]] = 0; n += 1; 件数 = null; }
+          continue;
+        }
+        out[名の順[n]] = v2; n += 1; 件数 = null;
+      }
+      if (件数 === 0 && n < 名の順.length) out[名の順[n]] = 0;
+    }
+  }
   return out;
 }
 
@@ -1965,9 +2014,22 @@ function parseSeisan(text) {
   Object.assign(v, seisanPayRows(lines, 支払から));
 
   // ② 明細。★節を見ず、支払内訳の下を丸ごと見て、順に結びます
-  let 明細から = 支払から;
-  for (let i = 支払から; i < lines.length; i++) {
-    if (cashPlain(lines[i]).includes('売掛')) { 明細から = i + 1; break; }
+  /* ★「明細」の見出しから探します。
+       はじめ「売掛金の次の行から」としていましたが、
+       **売掛金の名前が支払内訳の上の方にまとまって出る紙**があり、
+       支払内訳の金額（57,368 など）を明細の金額として拾っていました（2026-09-10）。
+       見出しは「[ク以下明細]」のように大破しますが、**「明細」の2文字は残ります。**
+       それも無ければ、支払内訳の最後の金額より下を見ます。 */
+  let 明細から = -1;
+  for (let i = 支払から + 1; i < lines.length; i++) {
+    if (/明細/.test(cashPlain(lines[i]))) { 明細から = i + 1; break; }
+  }
+  if (明細から < 0) {
+    // 見出しが無いときは、支払内訳の金額を読み終えたところから
+    明細から = 支払から;
+    for (let i = 支払から; i < lines.length; i++) {
+      if (seisanMoneyOf(lines[i]) !== null) 明細から = i + 1;
+    }
   }
   Object.assign(v, seisanDetailRows(lines, 明細から));
 
@@ -2008,18 +2070,25 @@ function parseSeisan(text) {
   /* ⑥ 内税（純売上の検算に使います）
      ★紙は「対象額 → 件数 → 税額」の順に出ます。
        対象額を飛ばすため、**件数の行を通り過ぎてから**拾います。 */
+  /* ★税額は、その欄に出てくる**最後の金額**です。
+       (内税8%対象 / 4,740円) ( / 1点 / 351円)   → 4,740 は対象額、351 が税額
+     はじめ「件数の行を通り過ぎてから拾う」としていましたが、
+     **値割引の行（0点／吧）が内税の欄に割りこんだ紙**があり、
+     対象額の 4,740 を税額として拾ってしまいました（2026-09-10）。
+     どちらの紙でも「最後の金額が税額」は変わらないので、そちらで取ります。
+     ★対象額しか無いときは読みません（対象額を税額と取りちがえないため）。 */
   const 税 = [];
   for (let i = 0; i < 支払から; i++) {
     if (!/内税/.test(cashPlain(lines[i]))) continue;
-    let 点を見た = false;
-    for (let j = i + 1; j < Math.min(i + 6, 支払から); j++) {
-      if (/内税/.test(cashPlain(lines[j]))) break;
-      if (/^[(]?\s*\d+\s*点[)]?$/.test(cashNormalize(lines[j]).trim())) { 点を見た = true; continue; }
+    const この欄 = [];
+    for (let j = i + 1; j < Math.min(i + 8, 支払から); j++) {
+      const p = cashPlain(lines[j]);
+      if (/内税|組数|客数|単価|明細|支払/.test(p)) break;
       const m = seisanMoneyOf(lines[j]);
-      if (m === null) continue;
-      if (!点を見た) continue;          // これは対象額です。飛ばします
-      税.push(m); break;
+      if (m !== null) この欄.push(m);
     }
+    // 対象額と税額の2つ以上あるときだけ。最後が税額です
+    if (この欄.length >= 2) 税.push(この欄[この欄.length - 1]);
   }
   if (税.length) v.tax = 税.reduce((a, b) => a + b, 0);
 
@@ -2914,6 +2983,7 @@ function trainTotal(storeId) {
  *    実際にそうなりました（`shiftStaff` `salesTargets` `shiftMemoTags`）。
  * ---------------------------------------------------------- */
 const ADMIN_SETTINGS = ['checklists', 'weeklies', 'anytimes', 'staffList', 'closedDows',
+  'staffAccounts',
   'salesTargets', 'shiftMemoTags'];
 // ★`shiftStaff`（シフトの名簿）は、2026-09-07 に**わざと外しました。**
 //   ko-dai さんの判断で、**各店長の端末から名簿を直せるようにする**ためです。

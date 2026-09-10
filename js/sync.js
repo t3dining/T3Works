@@ -389,7 +389,6 @@ const Sync = {
         drivers: Drivers._key,
         catchStaff: CatchStaff._key,
         shiftStaff: ShiftStaff._key,
-        staffAccounts: StaffAccounts._key,
         trainees: Trainees._key,
         trainings: Trainings._key,
         nippouFolders: NippouFolders._key,
@@ -398,6 +397,20 @@ const Sync = {
         closedDows: Closed._dowsKey,
         closedExceptions: Closed._exKey,
       };
+      /* ★社員のアカウント（番号）だけは、**マネージにしか入れません。**
+           番号は合言葉です。ふつうの設定と同じに配ると、**6店舗ぜんぶの端末に
+           全員分の合言葉の写しが置かれます。**
+           2026-09-10、ko-dai さんが登録した直後にこの形になっていました
+           （サーバーは設定を選ばずに全部返します）。
+           ★サーバー側でも止めます（gas/コード.gs）。ここは二重の押さえです。
+           ★現場の端末に残っている写しは、その場で消します。 */
+      if (window.T3_ADMIN_PAGE) {
+        if (settings.staffAccounts) {
+          localStorage.setItem(StaffAccounts._key, JSON.stringify(settings.staffAccounts));
+        }
+      } else {
+        localStorage.removeItem(StaffAccounts._key);
+      }
       Object.keys(設定の入れ先).forEach((n) => {
         if (settings[n]) localStorage.setItem(設定の入れ先[n], JSON.stringify(settings[n]));
       });
