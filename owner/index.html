@@ -73,6 +73,10 @@ body {
 }
 .hub-card__text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .hub-card__name { font-size: 21px; font-weight: 700; line-height: 1.2; }
+/* かっこの中は、途中で折り返させません。
+   「シフト提出（アルバイト画面）」は1行に入らないので、印を付けないと
+   「アルバ／イト画面」のように**言葉の途中で切れます** */
+.hub-card__name .kakko { white-space: nowrap; }
 .hub-card__sub { font-size: 13px; color: var(--text-sub); line-height: 1.4; }
 .hub-card__arrow { flex: 0 0 auto; font-size: 26px; color: var(--text-weak); line-height: 1; }
 
@@ -85,7 +89,7 @@ body {
   font-variant-numeric: tabular-nums;
 }
 </style>
-<meta name="app-version" content="af009bca">
+<meta name="app-version" content="93e46d84">
 </head>
 <body class="no-daytabs">
 
@@ -147,7 +151,7 @@ body {
       <a class="hub-card" href="../shift/" style="--card-color:#bf5480">
         <span class="hub-card__icon"><img src="../img/shift-icon-180.png?v=ab0bd671" alt=""></span>
         <span class="hub-card__text">
-          <span class="hub-card__name">バグる シフト提出</span>
+          <span class="hub-card__name">シフト提出<span class="kakko">（アルバイト画面）</span></span>
           <span class="hub-card__sub">アルバイトに配るページ（番号が要ります）</span>
         </span>
         <span class="hub-card__arrow" aria-hidden="true">›</span>
@@ -173,8 +177,8 @@ body {
     現場スタッフには <b>T3 Works</b>（末尾に何も付かないURL）を渡してください。<br>
     バグるのタブレットには <b>配達記録</b>（末尾が <b>/drive/</b> のURL）を
     直接ホーム画面に追加してください。<br>
-    アルバイトには <b>バグる シフト提出</b>（末尾が <b>/shift/</b> のURL）と、
-    マネージの「配る番号」を1人ずつ送ってください。
+    アルバイトには <b>シフト提出（アルバイト画面）</b>、つまり末尾が
+    <b>/shift/</b> のURLと、マネージの「配る番号」を1人ずつ送ってください。
   </p>
   <p class="hub__foot" id="hubFoot"></p>
 </main>
