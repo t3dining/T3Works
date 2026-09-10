@@ -9384,13 +9384,10 @@ function shiftShortCopyBox(rec) {
  *  「この日は誰が出しているか」を数えるのに何度も往復することになります）。
  */
 function openShiftWishes() {
-  // ★パソコン・タブレットでは、パネルを画面いっぱいに広げます（横スクロールを減らすため）。
-  //   広げるのは `css/style.css` の `.modal__panel--table`（本部）で、
-  //   700px 未満では効きません。**スマホの見え方は変わりません。**
-  //   `index.html` は本部のファイルなので、クラスはここから付けます
-  const panel = el.shiftWishModal.querySelector('.modal__panel');
-  if (panel) panel.classList.add('modal__panel--table');
-
+  // ★パソコン・タブレットでは、パネルが画面いっぱいに広がります
+  //   （`index.html` の `modal__panel--table` ＋ `css/style.css` の @media。どちらも本部）。
+  //   ここで classList.add もしていましたが、**同じことを2か所でやることになる**ので
+  //   外しました。付ける場所は index.html の1か所だけです（2026-09-10）
   const rec = shiftRec();
   const names = shiftBuildNames(state.storeId);
   const wishes = shiftWishes(rec);
