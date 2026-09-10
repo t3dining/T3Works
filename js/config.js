@@ -1980,7 +1980,18 @@ const SEISAN_CREDIT = [
   //   先に見ると Uber や出前館の行にも当たってしまいます
   { key: 'cardId', hit: ['QUICPay', 'QUIC', 'iD', 'ID'], skip: ['Uber', 'ウーバー', '出前'] },
 ];
+/**
+ * その他支払明細に出るもの
+ *
+ * ★1種類ではありません。実際に「ホットペッパー」だけの日がありました
+ *   （2026年8月3日）。食べログ・ぐるなびも出ます。
+ * ★電子マネーは**最後**に見ます。「電子」という短い手がかりを持つので、
+ *   先に見るとほかの行にも当たるおそれがあります。
+ */
 const SEISAN_OTHER = [
+  { key: 'recruit', hit: ['ホットペッパー', 'ホットペッパ', 'ホットペ', 'ペッパー'], skip: [] },
+  { key: 'gurunavi', hit: ['ぐるなび', 'グルナビ', 'ぐるな'], skip: [] },
+  { key: 'tabelog', hit: ['食べログ', '食ベログ', '食べロ', 'タベログ'], skip: [] },
   { key: 'emoney', hit: ['電子マネー', '電子マネ', '電子又', '電子'], skip: [] },
 ];
 
@@ -2102,12 +2113,10 @@ function parseSeisan(text) {
     v.creditAll = v.uberCard + v.cardId + (v.demaeCard || 0); fixed.push('クレジット');
     埋めた元.creditAll = ['uberCard', 'cardId'];
   }
-  if (!has('emoney') && has('other')) {
-    v.emoney = v.other; fixed.push('電子マネー'); 埋めた元.emoney = ['other'];
-  }
-  if (!has('other') && has('emoney')) {
-    v.other = v.emoney; fixed.push('その他支払'); 埋めた元.other = ['emoney'];
-  }
+  /* ★「電子マネー ← その他支払」という埋め方は**やめました**。
+       その他支払明細は1種類ではありません。ホットペッパーだけの日に、
+       その200円を電子マネーに入れてしまうところでした（2026-09-10）。
+       クレジット明細と同じく、**残りがちょうど 0 のときだけ 0円**にします。 */
   if (!has('net') && has('gross') && has('tax')) {
     v.net = v.gross - v.tax; fixed.push('純売上'); 埋めた元.net = ['gross', 'tax'];
   }
@@ -2118,14 +2127,27 @@ function parseSeisan(text) {
       埋めた元.kake = ['gross', 'cash', 'creditAll', 'other'];
     }
   }
-  // 出前館クレジットは、無い日があります（1枚目の紙には出ませんでした）。
-  // ★差額が 0 のときだけ「その日は無かった」とみなします。
-  //   差額をそのまま入れると、**ほかの金額の読みまちがいを吸い込んで**
-  //   合計が合ってしまいます（試験で Uber を 4,740→4,714 に崩したら、
-  //   差の26円が出前館クレジットになり、検算が通ってしまいました）。
-  if (!has('demaeCard') && has('creditAll') && has('uberCard') && has('cardId')) {
-    if (v.creditAll - v.uberCard - v.cardId === 0) v.demaeCard = 0;
-  }
+  /* クレジット明細に出なかったものは、0円の日です。
+     ★こじゃれの紙は **0円の行を出しません**（Uberクレジット・出前館クレジット・
+       電子マネーとも。ko-dai さんに教わりました・2026-09-10）。
+       Uberが無い日に「読めなかった」で止まっていました。
+
+     ★入れてよいのは「**残りがちょうど 0 のとき**」だけです。
+       残りをそのまま入れると、**ほかの金額の読みまちがいを吸い込んで**
+       合計が合ってしまいます（試験で Uber を 4,740→4,714 に崩したら、
+       差の26円が出前館クレジットになり、検算が通ってしまいました）。
+       残りが 0 ということ自体が、読めた金額が正しい証しになります。 */
+  const 埋める = (合計キー, キーたち) => {
+    if (!has(合計キー)) return;
+    const 読めた = キーたち.filter(has);
+    const 読めない = キーたち.filter((k) => !has(k));
+    if (!読めない.length) return;
+    const 残り = v[合計キー] - 読めた.reduce((a, k) => a + v[k], 0);
+    // 読めたものが1つも無くても、合計が0なら全部0円です
+    if (残り === 0) 読めない.forEach((k) => { v[k] = 0; });
+  };
+  埋める('creditAll', ['uberCard', 'cardId', 'demaeCard']);
+  埋める('other', ['recruit', 'gurunavi', 'tabelog', 'emoney']);
 
   /* ---- 検算 ---- */
   const checks = [];
@@ -2146,8 +2168,11 @@ function parseSeisan(text) {
       v.uberCard + v.cardId + (v.demaeCard || 0), v.creditAll,
       ['creditAll', 'uberCard', 'cardId', 'demaeCard']);
   }
-  if (has('other') && has('emoney') && !埋めた元.emoney && !埋めた元.other) {
-    add('その他支払明細の合計 ＝ その他支払', v.emoney, v.other, ['other', 'emoney']);
+  const その他キー = ['recruit', 'gurunavi', 'tabelog', 'emoney'];
+  if (has('other') && その他キー.some(has)) {
+    add('その他支払明細の合計 ＝ その他支払',
+      その他キー.reduce((a, k) => a + (v[k] || 0), 0), v.other,
+      ['other'].concat(その他キー));
   }
   if (has('gross') && has('tax') && has('net') && !埋めた元.net) {
     add('総売上 − 内税 ＝ 純売上', v.gross - v.tax, v.net, ['gross', 'tax', 'net']);
@@ -2189,6 +2214,7 @@ function parseSeisan(text) {
 
 /** 画面に出す名前 */
 const SEISAN_NAMES = {
+  recruit: 'ホットペッパー', gurunavi: 'ぐるなび', tabelog: '食べログ',
   cash: '現金', creditAll: 'クレジット', cardId: 'クレジット・iD・QUICPay',
   uberCard: 'Uberクレジット', demaeCard: '出前館クレジット',
   other: 'その他支払', emoney: '電子マネー', kake: '売掛金',
@@ -2289,6 +2315,9 @@ const SEISAN_TO_NIPPOU = {
   emoney: 'emoney',        // 電子マネー
   uberCard: 'uberCard',    // Uberクレジット
   kake: 'kake',            // 売掛金
+  recruit: 'recruit',      // ホットペッパー → リクルートポイント（B7）
+  gurunavi: 'gurunavi',    // ぐるなび       → ぐるなびポイント（B8）
+  tabelog: 'tabelog',      // 食べログ       → 食べログポイント（B9）
   net: 'net',              // 純売上
   guests: 'guests',        // 当日客数
 };
@@ -2309,6 +2338,10 @@ const NIPPOU_LABELS = {
   uberCard:  'ウーバークレジット',
   rocket:    'ロケットナウ',
   kake:      '売掛金',            // ★こじゃれの精算レポートで使います（B16）
+  // ★その他支払明細に出るもの（こじゃれ）。popo の日報では 7・8・9 行目でした
+  recruit:   'リクルートポイント',   // ホットペッパー（B7）
+  gurunavi:  'ぐるなびポイント',     // ぐるなび（B8）
+  tabelog:   '食べログポイント',     // 食べログ（B9）
 };
 
 /* ------------------------------------------------------------
@@ -2983,7 +3016,7 @@ function trainTotal(storeId) {
  *    実際にそうなりました（`shiftStaff` `salesTargets` `shiftMemoTags`）。
  * ---------------------------------------------------------- */
 const ADMIN_SETTINGS = ['checklists', 'weeklies', 'anytimes', 'staffList', 'closedDows',
-  'staffAccounts',
+  'staffAccounts', 'staffCodeRequired',
   'salesTargets', 'shiftMemoTags'];
 // ★`shiftStaff`（シフトの名簿）は、2026-09-07 に**わざと外しました。**
 //   ko-dai さんの判断で、**各店長の端末から名簿を直せるようにする**ためです。
