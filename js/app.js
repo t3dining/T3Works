@@ -8865,6 +8865,67 @@ function closeShiftPick() {
   shiftPickAt = null;
 }
 
+/**
+ * 直すときに出す「その人が、その日をどう出したか」
+ *
+ * ★名前を押したのに、こちらで入れた時刻しか見えないと
+ *   「希望どおりなのか、ずらしたのか」が分かりませんでした（2026-09-10）。
+ *   出してもらった枠・時刻・F・連絡と、**いつ出したか**をここに出します。
+ * ★提出していない人（こちらで入れた人）も、そう分かるようにします。
+ *   黙って何も出さないと、「読み込めていないのか」と迷います。
+ * ★見た目は、いまある `wish-chip` と `shift-said` を借ります
+ *   （`css/style.css` は本部のファイルなので、新しい見た目は足しません）。
+ */
+function shiftPickWishBox(dateStr, name) {
+  const box = document.createElement('div');
+  box.id = 'shiftPickWishBox';
+  if (!name) return box;
+
+  const w = shiftWishes(shiftRec()).find((x) => x.name === name);
+  const list = (w && w.days[dateStr]) || [];
+
+  const line = document.createElement('p');
+  line.className = 'modal__note';
+  if (!w || !w.sentAt) {
+    // 提出そのものが無い人。こちらで入れた人です
+    line.textContent = `${name}さんは、この半月をまだ提出していません（こちらで入れた人です）`;
+    box.appendChild(line);
+    return box;
+  }
+  const 出した日時 = new Date(w.sentAt);
+  const いつ = Number.isNaN(出した日時.getTime())
+    ? '' : `　提出 ${出した日時.toLocaleString('ja-JP')}`;
+  line.textContent = list.length
+    ? `${name}さんが出してくれた希望${いつ}`
+    : `${name}さんは、この日は希望を出していません（希望なしで入れています）${いつ}`;
+  box.appendChild(line);
+
+  if (list.length) {
+    const chips = document.createElement('p');
+    chips.className = 'wish-legend__slots';
+    list.forEach((e) => {
+      const slot = getShiftSlot(state.storeId, e.s);
+      const chip = document.createElement('span');
+      chip.className = `wish-chip wish-chip--${e.s}`;
+      const t = e.t !== '' && e.t !== undefined ? shiftTimeText(e.t) : '';
+      const en = e.e !== '' && e.e !== undefined ? shiftTimeText(e.e) : '';
+      // F は枠の名前が出ないので、字で出します
+      const 名 = e.s === SHIFT_FULL_ID ? 'F（通し）' : (slot ? slot.name : e.s);
+      chip.textContent = 名 + (t ? ` ${t}${en ? '〜' + en : ''}` : '');
+      chips.appendChild(chip);
+    });
+    box.appendChild(chips);
+  }
+
+  if (w.notes[dateStr]) {
+    const said = document.createElement('p');
+    said.className = 'shift-said';
+    said.textContent = `連絡「${w.notes[dateStr]}」`;
+    box.appendChild(said);
+  }
+  return box;
+}
+
 function renderShiftPick() {
   if (!shiftPickAt) return;
   const { dateStr, slotId, index } = shiftPickAt;
@@ -8872,6 +8933,15 @@ function renderShiftPick() {
   const rec = shiftRec();
   const day = shiftDayOf(rec, dateStr);
   const entry = index === null ? null : day[slotId][index];
+
+  /* その人が、その日をどう出したか（直すときだけ） */
+  // ★index.html は本部のファイルなので、置き場所を書き足さずに
+  //   日付の行のうしろへ差し込みます。開き直すたびに入れかえます
+  const 前の = document.getElementById('shiftPickWishBox');
+  if (前の) 前の.remove();
+  if (entry) {
+    el.shiftPickWhen.insertAdjacentElement('afterend', shiftPickWishBox(dateStr, entry.n));
+  }
 
   /* 出勤時刻 */
   // ★時刻を入れる店舗（popo）では、枠ごとの時刻ではなく
@@ -9273,32 +9343,60 @@ function openShiftWishes() {
       const mine = shiftPlacedOn(rec, d, name);
       const list = (w && w.days[d]) || [];
 
-      // 実際に入っている分。こちらが本物なので、濃い色で出します
-      mine.forEach((e) => {
-        const slot = getShiftSlot(state.storeId, e.slot);
-        const chip = document.createElement('span');
-        // F（通し）は、ランチの枠にいても F の色で出します
-        const kind = e.f ? SHIFT_FULL_ID : e.slot;
-        // 希望を出していない日に入れた人は、印を付けます
-        chip.className = `wish-chip wish-chip--${kind}` + (list.length ? '' : ' is-extra');
-        chip.textContent = e.t ? shiftTimeText(e.t) : slot.name;
-        chip.title = `${e.f ? 'F（通し）' : slot.name}${e.t ? ' ' + shiftTimeText(e.t) : ''}`
-          + (list.length ? '（入れました）' : '（希望なしで入れました）');
-        td.appendChild(chip);
+      // ★出したものと入れたものを、**枠ごとに突き合わせて**から出します。
+      //   前は「1人でも入れたら、出した分は出さない」でした。そのため
+      //   ランチだけ入れた日に、ディナーの希望が消えて見えていました。
+      //   出方は4とおりあります（→ 下の「見かた」）：
+      //     ① 出して、入れた（同じ時刻）      … 濃い　18:00
+      //     ② 出して、入れた（時刻が違う）    … 濃い　17:00→18:00
+      //     ③ 出したが、まだ入れていない      … 薄い　17:00
+      //     ④ 出していないのに、入れた        … 濃い　＊18:00
+      const 組 = [];
+      shiftSlotsOf(state.storeId).forEach((sl) => {
+        const 入れた = mine.filter((e) => e.slot === sl.id);
+        const 出した = list.filter((e) => shiftSlotFor(e.s) === sl.id);
+        if (入れた.length) {
+          入れた.forEach((e, i) => 組.push({ 入: e, 出: 出した[i] || 出した[0] || null }));
+        } else {
+          出した.forEach((e) => 組.push({ 入: null, 出: e }));
+        }
       });
 
-      // 出したのに入っていない日。薄く出して、拾い残しが見えるようにします
-      if (!mine.length) {
-        list.forEach((e) => {
-          const slot = getShiftSlot(state.storeId, e.s);
+      組.forEach(({ 入, 出 }) => {
+        const chip = document.createElement('span');
+        if (入) {
+          const slot = getShiftSlot(state.storeId, 入.slot);
+          // F（通し）は、ランチの枠にいても F の色で出します
+          const kind = 入.f ? SHIFT_FULL_ID : 入.slot;
+          const 入れた時刻 = 入.t !== '' && 入.t !== undefined ? shiftTimeText(入.t) : '';
+          const 出した時刻 = 出 && 出.t !== '' && 出.t !== undefined ? shiftTimeText(出.t) : '';
+          // ★希望なしで入れた人は、**字でも**印を付けます。
+          //   ふちの線（is-extra）だけだと、濃い色のチップの上では
+          //   ほとんど見えませんでした（2026-09-10、ko-dai の指摘）
+          chip.className = `wish-chip wish-chip--${kind}` + (出 ? '' : ' is-extra');
+          if (出 && 出した時刻 && 入れた時刻 && 出した時刻 !== 入れた時刻) {
+            // ★出した時刻と入れた時刻の**両方**を出します。
+            //   片方だけだと「希望どおりなのか、ずらしたのか」が分かりません
+            chip.textContent = `${出した時刻}→${入れた時刻}`;
+            chip.title = `${入.f ? 'F（通し）' : slot ? slot.name : ''}`
+              + `　出してもらった時刻 ${出した時刻} → シフトに入れた時刻 ${入れた時刻}`;
+          } else {
+            chip.textContent = (出 ? '' : '＊')
+              + (入れた時刻 || (slot ? slot.name : ''));
+            chip.title = `${入.f ? 'F（通し）' : slot ? slot.name : ''}`
+              + (入れた時刻 ? ' ' + 入れた時刻 : '')
+              + (出 ? '（出してもらったとおりに入れました）' : '（希望なしで入れました）');
+          }
+        } else {
+          const slot = getShiftSlot(state.storeId, 出.s);
           if (!slot) return;
-          const chip = document.createElement('span');
-          chip.className = `wish-chip wish-chip--${e.s} is-yet`;
-          chip.textContent = e.t ? shiftTimeText(e.t) : slot.name;
-          chip.title = `${slot.name}${e.t ? ' ' + shiftTimeText(e.t) : ''}（まだ入れていません）`;
-          td.appendChild(chip);
-        });
-      }
+          const 時刻 = 出.t !== '' && 出.t !== undefined ? shiftTimeText(出.t) : '';
+          chip.className = `wish-chip wish-chip--${出.s} is-yet`;
+          chip.textContent = 時刻 || slot.name;
+          chip.title = `${slot.name}${時刻 ? ' ' + 時刻 : ''}（出してもらいましたが、まだ入れていません）`;
+        }
+        td.appendChild(chip);
+      });
 
       if (w && w.notes[d]) {
         const note = document.createElement('span');
@@ -9327,9 +9425,12 @@ function openShiftWishes() {
       .map((sl) => `<span class="wish-chip wish-chip--${sl.id}">${sl.name}</span>`).join('')
     + '</p>'
     + [
-      ['<span class="wish-chip wish-chip--lunch">濃い</span>', 'シフトに入れた'],
-      ['<span class="wish-chip wish-chip--lunch is-yet">薄い</span>', '出したが入れていない'],
-      ['<span class="wish-chip wish-chip--lunch is-extra">印</span>', '希望なしで入れた'],
+      ['<span class="wish-chip wish-chip--lunch">濃い</span>',
+        'シフトに入れた。出してもらった時刻と違うときは「17:00→18:00」と両方出ます'],
+      ['<span class="wish-chip wish-chip--lunch is-extra">＊</span>',
+        '希望なしで入れた（時刻の頭に ＊ が付きます）'],
+      ['<span class="wish-chip wish-chip--lunch is-yet">薄い</span>',
+        '出してもらったが、まだ入れていない'],
       ['<span class="wish-note">連</span>', '連絡あり（押すと中身が出ます）'],
     ].map(([mark, text]) => `<p class="wish-legend__row">${mark}<span>${text}</span></p>`).join('');
   el.shiftWishList.appendChild(legend);
