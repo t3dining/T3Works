@@ -3423,7 +3423,6 @@ const SHIFT_SHORT_MAX = 9;
 /* -------- 足りない日を、LINEに送る文にする --------
  *
  * ★ko-dai さんが LINE のグループへ送っている文です（2026-09-10）。
- *     ＠All
  *     9/19(土)ディナー２人
  *     9/22(火)ランチ３人、ディナー３人
  *
@@ -3432,10 +3431,75 @@ const SHIFT_SHORT_MAX = 9;
  * ★数は**全角**です。半角だと、LINE のふきだしの中で読みにくいためです。
  * ★持ち場（キッチン／ホール）は書きません。**枠ごとに足して**出します。
  *   アルバイトに「ホールがあと1人」と言っても、行き先を選べません。
- * ★言葉を変えたいときは、この2つを直してください。
+ * ★文そのものは**店舗ごとにマネージで直せます**。バグると popo で
+ *   言い方が変わることがあるためです（2026-09-10）。
  */
-const SHIFT_SHORT_HEAD = '＠All';
-const SHIFT_SHORT_FOOT = '少しでも入れる人いたらお願いします！';
+const SHIFT_LINE_KEY = 'line';          // `_shiftset/店舗id` の中のキー
+const SHIFT_LINE_MARK = '{足りない日}';  // ここに足りない日が入ります
+
+/**
+ * LINEに送る文の、初めの形
+ *
+ * ★店舗ごとにマネージで直せます（→ `manage/js/admin.js` の「LINEに送る文」）。
+ *   直していない店舗は、ここに書いた文をそのまま使います。
+ * ★`＠All` は入れていません。**貼り付けてもメンションになりません。**
+ *   LINEのメンションは文字ではなく、打つときにアプリが付ける印だからです。
+ *   文字の「＠All」を貼っても、ただの文字として送られます（2026-09-10）。
+ */
+const SHIFT_LINE_KINDS = [
+  {
+    id: 'ask',
+    name: '足りない人をさがすとき',
+    text: `${SHIFT_LINE_MARK}\n\n少しでも入れる人いたらお願いします！`,
+  },
+  {
+    id: 'done',
+    name: 'シフトを確定したとき',
+    text: `シフト確定しました！\n各自確認をお願いします！\n\n${SHIFT_LINE_MARK}\n出れる人がいたら連絡ください！`,
+  },
+];
+
+/** その店舗の、その文（直していなければ初めの形） */
+function shiftLineTextOf(storeId, kindId) {
+  const 素 = SHIFT_LINE_KINDS.find((k) => k.id === kindId);
+  if (!素) return '';
+  try {
+    if (typeof Store !== 'undefined' && storeId) {
+      const v = (Store.getDay(SHIFT_SET_STORE, storeId).items || {})[SHIFT_LINE_KEY];
+      if (v && typeof v[kindId] === 'string') return v[kindId];
+    }
+  } catch (e) {
+    // 設定が読めなくても、初めの形で動かします
+  }
+  return 素.text;
+}
+
+/**
+ * 文の中の `{足りない日}` を、足りない日の行に入れかえます
+ *
+ * ★足りない日が1日も無いときは、**その行ごと落とします**。
+ *   空行だけが残ると、送る文に意味のないすき間ができます。
+ * ★`{足りない日}` を消してしまった文でも、足りない日があれば**最後に足します**。
+ *   黙って落とすと、「送ったのに日にちが入っていなかった」ことになります。
+ */
+function shiftLineFill(text, 行) {
+  const list = Array.isArray(行) ? 行 : [];
+  const out = [];
+  let 入れた = false;
+  String(text || '').split('\n').forEach((line) => {
+    if (line.indexOf(SHIFT_LINE_MARK) < 0) { out.push(line); return; }
+    入れた = true;
+    if (!list.length) return;
+    list.forEach((l, i) => out.push(i === 0 ? line.replace(SHIFT_LINE_MARK, l) : l));
+  });
+  if (!入れた && list.length) {
+    if (out.length) out.push('');
+    list.forEach((l) => out.push(l));
+  }
+  while (out.length && !out[0].trim()) out.shift();
+  while (out.length && !out[out.length - 1].trim()) out.pop();
+  return out.join('\n');
+}
 
 /** 半角の数字を全角にします（１２３…） */
 function shiftZen(n) {

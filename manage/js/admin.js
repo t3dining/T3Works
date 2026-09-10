@@ -44,6 +44,8 @@ const el = {};
   'shiftStaffInput', 'saveShiftStaff', 'shiftStaffCount', 'shiftStaffSaved',
   'shiftSlotList', 'saveShiftSlots', 'resetShiftSlots', 'shiftSlotCount', 'shiftSlotSaved',
   'memoTagText', 'memoTagLabel', 'saveMemoTags', 'memoTagCount', 'memoTagSaved',
+  'lineAskText', 'lineDoneText', 'lineAskLabel', 'lineDoneLabel',
+  'saveLineTexts', 'lineTextReset', 'lineTextSaved',
   'shiftCodeList', 'shiftSubmitUrl', 'viewShift',
   'viewTrain', 'trainStoreName', 'trainCount', 'trainInput', 'saveTrain', 'trainSaved',
   'trainItemsStore', 'trainItemsCount', 'trainEditor', 'trainAddSection',
@@ -1796,6 +1798,68 @@ function saveShiftMemoTags() {
   setTimeout(() => el.memoTagSaved.classList.add('is-hidden'), 2500);
 }
 
+/* -------- LINEに送る文 --------
+ *
+ * ★入れ先は `_shiftset/店舗id` の `line` です（枠と時刻と同じ行）。
+ *   **設定（ADMIN_SETTINGS）ではありません。**足すには
+ *   `gas/コード.gs`（本部のファイル）も直す必要があるためです。
+ *   ここはふつうの記録と同じ道で同期します。
+ */
+function renderShiftLineTexts() {
+  const 箱 = el.lineAskText.closest('.admin-block');
+  // シフトを組まない店舗には出しません（送る文の使いどころがありません）
+  const 使える = typeof shiftLineTextOf === 'function' && shiftBuilds(state.storeId);
+  if (箱) 箱.classList.toggle('is-hidden', !使える);
+  if (!使える) return;
+
+  const 店 = getStore(state.storeId).name;
+  SHIFT_LINE_KINDS.forEach((k) => {
+    const 欄 = k.id === 'ask' ? el.lineAskText : el.lineDoneText;
+    const 名 = k.id === 'ask' ? el.lineAskLabel : el.lineDoneLabel;
+    名.textContent = `${店}：${k.name}`;
+    欄.value = shiftLineTextOf(state.storeId, k.id);
+  });
+}
+
+function saveShiftLineTexts() {
+  if (typeof shiftLineTextOf !== 'function') return;
+  const 中身 = {};
+  SHIFT_LINE_KINDS.forEach((k) => {
+    const 欄 = k.id === 'ask' ? el.lineAskText : el.lineDoneText;
+    中身[k.id] = String(欄.value || '');
+  });
+  // ★空のまま保存させません。空だと、押しても何も入らない文ができます
+  const 空 = SHIFT_LINE_KINDS.filter((k) => !中身[k.id].trim()).map((k) => k.name);
+  if (空.length) {
+    window.alert(`${空.join('と')}の文が空です。\n`
+      + '空のまま保存すると、コピーしても何も入りません。\n\n'
+      + '初めの文に戻すなら「初めの文に戻す」を押してください。');
+    return;
+  }
+  // ★{足りない日} が入っていない文は、そのままでも動きます（最後に足します）。
+  //   ただし**入れたつもりで打ちまちがえた**ときに黙って形が変わるので、聞き直します
+  const 無い = SHIFT_LINE_KINDS
+    .filter((k) => 中身[k.id].indexOf(SHIFT_LINE_MARK) < 0).map((k) => k.name);
+  if (無い.length) {
+    if (!window.confirm(`${無い.join('と')}の文に ${SHIFT_LINE_MARK} が入っていません。\n\n`
+      + `足りない日は、文の**最後**に足されます。\n`
+      + '途中に入れたいときは、その場所に ' + SHIFT_LINE_MARK + ' と書いてください。\n\n'
+      + 'このまま保存しますか。')) return;
+  }
+  Store.setItem(SHIFT_SET_STORE, state.storeId, SHIFT_LINE_KEY, 中身);
+  renderShiftLineTexts();
+  el.lineTextSaved.classList.remove('is-hidden');
+  setTimeout(() => el.lineTextSaved.classList.add('is-hidden'), 2500);
+}
+
+/** 初めの文に戻します（欄に書き入れるだけ。保存は押してもらいます） */
+function resetShiftLineTexts() {
+  SHIFT_LINE_KINDS.forEach((k) => {
+    const 欄 = k.id === 'ask' ? el.lineAskText : el.lineDoneText;
+    欄.value = k.text;
+  });
+}
+
 function renderShiftSlots() {
   const storeId = state.storeId;
   const 時刻で入れる = shiftUsesRange(storeId);
@@ -2519,6 +2583,7 @@ function renderAll() {
   } else if (state.view === 'shift') {
     renderShiftStaff();
     renderShiftMemoTags();
+    renderShiftLineTexts();
     renderShiftSlots();
   } else if (state.view === 'train') {
     renderChecklistEditor();
@@ -2743,6 +2808,8 @@ function bindEvents() {
   el.saveShiftStaff.addEventListener('click', saveShiftStaff);
   el.saveShiftSlots.addEventListener('click', saveShiftSlots);
   el.saveMemoTags.addEventListener('click', saveShiftMemoTags);
+  el.saveLineTexts.addEventListener('click', saveShiftLineTexts);
+  el.lineTextReset.addEventListener('click', resetShiftLineTexts);
   el.memoTagText.addEventListener('input', updateMemoTagCount);
   el.resetShiftSlots.addEventListener('click', resetShiftSlots);
   el.saveTrain.addEventListener('click', saveTrainees);

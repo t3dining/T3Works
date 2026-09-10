@@ -9301,61 +9301,76 @@ function shiftShortDays(rec) {
   return out;
 }
 
-/** 上の一覧を、そのまま送れる文にします */
-function shiftShortText(list) {
-  const 行 = list.map(({ dateStr, 枠 }) => {
+/** 足りない日の一覧を、1日1行の文にします */
+function shiftShortLines(list) {
+  return list.map(({ dateStr, 枠 }) => {
     const [, m, d] = dateStr.split('-').map(Number);
     const dow = new Date(dateStr.replace(/-/g, '/')).getDay();
     const 中身 = 枠.map((k) => `${k.name}${shiftZen(k.n)}人`).join('、');
     return `${m}/${d}(${DOW[dow]})${中身}`;
   });
-  return `${SHIFT_SHORT_HEAD}\n${行.join('\n')}\n\n${SHIFT_SHORT_FOOT}`;
+}
+
+/** そのまま送れる文にします（文は店舗ごとにマネージで直せます） */
+function shiftLineMessage(kindId, list) {
+  return shiftLineFill(shiftLineTextOf(state.storeId, kindId), shiftShortLines(list));
 }
 
 /**
- * 「足りない日をLINEにコピー」のボタン
+ * LINEに送る文をコピーするボタン
  *
  * ★`index.html` は本部のファイルなので、置き場所を書き足さずに
  *   提出の集まりぐあいの下へ差し込みます。
- * ★足りない日が1日も無いときは、ボタンごと出しません。押しても何も起きない
- *   ボタンがあると、「壊れているのか」と迷います。
+ * ★**描き直すたびに作り直します。**赤いあきを直せば、押したときに出る文も
+ *   その場で変わります（人を入れれば減り、足せば増えます）。
+ * ★出す場面を分けます。押しても意味のないボタンを置くと、
+ *   「壊れているのか」と迷います。
+ *     足りない日をさがす … 足りない日が1日でもあるとき
+ *     シフト確定       … 確定ずみのとき（足りない日が無くても出します）
  */
 function shiftShortCopyBox(rec) {
   const 前の = document.getElementById('shiftShortCopy');
   if (前の) 前の.remove();
+
   const list = shiftShortDays(rec);
-  if (!list.length) return;
+  const 確定 = shiftPhaseOf(rec) === SHIFT_BUILT;
+  const 出す = [];
+  if (list.length) 出す.push({ id: 'ask', label: `足りない日をLINEにコピー（${list.length}日分）` });
+  if (確定) 出す.push({ id: 'done', label: 'シフト確定をLINEにコピー' });
+  if (!出す.length) return;
 
   const box = document.createElement('div');
   box.id = 'shiftShortCopy';
   box.className = 'shift-top__acts';
 
-  const b = document.createElement('button');
-  b.type = 'button';
-  b.className = 'btn';
-  const 直す = () => { b.textContent = `足りない日をLINEにコピー（${list.length}日分）`; };
-  直す();
-  b.addEventListener('click', async () => {
-    const text = shiftShortText(list);
-    try {
-      await navigator.clipboard.writeText(text);
-      b.textContent = 'コピーしました';
-      setTimeout(直す, 1800);
-    } catch (e) {
-      // コピーできない端末では、文をそのまま出して選べるようにします
-      if (box.querySelector('textarea')) return;
-      const ta = document.createElement('textarea');
-      ta.readOnly = true;
-      ta.rows = text.split('\n').length + 1;
-      ta.style.width = '100%';
-      ta.value = text;
-      box.style.display = 'block';
-      box.appendChild(ta);
-      ta.select();
-      b.textContent = 'ここから写してください';
-    }
+  出す.forEach(({ id, label }) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn';
+    b.textContent = label;
+    b.addEventListener('click', async () => {
+      const text = shiftLineMessage(id, list);
+      try {
+        await navigator.clipboard.writeText(text);
+        b.textContent = 'コピーしました';
+        setTimeout(() => { b.textContent = label; }, 1800);
+      } catch (e) {
+        // コピーできない端末では、文をそのまま出して選べるようにします
+        const 前 = box.querySelector('textarea');
+        if (前) 前.remove();
+        const ta = document.createElement('textarea');
+        ta.readOnly = true;
+        ta.rows = text.split('\n').length + 1;
+        ta.style.width = '100%';
+        ta.value = text;
+        box.style.display = 'block';
+        box.appendChild(ta);
+        ta.select();
+        b.textContent = 'ここから写してください';
+      }
+    });
+    box.appendChild(b);
   });
-  box.appendChild(b);
   el.shiftWishNote.insertAdjacentElement('afterend', box);
 }
 

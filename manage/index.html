@@ -14,7 +14,7 @@
 <title>T3 Works Manage｜T3Dining株式会社</title>
 <link rel="stylesheet" href="../css/style.css?v=59fe12d6">
 <link rel="stylesheet" href="css/admin.css?v=71f247ab">
-<meta name="app-version" content="ccd2f6ac">
+<meta name="app-version" content="ebcd9711">
 </head>
 <body class="no-daytabs">
 
@@ -333,6 +333,38 @@
     </div>
   </section>
 
+  <!-- ===== LINEに送る文（シフト画面のコピーボタンが作る文） ===== -->
+  <section class="admin-block">
+    <div class="admin-block__head">
+      <h2 class="admin-block__title">LINEに送る文</h2>
+    </div>
+    <p class="admin-note">
+      マインのシフト画面に出る<b>「LINEにコピー」のボタン</b>が作る文です。店舗ごとに直せます。<br>
+      文の中の <b>{足りない日}</b> のところに、<b>赤いあき（人が足りないマス）の日と人数</b>が入ります。<br>
+      たとえば <b>9/19(土)ディナー２人</b> のように、1日1行で入ります。
+      人を入れて赤が減れば、<b>文からも減ります</b>。<br>
+      足りない日が1日も無いときは、<b>{足りない日} の行ごと消えます</b>（空行だけが残りません）。<br>
+      <b>{足りない日} を消してしまっても、足りない日は文の最後に足します</b>（黙って落としません）。<br>
+      ★<b>「＠All」を入れても、メンションにはなりません。</b>
+      LINEのメンションは文字ではなく、打つときにアプリが付ける印です。
+      貼り付けるとただの文字として送られます。全員に知らせたいときは、
+      <b>貼り付ける前にLINEで「@」を打って All を選んでください</b>。
+    </p>
+    <label class="field">
+      <span class="field__label" id="lineAskLabel">足りない人をさがすとき</span>
+      <textarea class="field__input" id="lineAskText" rows="5" autocomplete="off"></textarea>
+    </label>
+    <label class="field">
+      <span class="field__label" id="lineDoneLabel">シフトを確定したとき</span>
+      <textarea class="field__input" id="lineDoneText" rows="7" autocomplete="off"></textarea>
+    </label>
+    <div class="admin-actions">
+      <button type="button" class="btn" id="lineTextReset">初めの文に戻す</button>
+      <button type="button" class="btn btn--primary" id="saveLineTexts">文を保存</button>
+      <span class="admin-saved is-hidden" id="lineTextSaved">保存しました</span>
+    </div>
+  </section>
+
   <section class="admin-block">
     <div class="admin-block__head">
       <h2 class="admin-block__title">シフトの枠と時刻</h2>
@@ -588,10 +620,10 @@
   <button type="button" class="update-bar__btn">更新する</button>
 </div>
 
-<script src="../js/config.js?v=2a13e7c1"></script>
+<script src="../js/config.js?v=e380d65e"></script>
 <script src="../js/storage.js?v=e04ef0ae"></script>
 <script src="../js/sync.js?v=bff05aa7"></script>
 <script src="../js/update.js?v=c530219e"></script>
-<script src="js/admin.js?v=b9280692"></script>
+<script src="js/admin.js?v=ac98d300"></script>
 </body>
 </html>
