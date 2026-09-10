@@ -12,9 +12,9 @@
 <link rel="apple-touch-icon" href="../img/manage-icon-180.png?v=ac18efea">
 <link rel="icon" type="image/png" sizes="64x64" href="../img/manage-icon-64.png?v=2b8a9145">
 <title>T3 Works Manage｜T3Dining株式会社</title>
-<link rel="stylesheet" href="../css/style.css?v=072a6b82">
+<link rel="stylesheet" href="../css/style.css?v=c90cdc55">
 <link rel="stylesheet" href="css/admin.css?v=71f247ab">
-<meta name="app-version" content="dc4eef9d">
+<meta name="app-version" content="aad03153">
 </head>
 <body class="no-daytabs">
 
@@ -71,6 +71,31 @@
       <button type="button" class="btn btn--primary" id="saveStaff">担当者を保存</button>
       <span class="admin-saved is-hidden" id="staffSaved">保存しました</span>
     </div>
+  </section>
+
+  <!-- ===== 社員のアカウント（全店舗で共通） =====
+       ★シフトの「配る番号」とは別ものです。わざと分けています。
+         シフトの番号はワークスから読めるので、同じ番号でアプリ本体に
+         入れるようにすると、同僚になりすませてしまいます -->
+  <section class="admin-block">
+    <div class="admin-block__head">
+      <h2 class="admin-block__title">社員のアカウント</h2>
+      <span class="admin-count" id="acctCount"></span>
+    </div>
+    <p class="admin-note">
+      アプリのPINを入れたあと、<b>1人ずつの番号</b>を入れて使う形にするための一覧です。<br>
+      <b>辞めた人は「使えなくする」を押してください。</b>その番号では入れなくなり、
+      その人の端末に残っている記録も、次にネットにつながったときに消えます。<br>
+      <b>名前は消さずに残します。</b>過去の記録に名前が出ているためです。<br>
+      <b>シフトの「配る番号」とは別の番号です。</b>アルバイトの番号では、ここには入れません。<br>
+      <b class="admin-warn" id="acctNotLive">★いまはまだ、この番号は使われていません。</b>
+    </p>
+    <div class="admin-actions">
+      <input id="acctName" class="field__input" type="text" placeholder="名前（例：田中）">
+      <button type="button" class="btn btn--primary" id="acctAdd">追加して番号を作る</button>
+      <span class="admin-saved is-hidden" id="acctSaved">保存しました</span>
+    </div>
+    <ul class="acct-list" id="acctList"></ul>
   </section>
 
   <!-- ===== キャッチをする人（全店舗で共通） ===== -->
@@ -620,10 +645,10 @@
   <button type="button" class="update-bar__btn">更新する</button>
 </div>
 
-<script src="../js/config.js?v=b1f7d65f"></script>
-<script src="../js/storage.js?v=e04ef0ae"></script>
-<script src="../js/sync.js?v=bff05aa7"></script>
+<script src="../js/config.js?v=82075cb2"></script>
+<script src="../js/storage.js?v=79b5bf12"></script>
+<script src="../js/sync.js?v=473da5ac"></script>
 <script src="../js/update.js?v=c530219e"></script>
-<script src="js/admin.js?v=8436e5e4"></script>
+<script src="js/admin.js?v=2a50619b"></script>
 </body>
 </html>

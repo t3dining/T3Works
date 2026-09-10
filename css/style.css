@@ -2960,6 +2960,27 @@ body.is-wide .page { max-width: 1700px; }
 .btn--small { padding: 6px 12px; font-size: 12.5px; }
 .btn--small.is-hidden { display: none; }
 .modal__panel--wide { max-width: 560px; }
+
+/* -------- 社員のアカウント（マネージ） -------- */
+.acct-list { list-style: none; margin: 10px 0 0; padding: 0; }
+.acct-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 9px 2px; border-top: 1px solid var(--line-2); font-size: 13.5px;
+}
+.acct-row:first-child { border-top: 0; }
+.acct-row__name { flex: 1 1 auto; min-width: 0; font-weight: 700; overflow-wrap: anywhere; }
+.acct-row__code {
+  flex: 0 0 auto; font-variant-numeric: tabular-nums; letter-spacing: .08em;
+  color: var(--text-sub); cursor: pointer; min-width: 68px; text-align: center;
+}
+.acct-row__admin {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; color: var(--text-sub);
+}
+/* 使えなくした人は、消さずに残したうえで色を落とします */
+.acct-row.is-off { opacity: .55; }
+.acct-row.is-off .acct-row__name { text-decoration: line-through; }
+.admin-warn { color: var(--ng); }
 /* -------- 表を見せるモーダル（出してもらった希望） --------
    パソコン・タブレットでは画面いっぱいに広げて、横スクロールを減らします。
    ★スマホ（700px未満）は今までのままです。狭い画面で広げても意味がなく、

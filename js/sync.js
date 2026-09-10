@@ -21,6 +21,7 @@ function 設定の呼び名(n) {
     anytimes: '随時掃除の項目',
     staffList: '担当者リスト', closedDows: '定休日',
     shiftStaff: 'シフトの名簿', salesTargets: '年間の売上目標',
+    staffAccounts: '社員のアカウント',
     shiftMemoTags: 'メモの決まり文句',
   };
   return 表[n] || n;
@@ -388,6 +389,7 @@ const Sync = {
         drivers: Drivers._key,
         catchStaff: CatchStaff._key,
         shiftStaff: ShiftStaff._key,
+        staffAccounts: StaffAccounts._key,
         trainees: Trainees._key,
         trainings: Trainings._key,
         nippouFolders: NippouFolders._key,

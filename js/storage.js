@@ -963,6 +963,88 @@ const CatchStaff = {
  *  名前を消しても、組みおわったシフトはその名前のまま残ります
  *  （記録の中に名前を書き写しているため）。
  */
+/* ============================================================
+ *  社員のアカウント（PINのあとに入れる、1人1つの番号）
+ *
+ *  ★これは**シフトの「配る番号」とは別のもの**です。わざと分けています。
+ *    シフトの番号はワークスから「見る」を押せば1人ずつ読めます
+ *    （2026-09-05、ko-dai さんが承知のうえで決めた形）。あの判断は
+ *    「番号でできるのは希望を出すことだけ」だから成り立っています。
+ *    同じ番号でアプリ本体に入れるようにすると、**その前提が崩れます。**
+ *
+ *  ★入れ物だけです。**この番号で入れるかどうかを決めるのはサーバーです。**
+ *    端末側で判定すると、画面をいじれば通ってしまいます。
+ *
+ *  かたち { 番号: { n: 名前, admin: 管理もできるか, off: 辞めた } }
+ *    ・番号は6桁。1〜9で始まります（シフトの番号と同じ作り方）
+ *    ・辞めた人は **off: true** にします。**消さずに残す**のは、
+ *      過去の記録に名前が出ているためです（消すと誰の記録か分からなくなります）
+ * ============================================================ */
+const StaffAccounts = {
+  _key: APP.storageKey + ':staffAccounts',
+
+  /** { 番号: { n, admin, off } } をまるごと */
+  all() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(this._key) || 'null');
+      if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
+        const out = {};
+        Object.keys(saved).forEach((code) => {
+          const v = saved[code] || {};
+          if (!String(v.n || '').trim()) return;
+          out[String(code)] = {
+            n: String(v.n).trim(), admin: !!v.admin, off: !!v.off,
+          };
+        });
+        return out;
+      }
+    } catch (e) {
+      /* 壊れていたら空に戻す */
+    }
+    return {};
+  },
+
+  /** いま使える人だけ（辞めた人を外す）。[{ code, n, admin }] */
+  live() {
+    const all = this.all();
+    return Object.keys(all).filter((c) => !all[c].off)
+      .map((c) => ({ code: c, n: all[c].n, admin: all[c].admin }))
+      .sort((a, b) => a.n.localeCompare(b.n, 'ja'));
+  },
+
+  /** 辞めた人も含めて、番号から名前を引きます（過去の記録の表示用） */
+  nameOf(code) {
+    const v = this.all()[String(code || '')];
+    return v ? v.n : '';
+  },
+
+  save(map) {
+    localStorage.setItem(this._key, JSON.stringify(map || {}));
+    if (typeof Sync !== 'undefined' && Sync.enqueue) {
+      Sync.enqueue([{ t: 'setting', n: 'staffAccounts', v: map || {} }]);
+    }
+  },
+
+  /**
+   * まだ誰にも使われていない6桁の番号を作ります
+   *
+   * ★シフトの番号ともぶつからないようにします。**別の入口ですが、
+   *   同じ数字が両方にあると、渡すときも消すときも取りちがえます。**
+   */
+  newCode() {
+    const 使用中 = Object.keys(this.all());
+    const shift = typeof ShiftStaff !== 'undefined' && ShiftStaff.all ? ShiftStaff.all() : {};
+    Object.keys(shift).forEach((id) => {
+      (shift[id] || []).forEach((v) => { if (v.c) 使用中.push(String(v.c)); });
+    });
+    for (let i = 0; i < 500; i += 1) {
+      const c = String(Math.floor(100000 + Math.random() * 900000));
+      if (c[0] !== '0' && 使用中.indexOf(c) < 0) return c;
+    }
+    return '';
+  },
+};
+
 const ShiftStaff = {
   _key: APP.storageKey + ':shiftStaff',
 

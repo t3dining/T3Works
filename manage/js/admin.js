@@ -39,6 +39,7 @@ const el = {};
   'undoImport', 'importNote',
   'weeklyStoreName', 'weeklyCount', 'weeklyEditor',
   'staffInput', 'saveStaff', 'staffCount', 'staffSaved',
+  'acctName', 'acctAdd', 'acctCount', 'acctSaved', 'acctList', 'acctNotLive',
   'driversInput', 'saveDrivers', 'driversCount', 'driversSaved',
   'catchStaffFields', 'saveCatchStaff', 'catchStaffCount', 'catchStaffSaved',
   'shiftStaffInput', 'saveShiftStaff', 'shiftStaffCount', 'shiftStaffSaved',
@@ -1684,6 +1685,107 @@ function copyShiftCode(p, btn) {
   );
 }
 
+/* ============================================================
+ *  社員のアカウント（PINのあとに入れる番号）
+ *
+ *  ★ここは**入れ物と配り方だけ**です。「その番号で入れるか」を決めるのは
+ *    サーバー（GAS）です。端末側で判定すると、画面をいじれば通ります。
+ * ============================================================ */
+function renderAccounts() {
+  const all = StaffAccounts.all();
+  const codes = Object.keys(all).sort((x, y) => all[x].n.localeCompare(all[y].n, 'ja'));
+  const 生きている = codes.filter((c) => !all[c].off).length;
+  el.acctCount.textContent = codes.length
+    ? `${生きている}人（使えなくした人 ${codes.length - 生きている}）` : 'まだ登録なし';
+
+  el.acctList.innerHTML = '';
+  codes.forEach((code) => {
+    const v = all[code];
+    const li = document.createElement('li');
+    li.className = 'acct-row' + (v.off ? ' is-off' : '');
+
+    const name = document.createElement('span');
+    name.className = 'acct-row__name';
+    name.textContent = v.n;
+
+    const num = document.createElement('span');
+    num.className = 'acct-row__code';
+    // ★番号は伏せます。押した1つだけ出します（肩ごしに全員分を覚えられないように）
+    num.textContent = '••••••';
+    num.title = '押すと出ます';
+    num.addEventListener('click', () => {
+      num.textContent = num.textContent === '••••••' ? code : '••••••';
+    });
+
+    const copy = document.createElement('button');
+    copy.type = 'button'; copy.className = 'row-edit';
+    copy.textContent = 'コピー';
+    copy.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(code);
+        copy.textContent = 'コピーしました';
+        setTimeout(() => { copy.textContent = 'コピー'; }, 1500);
+      } catch (e) {
+        num.textContent = code;
+        copy.textContent = '↑を手で写してください';
+      }
+    });
+
+    const adm = document.createElement('label');
+    adm.className = 'acct-row__admin';
+    const box = document.createElement('input');
+    box.type = 'checkbox'; box.checked = !!v.admin; box.disabled = !!v.off;
+    box.addEventListener('change', () => {
+      const map = StaffAccounts.all();
+      map[code].admin = box.checked;
+      StaffAccounts.save(map);
+      renderAccounts(); 保存しました();
+    });
+    adm.appendChild(box);
+    adm.appendChild(document.createTextNode('管理'));
+
+    const off = document.createElement('button');
+    off.type = 'button'; off.className = 'row-edit';
+    off.textContent = v.off ? 'また使えるようにする' : '使えなくする';
+    off.addEventListener('click', () => {
+      const 戻す = v.off;
+      const 文 = 戻す
+        ? `${v.n}さんを、また使えるようにします。`
+        : `${v.n}さんは、この番号で入れなくなります。\n`
+          + 'その人の端末に残っている記録も、次にネットにつながったときに消えます。';
+      if (!window.confirm(文)) return;
+      const map = StaffAccounts.all();
+      map[code].off = !戻す;
+      if (!戻す) map[code].admin = false;   // 使えなくするときは管理も外します
+      StaffAccounts.save(map);
+      renderAccounts(); 保存しました();
+    });
+
+    [name, num, copy, adm, off].forEach((n) => li.appendChild(n));
+    el.acctList.appendChild(li);
+  });
+}
+
+function 保存しました() {
+  el.acctSaved.classList.remove('is-hidden');
+  setTimeout(() => el.acctSaved.classList.add('is-hidden'), 2000);
+}
+
+function addAccount() {
+  const name = el.acctName.value.trim();
+  if (!name) { el.acctName.focus(); return; }
+  const map = StaffAccounts.all();
+  const 同じ名 = Object.keys(map).filter((c) => map[c].n === name && !map[c].off);
+  if (同じ名.length
+      && !window.confirm(`${name}さんは、もう登録されています。\nもう1つ番号を作りますか？`)) return;
+  const code = StaffAccounts.newCode();
+  if (!code) { window.alert('番号を作れませんでした。もう一度押してください。'); return; }
+  map[code] = { n: name, admin: false, off: false };
+  StaffAccounts.save(map);
+  el.acctName.value = '';
+  renderAccounts(); 保存しました();
+}
+
 function saveShiftStaff() {
   // ★ワークスと同じ確かめです。打ちまちがいで人が消えるのは、こちらでも同じです
   if (!shiftRosterConfirm(state.storeId, el.shiftStaffInput.value)) return;
@@ -2637,6 +2739,7 @@ function renderAll() {
     document.title = 'T3 Works Manage';
     renderStorePicker();
     renderStaff();
+    renderAccounts();
     renderCatchStaff();
     renderNippouFolders();
     renderSalesTargets();
@@ -2889,6 +2992,7 @@ function bindEvents() {
   el.saveDrivers.addEventListener('click', saveDrivers);
   el.saveCatchStaff.addEventListener('click', saveCatchStaff);
   el.saveShiftStaff.addEventListener('click', saveShiftStaff);
+  el.acctAdd.addEventListener('click', addAccount);
   el.saveShiftSlots.addEventListener('click', saveShiftSlots);
   el.saveMemoTags.addEventListener('click', saveShiftMemoTags);
   el.saveLineTexts.addEventListener('click', saveShiftLineTexts);
