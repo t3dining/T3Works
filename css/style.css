@@ -3150,7 +3150,18 @@ body[data-mode="mine"] .nippou.mine-only { display: block; }
    ★2段にするのは、**左の名前の欄とマスの境目を見せるため**です。
      同じ濃さにすると1つの帯になって、どこまでが名前かが分かりません。
    ★マスは `[data-slot]` で選びます（js が1マスずつ入れています）。
-     定休日のマスとメモの欄には付いていないので、そこは塗られません。 */
+     定休日のマスとメモの欄には付いていないので、そこは塗られません。
+
+   ★`.shift-grid` を**わざと付けていません。**
+     この塗りは「土台」で、その上に**状態の色**が乗ります
+     （落とし先の青 `.shift-cell.is-drop`、定休日の灰 `td.is-closed` など）。
+     `.shift-grid td[data-slot=…]` と書くと土台の方が強くなり、
+     **状態の色を全部消します。**2026-09-10、実際に落とし先の青が
+     出なくなっていました（シフトが公開前に見つけました）。
+     土台は**いちばん弱く**しておき、状態が自然に勝つようにします。
+     こうすると、あとで状態を1つ足す人も何も気にしなくて済みます。
+     `td[data-slot]` はシフトの表のマスにしか付きません
+     （マネージの `data-slot` は `<div>` なので当たりません）。 */
 .shift-grid tr > th.shift-grid__slot.shift-grid__slot--open {
   background: color-mix(in srgb, var(--shift-open) 24%, var(--surface-2));
 }
@@ -3160,9 +3171,9 @@ body[data-mode="mine"] .nippou.mine-only { display: block; }
 .shift-grid tr > th.shift-grid__slot.shift-grid__slot--dinner {
   background: color-mix(in srgb, var(--shift-dinner) 24%, var(--surface-2));
 }
-.shift-grid td[data-slot="open"]   { background: color-mix(in srgb, var(--shift-open)   12%, var(--surface)); }
-.shift-grid td[data-slot="lunch"]  { background: color-mix(in srgb, var(--shift-lunch)  12%, var(--surface)); }
-.shift-grid td[data-slot="dinner"] { background: color-mix(in srgb, var(--shift-dinner) 12%, var(--surface)); }
+td[data-slot="open"]   { background: color-mix(in srgb, var(--shift-open)   12%, var(--surface)); }
+td[data-slot="lunch"]  { background: color-mix(in srgb, var(--shift-lunch)  12%, var(--surface)); }
+td[data-slot="dinner"] { background: color-mix(in srgb, var(--shift-dinner) 12%, var(--surface)); }
 .shift-grid td.is-closed {
   background: var(--line-2); color: var(--text-sub);
   text-align: center; vertical-align: middle; font-size: 12px;
