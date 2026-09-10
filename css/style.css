@@ -3127,16 +3127,30 @@ body[data-mode="mine"] .nippou.mine-only { display: block; }
        （2026-09-10、シフトの案を当てるときに本部が気づきました。
         ブラウザで4通り試して確かめています） */
 .shift-grid tr.is-slot-top > th,
-.shift-grid tr.is-slot-top > td { border-top: 2px solid var(--line); }
+.shift-grid tr.is-slot-top > td:not(.is-patty) { border-top: 2px solid var(--line); }
+/* ★`:not(.is-patty)` が要ります。これが無いと、**パティの桃色の枠の上辺だけが
+     この灰色の線に塗りかえられます**（`.shift-grid td.is-patty` より、こちらが強いため）。
+     2026-09-10、境目の線を入れた直後に ko-dai さんの画面で消えていました。 */
+
+/* 枠ごとに色を敷きます。
+     名前の欄（左） … 濃いめ
+     マス（右）     … 薄め
+   ★2段にするのは、**左の名前の欄とマスの境目を見せるため**です。
+     同じ濃さにすると1つの帯になって、どこまでが名前かが分かりません。
+   ★マスは `[data-slot]` で選びます（js が1マスずつ入れています）。
+     定休日のマスとメモの欄には付いていないので、そこは塗られません。 */
 .shift-grid tr > th.shift-grid__slot.shift-grid__slot--open {
-  background: color-mix(in srgb, var(--shift-open) 8%, var(--surface-2));
+  background: color-mix(in srgb, var(--shift-open) 24%, var(--surface-2));
 }
 .shift-grid tr > th.shift-grid__slot.shift-grid__slot--lunch {
-  background: color-mix(in srgb, var(--shift-lunch) 8%, var(--surface-2));
+  background: color-mix(in srgb, var(--shift-lunch) 24%, var(--surface-2));
 }
 .shift-grid tr > th.shift-grid__slot.shift-grid__slot--dinner {
-  background: color-mix(in srgb, var(--shift-dinner) 8%, var(--surface-2));
+  background: color-mix(in srgb, var(--shift-dinner) 24%, var(--surface-2));
 }
+.shift-grid td[data-slot="open"]   { background: color-mix(in srgb, var(--shift-open)   12%, var(--surface)); }
+.shift-grid td[data-slot="lunch"]  { background: color-mix(in srgb, var(--shift-lunch)  12%, var(--surface)); }
+.shift-grid td[data-slot="dinner"] { background: color-mix(in srgb, var(--shift-dinner) 12%, var(--surface)); }
 .shift-grid td.is-closed {
   background: var(--line-2); color: var(--text-sub);
   text-align: center; vertical-align: middle; font-size: 12px;
