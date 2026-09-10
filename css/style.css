@@ -2960,6 +2960,18 @@ body.is-wide .page { max-width: 1700px; }
 .btn--small { padding: 6px 12px; font-size: 12.5px; }
 .btn--small.is-hidden { display: none; }
 .modal__panel--wide { max-width: 560px; }
+/* -------- 表を見せるモーダル（出してもらった希望） --------
+   パソコン・タブレットでは画面いっぱいに広げて、横スクロールを減らします。
+   ★スマホ（700px未満）は今までのままです。狭い画面で広げても意味がなく、
+     指の届く幅が変わってしまうためです。
+
+   ★クラス2つで書いてあります。`.modal__panel--table` だけだと、上の
+     `.modal__panel--wide`（560px）と**強さが引き分け**で、書いた順番だけで
+     決まります。順番に頼ると、あとで行を動かしたときに黙って戻ります
+     （2026-09-10、同じ形をこの日3回踏みました）。 */
+@media (min-width: 700px) {
+  .modal__panel.modal__panel--table { max-width: min(1600px, 94vw); }
+}
 .util-year { margin-bottom: 12px; }
 .util-table th, .util-table td { padding: 8px 10px; }
 .util-table .util-name { font-weight: 700; white-space: nowrap; }
