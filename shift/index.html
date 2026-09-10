@@ -46,7 +46,7 @@
 <link rel="icon" href="../img/shift-icon-64.png?v=0254ff8c">
 
 <link rel="stylesheet" href="css/submit.css?v=400a586d">
-<meta name="app-version" content="b7284003">
+<meta name="app-version" content="f38301f9">
 </head>
 <body>
 
@@ -58,12 +58,13 @@
     <button type="button" class="head__help is-hidden" id="helpBtn">
       <span aria-hidden="true">？</span><span>出し方</span>
     </button>
-    <!-- ★見本（テスト用）の番号で入ったときだけ出します。
-         アルバイトには出しません（オーナーの画面へ行けてしまうため） -->
-    <a class="head__home is-hidden" id="toOwnerBtn" href="../owner/"
-       title="ホーム（アプリを選ぶ画面）に戻る">
-      <span aria-hidden="true">🏠</span><span>ホーム</span>
-    </a>
+    <!-- ★★オーナーへ戻るボタンは**置きません**（2026-09-10、ko-dai の指示）。
+         前は見本（テスト用）の番号で入ったときだけ出していましたが、
+         **見本の番号は各店長も使えます**（マインの「配る番号」に並びます）。
+         店長からオーナーへ行ける道になるので、**誰にも出さないことにしました。**
+         ★このページは全店舗おなじURLを配っています。ここに1つでも
+           ほかのアプリへの行き先を置くと、番号を持っている人全員の道になります。
+           足したくなったら、まず「誰の手に番号があるか」を数えてください。 -->
   </div>
 </header>
 
@@ -222,9 +223,9 @@
   </div>
 </div>
 
-<script src="../js/config.js?v=e380d65e"></script>
+<script src="../js/config.js?v=e2f9d9f9"></script>
 <!-- シフト表を絵に描くところ。ワークスの「JPEGで保存」と同じものです -->
 <script src="../js/shift-sheet.js?v=2b29c50a"></script>
-<script src="js/submit.js?v=9867e70f"></script>
+<script src="js/submit.js?v=05275f91"></script>
 </body>
 </html>

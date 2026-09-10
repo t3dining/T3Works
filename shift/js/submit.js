@@ -202,9 +202,9 @@ function applyOpen(res) {
 
   el('headTitle').textContent = `シフト提出｜${store ? store.name : ''}`;
   el('meName').textContent = me.name;
-  // ★見本（テスト用）の番号で入ったときだけ、ホームに戻るボタンを出します。
-  //   アルバイトの番号では出しません（オーナーの画面へ行けてしまうため）
-  el('toOwnerBtn').classList.toggle('is-hidden', !isShiftTester(me.name));
+  // ★オーナーへ戻るボタンは**もう置いていません**（2026-09-10、ko-dai の指示）。
+  //   見本（テスト用）の番号でだけ出していましたが、**その番号は各店長も使えます**。
+  //   店長からオーナーへ行ける道になるため、ボタンごと外しました（→ shift/index.html）
   // 出し方のボタンは、番号が通ってから出します
   // （番号を入れる画面で出しても、まだ読むところがありません）
   el('helpBtn').classList.remove('is-hidden');

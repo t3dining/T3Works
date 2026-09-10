@@ -2099,6 +2099,7 @@ function saveSalesTargets() {
  */
 function renderNippouFolders() {
   el.nippouTest.value = NippouTest.get();
+  renderNippouTestStores();
   const map = NippouFolders.all();
   const n = STORES.filter((s) => map[s.id]).length;
   el.nippouCount.textContent = n ? `${n}店舗` : 'まだ登録なし';
@@ -2122,6 +2123,87 @@ function renderNippouFolders() {
   });
 }
 
+/**
+ *  テスト用の日報を「どの店舗で使うか」を選ぶ欄
+ *
+ *  ★入れ物は manage/index.html ではなく、ここで作って差し込みます。
+ *  ★1店舗も選ばなければ、全店舗がテスト用になります（前からの動きと同じ）。
+ *    1つでも選べば、その店舗だけがテスト用で、ほかは本番の日報に書きます。
+ */
+function renderNippouTestStores() {
+  if (!el.nippouTest) return;
+  let box = document.getElementById('nippouTestStores');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'nippouTestStores';
+    box.style.margin = '10px 0 0';
+    // テスト用URLの欄のすぐ下に置きます
+    const 親 = el.nippouTest.closest('label') || el.nippouTest.parentNode;
+    親.insertAdjacentElement('afterend', box);
+  }
+
+  const 選ばれ = NippouTestStores.all();
+  box.innerHTML = '';
+
+  const h = document.createElement('p');
+  h.className = 'field__label';
+  h.style.marginBottom = '6px';
+  h.textContent = 'どの店舗をテスト用にしますか（何も選ばなければ全店舗）';
+  box.appendChild(h);
+
+  const wrap = document.createElement('div');
+  wrap.style.display = 'flex';
+  wrap.style.flexWrap = 'wrap';
+  wrap.style.gap = '8px 14px';
+
+  STORES.forEach((s) => {
+    const lab = document.createElement('label');
+    lab.style.display = 'inline-flex';
+    lab.style.alignItems = 'center';
+    lab.style.gap = '5px';
+    lab.style.fontSize = '13px';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.dataset.store = s.id;
+    cb.checked = 選ばれ.indexOf(s.id) >= 0;
+    cb.addEventListener('change', saveNippouTestStores);
+    const t = document.createElement('span');
+    t.textContent = s.name;
+    lab.append(cb, t);
+    wrap.appendChild(lab);
+  });
+  box.appendChild(wrap);
+
+  const note = document.createElement('p');
+  note.className = 'field__label';
+  note.style.marginTop = '8px';
+  note.textContent = nippouTestStoresNote();
+  note.id = 'nippouTestStoresNote';
+  box.appendChild(note);
+}
+
+/** いまの設定を、そのまま読める文にします */
+function nippouTestStoresNote() {
+  const url = NippouTest.get();
+  if (!url) return 'いまは全店舗が、本番の日報に書きます。';
+  const 選ばれ = NippouTestStores.all();
+  if (!選ばれ.length) return '★いまは【全店舗】がテスト用の日報に書きます。';
+  const 名 = 選ばれ.map((id) => (STORES.find((s) => s.id === id) || {}).name || id);
+  const ほか = STORES.filter((s) => 選ばれ.indexOf(s.id) < 0).map((s) => s.name);
+  return `★テスト用に書くのは【${名.join('・')}】だけです。`
+    + (ほか.length ? `${ほか.join('・')} は本番の日報に書きます。` : '');
+}
+
+function saveNippouTestStores() {
+  const box = document.getElementById('nippouTestStores');
+  if (!box) return;
+  const list = [...box.querySelectorAll('input[type="checkbox"][data-store]')]
+    .filter((i) => i.checked).map((i) => i.dataset.store);
+  NippouTestStores.save(list);
+  const note = document.getElementById('nippouTestStoresNote');
+  if (note) note.textContent = nippouTestStoresNote();
+}
+
 /** テスト用の日報の書き先（この端末の中だけ） */
 function saveNippouTest() {
   NippouTest.save(el.nippouTest.value);
@@ -2129,6 +2211,7 @@ function saveNippouTest() {
     ? '保存しました（テスト用に書きます）' : '空にしました（本番に書きます）';
   el.nippouTestSaved.classList.remove('is-hidden');
   setTimeout(() => el.nippouTestSaved.classList.add('is-hidden'), 3000);
+  renderNippouTestStores();      // 知らせの文を今の設定に合わせます
 }
 
 function saveNippouFolders() {

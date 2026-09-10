@@ -1028,7 +1028,7 @@ async function cashPullFromNippou(しずかに) {
     if (!しずかに) setNippouMsg('この日は、まだアプリから書いていません', 'warn');
     return;
   }
-  const test = NippouTest.get();
+  const test = nippouTestFor(state.storeId);
   const folder = test ? '' : NippouFolders.get(state.storeId);
   if (!test && !folder) {
     if (!しずかに) setNippouMsg('日報フォルダが登録されていません', 'warn');
@@ -1102,7 +1102,7 @@ function cashPullAuto() {
   if (cashPulled[key]) return;
   if (!Object.keys(cashWroteOf(state.storeId, ymd(state.y, state.m, state.d))).length) return;
   if (!Sync.enabled || !Sync.enabled() || !Sync.pin()) return;
-  const test = NippouTest.get();
+  const test = nippouTestFor(state.storeId);
   if (!test && !NippouFolders.get(state.storeId)) return;
   cashPulled[key] = true;
   cashPullFromNippou(true);
@@ -1334,7 +1334,7 @@ function renderNippouBox(done) {
   el.cashToNippou.classList.toggle('is-hidden', !cashEdit.jok);
   // ★テスト用の書き先が入っているときは、ひと目で分かるようにします。
   //   本番に書いたつもりでテストに入っていた、が一番こわいためです
-  const test = NippouTest.get();
+  const test = nippouTestFor(state.storeId);
   el.cashToNippou.textContent = test
     ? '★テスト用の日報に ジャーナルの5つを書く' : 'ジャーナルの5つを日報に書く';
   el.cashToNippou.classList.toggle('btn--danger', !!test);
@@ -1411,7 +1411,7 @@ async function cashGridLoad(しずかに) {
   const store = state.storeId;
   const y = state.y;
   const m = state.m;
-  const test = NippouTest.get();
+  const test = nippouTestFor(state.storeId);
   const folder = test ? '' : NippouFolders.get(store);
   if (!test && !folder) {
     言('日報フォルダが登録されていません。マネージの店舗一覧で登録してください', 'warn');
@@ -1458,7 +1458,7 @@ function cashGridAuto() {
   if (gridAuto[key]) return;                                  // この画面では1回だけ
   if (GridCache.get(state.storeId, state.y, state.m)) return; // その月分は、もうある
   if (!Sync.enabled || !Sync.enabled() || !Sync.pin()) return;
-  const test = NippouTest.get();
+  const test = nippouTestFor(state.storeId);
   if (!test && !NippouFolders.get(state.storeId)) return;
   gridAuto[key] = true;
   cashGridLoad(true);
@@ -1663,7 +1663,7 @@ function nippouPartButton(親, part, 文) {
     b.addEventListener('click', () => nippouWritePart(part, b));
     親.appendChild(b);
   }
-  const test = NippouTest.get();
+  const test = nippouTestFor(state.storeId);
   b.textContent = (test ? '★テスト用の日報に ' : '') + 文;
   b.classList.toggle('btn--danger', !!test);
   return b;
@@ -1996,7 +1996,7 @@ async function nippouWritePart(part, btn) {
   }
 
   // ★テスト用の書き先が入っていれば、そちらへ書きます（この端末の中だけの設定です）
-  const test = NippouTest.get();
+  const test = nippouTestFor(state.storeId);
   const folder = test ? '' : NippouFolders.get(state.storeId);
   if (!test && !folder) {
     setNippouMsg('日報フォルダが登録されていません。マネージの店舗一覧で登録してください', 'warn');
