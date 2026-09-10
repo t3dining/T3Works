@@ -19,30 +19,34 @@
      ★アイコンも**店舗を入れません**。前はバグるの牛の絵に「シフト」と
        帯を付けたものでした（`img/shift-icon-*.png`）。全店舗おなじURLなので、
        ほかの店舗の人のホーム画面にもバグるの牛が並びます。
-       いまは**金の板に「T3 CHRONA」**です（2026-09-07 差し替え）。
-       もとの絵は `素材/シフトアプリロゴ.png`。そこから作る手順は下のとおりです。
+       いまは**黒地に銀のS＋赤い帯**で、右に会社のマークが小さく入ります
+       （2026-09-10 差し替え）。もとの絵は `素材/シフトアプリロゴ.png`。
+       作り直す道具は `素材/シフトのアイコンを作る.py` です。
        ★店舗が増えても、ここは直さなくて済みます。
      ★アイコンの作り方（もとの絵を差し替えるときも同じ）
        もとの絵は**角丸と影が描き込まれていて、まわりが透明**でした。
        そのまま渡すと、iPhoneが**さらに自分で角を丸める**ので
        角丸の中に角丸ができ、透明だったところが**黒いふち**になります。
-       なので**金の板の中だけを四角く切り出して**、64/180/512 を作っています。
+       なので**板の外側を、板の一番近い内側の色で埋めて**、四角いっぱいに
+       伸ばしています。切り落としていないので、Sも矢印も文字も位置は元のままです。
        角はiPhoneとAndroidが丸めてくれます。
-     ★512は最初 398KB ありました（ほかのアプリのアイコンは27KB前後）。
-       金のざらつきが原因です。色を5bitに丸めて 165KB にしています。
-       見た目は変わりません。
-     ★theme-color も店舗の色（バグるの桃色）→ 青、といじってきました。
-       いまはアイコンの紺にそろえています。 -->
+     ★会社のマーク（`img/t3dining-mark.png`）は**透明ではなく白い地が
+       焼き込まれています**。そのまま黒の上に置くと白い四角が出ます。
+       道具の中で白を抜いて、銀色に塗り替えてから置いています。
+     ★写真のような絵はPNGが重くなります（前の金の板は512が398KBありました）。
+       色の下位3bitを落として抑えています。見た目は変わりません。
+     ★theme-color は 店舗の色（バグるの桃色）→ 青 → 紺 とたどってきました。
+       いまはアイコンの黒にそろえています。 -->
 <link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="シフト提出">
-<meta name="theme-color" content="#1b2a42">
-<link rel="apple-touch-icon" href="../img/shift-icon-180.png?v=20a1a159">
-<link rel="icon" href="../img/shift-icon-64.png?v=d4b39ead">
+<meta name="theme-color" content="#101113">
+<link rel="apple-touch-icon" href="../img/shift-icon-180.png?v=ab0bd671">
+<link rel="icon" href="../img/shift-icon-64.png?v=0254ff8c">
 
 <link rel="stylesheet" href="css/submit.css?v=400a586d">
-<meta name="app-version" content="825f0d48">
+<meta name="app-version" content="af009bca">
 </head>
 <body>
 
