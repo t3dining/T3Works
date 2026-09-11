@@ -1902,7 +1902,16 @@ function seisanPayRows(lines, から) {
     for (let j = i + 1; j < Math.min(i + 4, 終わり); j++) {
       if (当たる(lines[j])) break;
       const c = /^[(]?\s*(\d+)\s*点[)]?$/.exec(cashNormalize(lines[j]).trim());
-      if (c) { 件数 = Number(c[1]); continue; }
+      if (c) {
+        件数 = Number(c[1]);
+        /* ★0点なら0円です。**下に金額らしきものが落ちていても見ません。**
+             2026年8月11日の紙で「売掛金 / 0点 / 20円」となっていました。
+             その20円は値割引の欄から落ちてきたもので、売掛金ではありません。
+             拾うと 489,229 になり、総売上 489,209 と合わずに止まりました。
+           ★紙が「0点」と言っているなら、その欄は使われていません。 */
+        if (件数 === 0) { out[f.key] = 0; break; }
+        continue;
+      }
       const val = seisanMoneyOf(lines[j]);
       if (val !== null) { out[f.key] = val; break; }
     }
@@ -2163,10 +2172,32 @@ function parseSeisan(text) {
 
   /* ④ 客数。「組数・客数  5組  21人」の**人**の方 */
   for (let i = 0; i < 支払から; i++) {
-    if (!/客数/.test(cashPlain(lines[i]))) continue;
+    const p4 = cashPlain(lines[i]);
+    if (!/客数/.test(p4)) continue;
     for (let j = i; j < Math.min(i + 4, 支払から); j++) {
       const 人 = journalUnitOf(lines[j], '人');
       if (人 !== null) { v.guests = 人; break; }
+    }
+    /* ★「人」が字に化けることがあります（`121A`。2026年8月11日の紙）。
+         そのときは、見出しの数と数の数で結びます。
+
+             組数客数        ← 見出しはこの1行だけ
+             32             ← 組数
+             121A           ← 客数（人がAに化けた）
+             組単価          ← ここで止めます
+
+       ★**客数は最後**です（見出しが「組数・客数」の順なので）。
+       ★数が合わなければ読みません。合わなくても、下の
+         「総売上 ÷ 客数 ＝ 客単価」で止まるので、まちがった客数は入りません。 */
+    if (v.guests === undefined || v.guests === null) {
+      const 見出し数 = (/組数/.test(p4) ? 1 : 0) + 1;      // 客数は必ずあります
+      const 数 = [];
+      for (let j = i + 1; j < 支払から; j++) {
+        if (/単価|内税|明細|支払|割引|値引|客数|組数/.test(cashPlain(lines[j]))) break;
+        const m = seisanMoneyOf(lines[j]);
+        if (m !== null) 数.push(m);
+      }
+      if (数.length === 見出し数) v.guests = 数[数.length - 1];
     }
     break;
   }
