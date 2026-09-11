@@ -1776,7 +1776,10 @@ function nippouPartButton(親, part, 文) {
     親.appendChild(b);
   }
   const test = nippouTestFor(state.storeId);
-  b.textContent = (test ? '★テスト用の日報に ' : '') + 文;
+  const 字 = (test ? '★テスト用の日報に ' : '') + 文;
+  // ★書いている最中は、ボタンの字を書きもどしません
+  if (b.dataset.busy) b.dataset.label = 字;
+  else b.textContent = 字;
   b.classList.toggle('btn--danger', !!test);
   return b;
 }
@@ -2230,6 +2233,30 @@ function nippouPartBad(part) {
  * ★ジャーナルの5つだけは、先に現金売上を記録します。
  *   書いてから記録に失敗すると、日報にだけ数字が入って手元に証拠が残りません。
  */
+/* ------------------------------------------------------------
+ *  押したことが分かるように、ボタンの字を変えます
+ *
+ *  ★知らせ（cash-msg）はジャーナルの表のそばに出ます。仕入・人件費の
+ *    ボタンは画面のずっと下にあるので、**押しても何も起きていないように見えます**
+ *    （ko-dai さん・2026-09-11）。押した本人の指の下で変えます。
+ *  ★書いているあいだに render が走ってもどらないよう、busy の印を付けます。
+ * ---------------------------------------------------------- */
+function nippouBtnBusy(btn, 字) {
+  if (!btn) return;
+  if (!btn.dataset.busy) btn.dataset.label = btn.textContent;
+  btn.dataset.busy = '1';
+  btn.disabled = true;
+  btn.textContent = 字;
+}
+
+function nippouBtnDone(btn) {
+  if (!btn || !btn.dataset.busy) return;
+  btn.textContent = btn.dataset.label || btn.textContent;
+  delete btn.dataset.busy;
+  delete btn.dataset.label;
+  btn.disabled = false;
+}
+
 async function nippouWritePart(part, btn) {
   const 決 = NIPPOU_PARTS[part];
   if (!決) return;
@@ -2257,7 +2284,7 @@ async function nippouWritePart(part, btn) {
   }
 
   const dateStr = ymd(state.y, state.m, state.d);
-  if (btn) btn.disabled = true;
+  nippouBtnBusy(btn, '日報を見に行っています…');
   try {
     // ① まず、今の中身を見に行きます（書きません）
     setNippouMsg(`日報を見に行っています…（${決.name}）`);
@@ -2278,6 +2305,7 @@ async function nippouWritePart(part, btn) {
       danger: 食いちがい.length > 0,
     });
     if (!ok) { setNippouMsg(''); return; }
+    nippouBtnBusy(btn, '日報に書いています…');
 
     if (決.記録も) {
       // ★ここから先は何秒かかかります。控えておいて、
@@ -2302,7 +2330,7 @@ async function nippouWritePart(part, btn) {
   } catch (e) {
     setNippouMsg(String(e && e.message || e), 'warn');
   } finally {
-    if (btn) btn.disabled = false;
+    nippouBtnDone(btn);
   }
 }
 
