@@ -2051,9 +2051,21 @@ const GAS_HARIKATA = 'Apps Script の右上「デプロイ」→「デプロイ�
 
 /** 食いちがいの知らせの文 */
 function gasChigauText(なに, サーバー, アプリ, どっち) {
-  const 版 = サーバー
-    ? `（いま動いているGAS ${サーバー} ／ このアプリが待っている ${アプリ}）`
-    : '（版が分かりません）';
+  /* ★サーバーが版を返してこなかったときは、**どちらが古いとも言いません。**
+       版が入っていないのは「GASが古い」ではなく、たいてい
+       **返事がそこまで届いていない**（通信・PIN・入口のつまずき）からです。
+       ここで「デプロイしてください」と出していたので、貼っても何も変わらない、
+       という遠回りをさせました（ko-dai さん・2026-09-11）。 */
+  if (!サーバー) {
+    /* ★何が返ってきたのかを、**名前だけ**見せます。金額などの中身は出しません。
+         2026-09-11、ここで「デプロイしてください」と出していたため、
+         ko-dai さんが貼り直しても何も変わらない、という遠回りをしました。
+         版が入っていないのは、版のくいちがいではありません。 */
+    return `${なに} の版が、返事に入っていませんでした${どっち || ''}。`
+      + '★貼り直しでは直りません。まず、アプリをいったん閉じて開き直してください。'
+      + 'それでも同じなら、この文をそのまま知らせてください。';
+  }
+  const 版 = `（いま動いているGAS ${サーバー} ／ このアプリが待っている ${アプリ}）`;
   if (どっち === 'アプリ') {
     return `${なに} と、この端末のアプリの版が食いちがっています${版}。`
       + '★この端末のアプリが古いままです。アプリをいったん閉じて、開き直してください。'
@@ -2075,8 +2087,10 @@ function gasChigauText(なに, サーバー, アプリ, どっち) {
  *   分かったら**そのときの文のまま**なら差しかえます
  *   （待っているあいだに別の知らせが出ていたら、消しません）。
  */
-function gasChigauShow(出す, なに, サーバー, アプリ) {
-  出す(gasChigauText(なに, サーバー, アプリ, ''), 'warn');
+function gasChigauShow(出す, なに, サーバー, アプリ, なかみ) {
+  出す(gasChigauText(なに, サーバー, アプリ, サーバー ? '' : (なかみ || '')), 'warn');
+  // ★版が分からないときは、向きを調べません（調べても意味がありません）
+  if (!サーバー) return;
   const 出した = gasChigauText(なに, サーバー, アプリ, '');
   gasWhichOld().then((どっち) => {
     if (!どっち) return;
@@ -2095,8 +2109,16 @@ function gasChigauShow(出す, なに, サーバー, アプリ) {
 function nippouGasOk(res) {
   const now = res && res.v ? String(res.v) : '';
   if (now === NIPPOU_GAS_VERSION) return true;
-  gasChigauShow(setNippouMsg, '日報に書く.gs', now, NIPPOU_GAS_VERSION);
+  gasChigauShow(setNippouMsg, '日報に書く.gs', now, NIPPOU_GAS_VERSION, gasNakami(res));
   return false;
+}
+
+/** 返事の中身を、**名前だけ**書き出します（金額などの中身は出しません） */
+function gasNakami(res) {
+  try {
+    if (!res || typeof res !== 'object') return '（返事が ' + String(res) + '）';
+    return '（返事に入っていたもの: ' + Object.keys(res).join('、') + '）';
+  } catch (e) { return ''; }
 }
 
 /** 手で入れた分に、計算できない式が残っていないか */
@@ -2582,10 +2604,16 @@ function cashShrink(file, quality) {
  * 食いちがっていたら、その場で何をすればよいかを出します。
  * true なら、そのまま進めて大丈夫です。
  */
-function cashGasOk(res) {
+function cashGasOk(res, 読むだけ) {
   const now = res && res.v ? String(res.v) : '';
   if (now === CASH_GAS_VERSION) return true;
-  gasChigauShow(setCashMsg, '現金売上.gs', now, CASH_GAS_VERSION);
+  gasChigauShow(setCashMsg, '現金売上.gs', now, CASH_GAS_VERSION, gasNakami(res));
+  /* ★版が**分からない**だけのときは、読み取りは続けます。
+       読み取り（mode:'read'）はドライブに何も残しません。止める理由がありません。
+       版が**ちがう**ときは、これまでどおり止めます。
+     ★「記録する」（写真をドライブに残す）は、分からないときも止めます。
+       残す方は、古いままだと見た目で分からない食いちがいが出るためです。 */
+  if (!now && 読むだけ) return true;
   return false;
 }
 
@@ -2661,7 +2689,7 @@ async function cashReadPhoto(dataUrl, dateStr, file) {
     // ★Apps Script の貼り直しが済んでいるか、ここで見ます。
     //   古いままだと、撮っただけでドライブに写真が残ってしまうなど、
     //   見た目では分からない食いちがいが出るためです
-    if (!cashGasOk(res)) return;
+    if (!cashGasOk(res, true)) return;      // 読むだけ（ドライブには残しません）
 
     let got = parseJournalCash(res.text || '');
 
