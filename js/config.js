@@ -1823,6 +1823,12 @@ function seisanMoneyOf(line) {
   return null;
 }
 
+/** その行に「円・¥・m の付いた数」があるか */
+function seisanMarked(line) {
+  const t = cashNormalize(line || '');
+  return /\d[\d,.\s]*\s*[円¥m]/.test(t) || /¥\s*\d/.test(t);
+}
+
 /** 精算レポートの節の目印 */
 const SEISAN_MARKS = [
   { key: 'uriage', hit: ['売上'] },
@@ -1913,7 +1919,23 @@ function seisanPayRows(lines, から) {
         continue;
       }
       const val = seisanMoneyOf(lines[j]);
-      if (val !== null) { out[f.key] = val; break; }
+      if (val === null) continue;
+      /* ★件数の「点」が落ちて、裸の数になることがあります。
+
+             現金 / 13 / ◯◯◯,◯◯◯円      ← 「13点」の点が落ちた
+                    ↑これを金額にすると、現金が13円になります
+                      （2026年8月21日の紙）
+
+         ★明細のときと同じ見方です。**単位の無い裸の数のすぐ下に、
+           単位つきの金額が来ている**なら、その裸の数は件数です。
+         ★下が名前の行なら飛ばしません。円の落ちた紙では、裸の数が
+           そのまま金額です（現金 / 6点 / 281,940 / 次の名前…）。 */
+      if (!seisanMarked(lines[j])) {
+        const 次 = lines[j + 1];
+        if (次 !== undefined && j + 1 < 終わり && !当たる(次)
+            && seisanMarked(次) && seisanMoneyOf(次) !== null) continue;
+      }
+      out[f.key] = val; break;
     }
     if (out[f.key] === undefined && 件数 === 0) out[f.key] = 0;
   }
@@ -2017,11 +2039,6 @@ function seisanDetailRows(lines, から) {
     }
     return null;
   };
-  /* その行に「円・¥・m の付いた数」があるか */
-  const 単位つき = (line) => {
-    const t = cashNormalize(line || '');
-    return /\d[\d,.\s]*\s*[円¥m]/.test(t) || /¥\s*\d/.test(t);
-  };
   for (let i = から; i < lines.length; i++) {
     const f = 当たる(lines[i]);
     const 金 = seisanMoneyOf(lines[i]);
@@ -2039,9 +2056,9 @@ function seisanDetailRows(lines, から) {
          （あいだに必ず名前が入ります）。
        ★下が名前の行なら飛ばしません。円の落ちた紙では、裸の数が
          そのまま金額です（Uber クレジット / 5点 / 17,320 / 次の名前…）。 */
-    if (!単位つき(lines[i])) {
+    if (!seisanMarked(lines[i])) {
       const 次 = lines[i + 1];
-      if (次 !== undefined && !当たる(次) && 単位つき(次) && seisanMoneyOf(次) !== null) continue;
+      if (次 !== undefined && !当たる(次) && seisanMarked(次) && seisanMoneyOf(次) !== null) continue;
     }
     金額.push(金);
   }
