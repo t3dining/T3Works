@@ -718,6 +718,27 @@ async function cashResume() {
  *  ★もしテンキーで困ったときのために「キーボード」で元に戻せます。
  * ---------------------------------------------------------- */
 
+/**
+ * いま打っている欄か
+ *
+ * ★`document.activeElement` だけでは足りません。**自前のテンキーを使っているとき、
+ *   欄から focus が外れていることがあります**（テンキーの押し下げで外れる端末があります）。
+ *   そのとき calcPadFor は**その欄を指したまま**なので、打ち込みは続いています。
+ *   activeElement だけを見ていたので「打っていない」と判断して欄ごと作り直し、
+ *     ・打っている途中の数が消えて、確定したように見える
+ *     ・作り直しで欄が入れかわり、**全然ちがう仕入先へ飛ぶ**
+ *   という形になっていました（ko-dai さん・2026-09-11）。
+ */
+function cashTyping(i) {
+  if (!i) return false;
+  return document.activeElement === i || calcPadFor === i;
+}
+
+/** その欄が、まだ画面にあるか（作り直しで外れていないか） */
+function calcPadAlive(i) {
+  return !!(i && (i.isConnected === undefined ? document.contains(i) : i.isConnected));
+}
+
 /** 指で使う端末か（パソコンでは出しません） */
 function calcTouch() {
   try {
@@ -902,6 +923,7 @@ function calcPadFit() {
 function calcPadInsert(c) {
   const i = calcPadFor;
   if (!i || i.readOnly) return;
+  if (!calcPadAlive(i)) { calcPadClose(); return; }   // ★欄が作り直されて外れています
   let at = i.selectionStart;
   let to = i.selectionEnd;
   if (at === null || at === undefined) { at = i.value.length; to = at; }
@@ -915,6 +937,7 @@ function calcPadInsert(c) {
 function calcPadBack() {
   const i = calcPadFor;
   if (!i || i.readOnly) return;
+  if (!calcPadAlive(i)) { calcPadClose(); return; }
   let at = i.selectionStart;
   let to = i.selectionEnd;
   if (at === null || at === undefined) { at = i.value.length; to = at; }
@@ -933,6 +956,7 @@ function calcPadBack() {
 function calcPadClear() {
   const i = calcPadFor;
   if (!i || i.readOnly) return;
+  if (!calcPadAlive(i)) { calcPadClose(); return; }
   i.value = '';
   i.dispatchEvent(new Event('input', { bubbles: true }));
 }
@@ -972,6 +996,11 @@ function calcPadDone() {
  * ★出前館などの5つは、そのまま下の欄へ進みます（列が1つしかありません）。
  */
 function calcPadNext(i) {
+  /* ★その欄が画面から外れていたら、**どこへも進みません。**
+       外れた欄は下の並びに入っていないので indexOf が −1 になり、
+       「その列の一番下まで来た」と読まれて**もう片方の列の先頭**へ飛んでいました。
+       仕入の途中で、全然ちがう仕入先に飛ぶのはこれです（2026-09-11）。 */
+  if (!calcPadAlive(i)) return null;
   const 使える = (e) => e.offsetParent && !e.readOnly;
   if (i.dataset.grid) {
     // 同じ節・同じ列だけを、上から順に並べます
@@ -1412,7 +1441,8 @@ function renderNippouBox(done) {
   [...el.cashMinus.querySelectorAll('input[data-k]')].forEach((i) => {
     const v = cashEdit.m[i.dataset.k];
     // ★入れた文字をそのまま戻します。計算式は計算式のまま見えます
-    if (document.activeElement !== i) {
+    // ★テンキーで打っている欄は触りません（focus が外れていても打っています）
+    if (!cashTyping(i)) {
       i.value = (v === undefined || v === null || v === '' || v === 0) ? '' : String(v);
     }
     // ★記録しても固めません。仕入・人件費と同じで、これらは
@@ -1608,9 +1638,14 @@ function renderGridBox() {
     : `${state.storeId}/${ymd(state.y, state.m, state.d)}/`
       + w.shiire.map((r) => r.name).join(',') + '|' + w.jinken.map((r) => r.name).join(',');
   if (el.cashGrid.dataset.sign === 印) { renderGridFill(); cashGridAuto(); return; }
-  // ★打っている最中は作り直しません（キーボードが閉じます）。
-  //   印を覚えないので、欄から離れたときに作り直されます
-  if (el.cashGrid.contains(document.activeElement)) { renderGridFill(); return; }
+  /* ★打っている最中は作り直しません（キーボードが閉じます）。
+       印を覚えないので、欄から離れたときに作り直されます。
+     ★テンキーが指している欄も「打っている」に数えます。**focus が外れていても
+       打ち込みは続いています。**ここを activeElement だけで見ていたせいで、
+       打っている途中に欄ごと作り直され、ちがう仕入先へ飛んでいました。 */
+  const 打っている = el.cashGrid.contains(document.activeElement)
+    || (calcPadFor && el.cashGrid.contains(calcPadFor));
+  if (打っている) { renderGridFill(); return; }
   el.cashGrid.dataset.sign = 印;
   el.cashGrid.innerHTML = '';
 
@@ -1741,7 +1776,7 @@ function renderGridBox() {
 function renderGridFill() {
   if (!el.cashGrid) return;
   [...el.cashGrid.querySelectorAll('input[data-grid]')].forEach((i) => {
-    if (document.activeElement === i) return;      // ★打っている欄は、そのまま
+    if (cashTyping(i)) return;                    // ★打っている欄は、そのまま
     const 持ち = (cashEdit[i.dataset.grid] || {})[i.dataset.name] || {};
     const v = 持ち[i.dataset.col];
     i.value = (v === undefined || v === null) ? '' : String(v);
