@@ -748,6 +748,7 @@ function calcTouch() {
 
 let calcPad = null;
 let calcPadFor = null;      // いま打っている入力欄
+let calcPadHold = 0;        // テンキーの中を触った時刻（閉じないようにするため）
 
 /** テンキーを作ります（1つだけ作って、使い回します） */
 function calcPadMake() {
@@ -795,6 +796,21 @@ function calcPadMake() {
   窓.append(頭, 式);
   pad.appendChild(窓);
   pad.窓の中 = { 欄名: 欄名, 答え: 答え, 式: 式 };
+
+  /* ★ボタンとボタンの**あいだの空き**を触ると、テンキーが閉じていました
+       （ko-dai さん・2026-09-11）。
+
+       ボタンには「押しても欄から離れない」を付けてありましたが、
+       **空きの部分には付いていません**でした。そこを触ると欄から focus が外れ、
+       blur の始末が走って閉じます。
+
+     ★テンキーの中は、**どこを触っても**欄から離さないようにします。
+       ★ただし式の窓だけは別です。長い式を指でなぞって送れなくなるためです。
+         窓を触ったときは「テンキーの中を触った」印で閉じないようにします。 */
+  pad.addEventListener('pointerdown', (e) => {
+    calcPadHold = Date.now();
+    if (e.target !== 式 && !式.contains(e.target)) e.preventDefault();
+  }, true);
 
   const キー = (label, どうする, 色) => {
     const b = document.createElement('button');
@@ -1083,6 +1099,17 @@ function calcPadBind(input) {
   input.addEventListener('blur', () => {
     // ほかの欄へ移っただけなら、出したままにします
     setTimeout(() => {
+      /* ★テンキーの中を触ったための blur なら、閉じません。
+           ①で押さえきれない端末のために、二重にしてあります。 */
+      /* ★長めに取ってあります。短いと、端末が重いときに間に合いません。
+           長くても困りません。**テンキーの外を触ったときは、別の見張り
+           （calcPadOutside）がその場で閉じます。** */
+      if (Date.now() - calcPadHold < 1500) {
+        if (calcPadFor === input && calcPadAlive(input) && document.activeElement !== input) {
+          try { input.focus(); } catch (e) { /* 効かなくても打てます */ }
+        }
+        return;
+      }
       if (calcPadFor === input) { calcPadFor = null; calcPadHide(); }
     }, 120);
   });
