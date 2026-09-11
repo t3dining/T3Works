@@ -2238,6 +2238,24 @@ function nippouZeroSkip(キー, 値) {
   return 値 === 0 && NIPPOU_ZERO_OK.indexOf(キー) < 0;
 }
 
+/**
+ * 日報の行の名前で 0 を落とします（最後の関所）
+ *
+ * ★「続きからやり直す」道（cashResume）は、**前に控えた values をそのまま送ります。**
+ *   この決まりより前に控えたものには 0 が入っています。
+ *   作るところだけで落としていると、その道から 0 が出ていきます。
+ *   ★出口でもう一度落とせば、どの道から来ても同じになります。
+ */
+function nippouZeroDrop(values) {
+  const 客数名 = NIPPOU_LABELS.guests;
+  const out = {};
+  Object.keys(values || {}).forEach((名) => {
+    if (values[名] === 0 && 名 !== 客数名) return;
+    out[名] = values[名];
+  });
+  return out;
+}
+
 function seisanPartData() {
   const j = cashEdit.j || {};
   const sure = cashEdit.sure || {};
@@ -2408,6 +2426,7 @@ async function writeNippou() {
  *    最後まで行けたら控えを消します。
  */
 async function nippouSendNow(values, dateStr, test, folder, extra, calc) {
+  values = nippouZeroDrop(values);      // ★0円は書きません（出口でも落とします）
   // ① ★先に現金売上を確定させます（写真もドライブへ）。
   //    こちらが失敗したら日報には書きません。書いてから記録に失敗すると、
   //    日報にだけ数字が入って、手元に証拠が残らない形になってしまいます
