@@ -1818,8 +1818,11 @@ function seisanMoneyOf(line) {
        途中に字が混じる行は読みません。日付の行（2026年8月4日 22:44）や
        「14 8」のような崩れた行を、金額と取りちがえないためです。
      ★うしろに1文字だけ付いた残骸は許します（「338,470A」「1,432)」）。 */
-  const 素 = /^\d[\d,.]*[A-Za-z)]?$/.exec(s);
-  if (素) return cashNumOf(素[0].replace(/[A-Za-z)]$/, ''));
+  /* ★うしろに付く残骸は**2文字まで**許します。
+       「◯◯◯,◯◯◯F)」… 円が F に化けたうえ、かっこも付いていました
+       （2026年8月27日の紙）。1文字までにしていたので読めませんでした。 */
+  const 素 = /^\d[\d,.]*[A-Za-z)]{0,2}$/.exec(s);
+  if (素) return cashNumOf(素[0].replace(/[A-Za-z)]+$/, ''));
   return null;
 }
 
@@ -2060,10 +2063,16 @@ function seisanDetailRows(lines, から) {
     }
     return null;
   };
+  let 最後の金 = -1;
+  const 名の場所 = [];
   for (let i = から; i < lines.length; i++) {
     const f = 当たる(lines[i]);
     const 金 = seisanMoneyOf(lines[i]);
-    if (f) { 名前.push(f.key); if (金 !== null) 金額.push(金); continue; }
+    if (f) {
+      名前.push(f.key); 名の場所.push(i);
+      if (金 !== null) { 金額.push(金); 最後の金 = i; }
+      continue;
+    }
     if (金 === null) continue;
     /* ★件数の「点」が落ちて、裸の数になることがあります。
 
@@ -2081,7 +2090,15 @@ function seisanDetailRows(lines, から) {
       const 次 = lines[i + 1];
       if (次 !== undefined && !当たる(次) && seisanMarked(次) && seisanMoneyOf(次) !== null) continue;
     }
-    金額.push(金);
+    金額.push(金); 最後の金 = i;
+  }
+  /* ★最後の金額より**下**にある名前は、ちぎれた残骸です。
+       2026年8月29日の紙は、一番下に `Uber` の1行だけが残っていました。
+       これを名前に数えると、名前4つに金額3つで**明細が丸ごと読めません**。
+     ★金額を持たない名前が下に付いているだけなので、落とします。 */
+  while (名前.length > 金額.length && 名の場所.length
+         && 名の場所[名の場所.length - 1] > 最後の金) {
+    名前.pop(); 名の場所.pop();
   }
   const out = {};
   if (名前.length && 名前.length === 金額.length) {
@@ -2233,7 +2250,10 @@ function parseSeisan(text) {
   /* ④ 客数。「組数・客数  5組  21人」の**人**の方 */
   for (let i = 0; i < 支払から; i++) {
     const p4 = cashPlain(lines[i]);
-    if (!/客数/.test(p4)) continue;
+    /* ★見出しの「客数」の字が崩れることがあります（`組数・数`。2026年8月29日の紙）。
+         組数の方は残っていることが多いので、どちらかがあれば見ます。
+         取りちがえても「総売上 ÷ 客数 ＝ 客単価」で止まります。 */
+    if (!/客数|組数/.test(p4)) continue;
     for (let j = i; j < Math.min(i + 4, 支払から); j++) {
       const 人 = journalUnitOf(lines[j], '人');
       if (人 !== null) { v.guests = 人; break; }
@@ -2258,6 +2278,14 @@ function parseSeisan(text) {
         if (m !== null) 数.push(m);
       }
       if (数.length === 見出し数) v.guests = 数[数.length - 1];
+      /* ★組数が見出しの行に入りこむことがあります（`組数客数 30組`）。
+           そのときは下に残る数が1つだけです。組数は「◯組」なので数に入りません。
+
+               組数客数 30組      ← 組数はここ
+               131A              ← 客数（人がAに化けた）
+
+         （2026年8月29日の紙。3通りの読み取りのうち2通りがこの形でした） */
+      else if (数.length === 1) v.guests = 数[0];
     }
     break;
   }
