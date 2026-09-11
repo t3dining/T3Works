@@ -635,6 +635,18 @@ let cashWeek = '';
  * ---------------------------------------------------------- */
 const CASH_JOB = 'cashJob';
 
+/**
+ * サーバーまで届かなかったか（届いていれば、やり直しても同じ答えです）
+ *
+ * ★届いていない（電波・混雑）… 控えを残して、次に開いたときにやり直します
+ * ★届いた（行が見つからない、など）… やり直しても同じなので、控えを消します。
+ *   残すと、**開くたびに同じ知らせが出つづけます。**
+ */
+function cashTodokazu(error) {
+  const e = String(error || '');
+  return /つながりません|電波|返事をしません|通信/.test(e);
+}
+
 function cashJobSave(job) {
   try { Store.setMeta(CASH_JOB, JSON.stringify(job)); } catch (e) { /* 入らなくても先へ進みます */ }
 }
@@ -643,6 +655,43 @@ function cashJobLoad() {
 }
 function cashJobClear() {
   try { Store.setMeta(CASH_JOB, null); } catch (e) { /* 同上 */ }
+}
+
+/* ------------------------------------------------------------
+ *  読み書きのあいだ、画面を消させません
+ *
+ *  ★スマホは画面が消えるとページを止めます。止まると読み書きも止まります。
+ *    そのあいだだけ、画面を起こしたままにします（iOS 16.4 から使えます）。
+ *  ★使えない端末では、何もしません。**それでも困りません。**
+ *    途中で止まっても、開き直したときに続きからやり直します。
+ *  ★画面をいったん隠すと、この錠は外れます。戻ってきたら掛け直します。
+ * ---------------------------------------------------------- */
+let cashWake = null;
+let cashWakeWant = 0;          // いくつの作業が動いているか
+
+async function cashWakeTake() {
+  try {
+    if (!navigator.wakeLock || cashWake) return;
+    cashWake = await navigator.wakeLock.request('screen');
+    cashWake.addEventListener('release', () => { cashWake = null; });
+  } catch (e) { /* 使えない端末では、そのまま進みます */ }
+}
+
+async function cashWakeOn() {
+  cashWakeWant += 1;
+  await cashWakeTake();
+}
+
+/** 画面に戻ってきたときに掛け直します（数は増やしません） */
+function cashWakeAgain() {
+  if (cashWakeWant > 0 && !cashWake) cashWakeTake();
+}
+
+function cashWakeOff() {
+  cashWakeWant = Math.max(0, cashWakeWant - 1);
+  if (cashWakeWant > 0) return;
+  try { if (cashWake) cashWake.release(); } catch (e) { /* 気にしません */ }
+  cashWake = null;
 }
 
 /** 続きからやり直す。起動したときと、画面に戻ってきたときに呼びます */
@@ -684,6 +733,27 @@ async function cashResume() {
       render();
       setNippouMsg('前の書き込みが途中でした。続きからやり直します…');
       await nippouSendNow(job.values, job.date, job.test, job.folder, job.extra, job.calc);
+    } else if (job.kind === 'part') {
+      /* ★仕入・人件費・デリバリーの書き込みが途中で切れたとき。
+           見に行って確かめるところは済んでいるので、書くところからやり直します。 */
+      const 名 = (NIPPOU_PARTS[job.part] || {}).name || '日報';
+      setNippouMsg(`前の書き込みが途中でした。続きからやり直します…（${名}）`);
+      await cashWakeOn();
+      try {
+        const res = await Sync.ask('nippouWrite', {
+          mode: '書く', file: job.test, folder: job.folder, day: job.date,
+          values: nippouZeroDrop(job.values), extra: job.extra || [], calc: job.calc || {},
+        });
+        if (!res.ok) {
+          if (!cashTodokazu(res.error)) cashJobClear();
+          setNippouMsg((res.error || '書けませんでした')
+            + (cashTodokazu(res.error) ? '　アプリを開き直すと、続きからやり直します' : ''), 'warn');
+          return;
+        }
+        cashJobClear();
+        cashWroteSave(job.date, job.values, job.extra);
+        setNippouMsg(`${名}を日報に書きました（${res.sheet}日・${(res.rows || []).length}か所）`, 'ok');
+      } finally { cashWakeOff(); }
     }
   } finally {
     cashResuming = false;
@@ -2365,6 +2435,7 @@ async function nippouWritePart(part, btn) {
 
   const dateStr = ymd(state.y, state.m, state.d);
   nippouBtnBusy(btn, '日報を見に行っています…');
+  await cashWakeOn();          // ★画面を消させません（消えると止まります）
   try {
     // ① まず、今の中身を見に行きます（書きません）
     setNippouMsg(`日報を見に行っています…（${決.name}）`);
@@ -2400,16 +2471,38 @@ async function nippouWritePart(part, btn) {
       return;
     }
 
-    // ③ 書きます（ジャーナル以外は、現金売上の記録は要りません）
+    /* ③ 書きます（ジャーナル以外は、現金売上の記録は要りません）
+
+       ★書く前に控えます。**ここから先は何秒かかかります。**
+         途中でアプリを閉じても、スマホがロックされても、
+         **次に開いたときに続きからやり直します**（ko-dai さん・2026-09-11）。
+         これまで控えていたのはジャーナルだけで、
+         仕入・人件費・デリバリーは途中で切れたら消えていました。 */
+    cashJobSave({
+      kind: 'part', part, store: state.storeId, date: dateStr,
+      values, extra, calc, test, folder, at: new Date().toISOString(),
+    });
     setNippouMsg(`日報に書いています…（${決.name}）`);
     const res = await Sync.ask('nippouWrite',
       { mode: '書く', file: test, folder, day: dateStr, values, extra, calc });
-    if (!res.ok) { setNippouMsg(res.error || '書けませんでした', 'warn'); return; }
+    if (!res.ok) {
+      // ★サーバーまで届いていないときだけ、控えを残します
+      if (cashTodokazu(res.error)) {
+        setNippouMsg((res.error || '書けませんでした')
+          + '　アプリを開き直すと、続きからやり直します', 'warn');
+      } else {
+        cashJobClear();
+        setNippouMsg(res.error || '書けませんでした', 'warn');
+      }
+      return;
+    }
+    cashJobClear();                          // ここまで来たら、やり直す必要はありません
     cashWroteSave(dateStr, values, extra);   // ★日報で直されたかを見くらべるため
     setNippouMsg(`${決.name}を日報に書きました（${res.sheet}日・${(res.rows || []).length}か所）`, 'ok');
   } catch (e) {
     setNippouMsg(String(e && e.message || e), 'warn');
   } finally {
+    cashWakeOff();
     nippouBtnDone(btn);
   }
 }
@@ -2809,6 +2902,7 @@ async function onCashFile(e) {
 async function cashReadPhoto(dataUrl, dateStr, file) {
   cashEdit.busy = true;
   el.cashTake.classList.add('is-busy');
+  await cashWakeOn();          // ★画面を消させません（消えると止まります）
   try {
     setCashWait('文字を読み取っています…');
     // ★ここでは読み取るだけで、ドライブには残しません。
@@ -2900,6 +2994,7 @@ async function cashReadPhoto(dataUrl, dateStr, file) {
       + '　アプリを開き直すと、続きからやり直します', 'warn');
     showCashPhoto();
   } finally {
+    cashWakeOff();
     cashEdit.busy = false;
     el.cashTake.classList.remove('is-busy');
     el.cashTakeText.textContent = (cashEdit.photo || cashEdit.pending) ? '📷 撮り直す' : '📷 ジャーナルを撮る';
@@ -11230,7 +11325,10 @@ async function init() {
   // ★途中で終わった作業を、続きからやり直します。
   //   画面に戻ってきたときにも見ます（アプリを裏に回すと通信が切られるため）
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) cashResume();
+    if (!document.hidden) {
+      cashWakeAgain();   // ★画面を隠すと錠は外れます。まだ動いていれば掛け直します
+      cashResume();
+    }
   });
   window.addEventListener('pageshow', () => cashResume());
 
