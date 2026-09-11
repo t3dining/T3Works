@@ -744,6 +744,37 @@ function calcPadMake() {
     'background:#2b2b2b', 'box-shadow:0 -2px 12px rgba(0,0,0,.35)',
   ].join(';');
 
+  /* ★いま打っている式を見せる窓（テンキーの一番上）
+       入力欄は細いので「=1000+2000+3000+…」と長くなると**後ろが見えません。**
+       ウーバーや仕入は何件も足すので、入れたつもりの分が入っているか
+       分からない、と ko-dai さんから（2026-09-11）。
+       ここに**式そのもの**と**その答え**を出します。 */
+  const 窓 = document.createElement('div');
+  窓.style.cssText = [
+    'grid-column:1/-1', 'background:#1c1c1c', 'border-radius:8px',
+    'padding:6px 9px', 'margin-bottom:2px',
+  ].join(';');
+  const 頭 = document.createElement('div');
+  頭.style.cssText = [
+    'display:flex', 'justify-content:space-between', 'align-items:baseline',
+    'gap:8px', 'font-size:12px', 'color:#9a9a9a', 'line-height:1.4',
+  ].join(';');
+  const 欄名 = document.createElement('span');
+  欄名.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+  const 答え = document.createElement('span');
+  答え.style.cssText = 'flex:0 0 auto;font-weight:700;font-size:13px;color:#7fd39b';
+  頭.append(欄名, 答え);
+  const 式 = document.createElement('div');
+  式.style.cssText = [
+    'font-size:17px', 'font-weight:700', 'color:#fff', 'line-height:1.35',
+    'font-family:ui-monospace,SFMono-Regular,Menlo,monospace',
+    'word-break:break-all', 'max-height:4.1em', 'overflow-y:auto',
+    'min-height:1.35em', '-webkit-overflow-scrolling:touch',
+  ].join(';');
+  窓.append(頭, 式);
+  pad.appendChild(窓);
+  pad.窓の中 = { 欄名: 欄名, 答え: 答え, 式: 式 };
+
   const キー = (label, どうする, 色) => {
     const b = document.createElement('button');
     b.type = 'button';
@@ -791,6 +822,80 @@ function calcPadMake() {
   document.body.appendChild(pad);
   calcPad = pad;
   return pad;
+}
+
+/** どの欄を打っているかの名前（窓の左上に出します） */
+function calcPadLabel(i) {
+  if (!i || !i.dataset) return '';
+  if (i.dataset.k) return (typeof NIPPOU_LABELS === 'object' && NIPPOU_LABELS[i.dataset.k]) || '';
+  if (i.dataset.grid) {
+    const 列 = i.dataset.colname || '';
+    return (i.dataset.name || '') + (列 ? '｜' + 列 : '');
+  }
+  return '';
+}
+
+/**
+ * 窓に「いま打っている式」と「その答え」を出します
+ *
+ * ★打つたびに呼ばれます（テンキーも、パソコンのキーボードも、
+ *   どちらも input の知らせを出すので、ここ1か所で足ります）。
+ * ★答えが出せない式は、赤で「計算できません」と出します。
+ *   **まちがった数を入れないため**、ここで気づけるようにします。
+ */
+function calcPadEcho() {
+  if (!calcPad || !calcPad.窓の中) return;
+  const { 欄名, 答え, 式 } = calcPad.窓の中;
+  const i = calcPadFor;
+  const 文字 = i ? String(i.value || '') : '';
+  欄名.textContent = calcPadLabel(i);
+  式.textContent = 文字;
+  式.style.color = '#fff';
+  if (!文字.trim()) {
+    式.textContent = 'まだ何も入っていません';
+    式.style.color = '#6a6a6a';
+    答え.textContent = '';
+  } else {
+    const n = (typeof cashMinusNum === 'function') ? cashMinusNum(文字) : null;
+    const 式か = (typeof cashIsFormula === 'function') && cashIsFormula(文字);
+    // ★「=」だけ、「+」で終わっている……は**打っている途中**です。
+    //   ここで赤く出すと、まだ間違っていないのに間違いに見えます
+    const 途中 = /[=＝+＋\-ー−*×/÷(（.．]\s*$/.test(文字.trim());
+    if (n === null && 途中) {
+      答え.textContent = '…';
+      答え.style.color = '#6a6a6a';
+    } else if (n === null) {
+      答え.textContent = 式か ? '計算できません' : '数になりません';
+      答え.style.color = '#ff8f8f';
+    } else {
+      答え.textContent = '＝ ' + n.toLocaleString('ja-JP');
+      答え.style.color = '#7fd39b';
+    }
+  }
+  // ★長い式は折り返して、**一番下（＝いま打っているところ）**を見せます
+  try { 式.scrollTop = 式.scrollHeight; } catch (e) { /* 気にしません */ }
+  // ★窓が2行・3行と伸びると、テンキー全体も高くなります。
+  //   足した余白を付け直さないと、打っている欄が隠れます
+  calcPadFit();
+}
+
+/**
+ * テンキーの高さに合わせて、ページの下の余白を付け直します
+ *
+ * ★窓が伸びるとテンキーが高くなるので、打っている欄が**下から隠れます。**
+ *   隠れたときだけ、隠れない位置まで送ります（ふだんは何もしません）。
+ *   毎回まん中へ送ると、打つたびに画面が跳ねて読めなくなります。
+ */
+function calcPadFit() {
+  if (!calcPad || calcPad.style.display === 'none') return;
+  try {
+    const 枠 = calcPad.getBoundingClientRect();
+    document.body.style.paddingBottom = `${Math.round(枠.height) + 24}px`;
+    const i = calcPadFor;
+    if (!i || !i.getBoundingClientRect) return;
+    const 下 = i.getBoundingClientRect().bottom;
+    if (下 > 枠.top - 8) window.scrollBy(0, Math.ceil(下 - (枠.top - 12)));
+  } catch (e) { /* 取れなくても、打つのに困りません */ }
 }
 
 /** カーソルのところに字を入れます */
@@ -895,6 +1000,7 @@ function calcPadNext(i) {
 function calcPadShow(input) {
   const pad = calcPadMake();
   pad.style.display = 'grid';
+  calcPadEcho();            // ★どの欄に何が入っているかを、すぐ出します
   setTimeout(() => {
     try {
       const 高さ = pad.getBoundingClientRect().height;
@@ -943,6 +1049,8 @@ function calcPadBind(input) {
     calcPadFor = input;
     calcPadShow(input);
   });
+  // ★テンキーで打っても、パソコンのキーボードで打っても input が出ます
+  input.addEventListener('input', () => { if (calcPadFor === input) calcPadEcho(); });
   input.addEventListener('blur', () => {
     // ほかの欄へ移っただけなら、出したままにします
     setTimeout(() => {
@@ -1571,6 +1679,7 @@ function renderGridBox() {
         i.dataset.grid = 入れ先;
         i.dataset.name = r.name;
         i.dataset.col = which;
+        i.dataset.colname = ラベル;      // ★テンキーの窓の見出しに使います
         const 持ち = (cashEdit[入れ先] || {})[r.name] || {};
         if (document.activeElement !== i) i.value = 持ち[which] === undefined ? '' : String(持ち[which]);
         // ★日報が計算しているマスには入れられません（式を壊さないため）
@@ -1900,6 +2009,83 @@ function setNippouMsg(text, kind) {
   el.cashNippouMsg.className = 'cash-msg' + (kind ? ` is-${kind}` : '') + (text ? '' : ' is-hidden');
 }
 
+/* ------------------------------------------------------------
+ *  GASとアプリの版が食いちがったときの知らせ
+ *
+ *  ★はじめは、どちらが古くても「デプロイしてください」と出していました。
+ *    **まちがった方へ案内していました。**
+ *    2026-09-11、端末のアプリが古いだけなのに、ko-dai さんが
+ *    GASを貼りに行きかけました（本部が気づいて止めました）。
+ *
+ *  ★版の印だけでは、どちらが新しいかは分かりません。
+ *    そこで **version.json**（公開したときの印）と、いま開いている
+ *    `<meta name="app-version">` を見くらべます。
+ *      ちがう → **このアプリが古い**。開き直せば直ります
+ *      同じ   → アプリは最新。**GASのデプロイが古い**
+ *    分からないときは、どちらの手も並べて出します（決めつけません）。
+ * ---------------------------------------------------------- */
+
+/** いま開いているアプリの版の印（手元で開いたときは空） */
+function gasAppMark() {
+  try {
+    const meta = document.querySelector('meta[name="app-version"]');
+    return meta ? String(meta.content || '').trim() : '';
+  } catch (e) { return ''; }
+}
+
+/** 古いのはどちらか … 'アプリ' ／ 'GAS' ／ ''（分からない） */
+async function gasWhichOld() {
+  const いま = gasAppMark();
+  if (!いま) return '';                       // 印が無い（手元で開いている）
+  try {
+    const res = await fetch('version.json', { cache: 'no-store' });
+    if (!res.ok) return '';
+    const json = await res.json();
+    if (!json || !json.v) return '';
+    return String(json.v) === いま ? 'GAS' : 'アプリ';
+  } catch (e) { return ''; }                  // 通信できないときは決めつけません
+}
+
+const GAS_HARIKATA = 'Apps Script の右上「デプロイ」→「デプロイを管理」→ '
+  + 'いま使っているデプロイの鉛筆 → バージョンを「新バージョン」→「デプロイ」';
+
+/** 食いちがいの知らせの文 */
+function gasChigauText(なに, サーバー, アプリ, どっち) {
+  const 版 = サーバー
+    ? `（いま動いているGAS ${サーバー} ／ このアプリが待っている ${アプリ}）`
+    : '（版が分かりません）';
+  if (どっち === 'アプリ') {
+    return `${なに} と、この端末のアプリの版が食いちがっています${版}。`
+      + '★この端末のアプリが古いままです。アプリをいったん閉じて、開き直してください。'
+      + 'GASを貼る必要はありません。';
+  }
+  if (どっち === 'GAS') {
+    return `${なに} が古いままです${版}。`
+      + `★コードを貼っただけでは切り替わりません。${GAS_HARIKATA}`;
+  }
+  return `${なに} と、この端末のアプリの版が食いちがっています${版}。`
+    + '★まず、アプリをいったん閉じて開き直してください（端末のアプリが古いだけのことがあります）。'
+    + `それでも同じなら、GASのデプロイです：${GAS_HARIKATA}`;
+}
+
+/**
+ * 知らせを出して、あとから「どちらが古いか」で書きかえます
+ *
+ * ★調べるのに通信が要るので、待たせません。先に両方の手を出しておいて、
+ *   分かったら**そのときの文のまま**なら差しかえます
+ *   （待っているあいだに別の知らせが出ていたら、消しません）。
+ */
+function gasChigauShow(出す, なに, サーバー, アプリ) {
+  出す(gasChigauText(なに, サーバー, アプリ, ''), 'warn');
+  const 出した = gasChigauText(なに, サーバー, アプリ, '');
+  gasWhichOld().then((どっち) => {
+    if (!どっち) return;
+    const いまの文 = (なに === '日報に書く.gs' ? el.cashNippouMsg : el.cashMsg);
+    if (!いまの文 || いまの文.textContent !== 出した) return;   // 別の知らせに変わっています
+    出す(gasChigauText(なに, サーバー, アプリ, どっち), 'warn');
+  });
+}
+
 /**
  * サーバー（日報に書く.gs）が新しい版かどうか
  *
@@ -1909,12 +2095,7 @@ function setNippouMsg(text, kind) {
 function nippouGasOk(res) {
   const now = res && res.v ? String(res.v) : '';
   if (now === NIPPOU_GAS_VERSION) return true;
-  const how = '★コードを貼っただけでは切り替わりません。'
-    + 'Apps Script の右上「デプロイ」→「デプロイを管理」→ '
-    + 'いま使っているデプロイの鉛筆 → バージョンを「新バージョン」→「デプロイ」';
-  setNippouMsg(now
-    ? `日報に書く.gs が古いままです（サーバー ${now} ／ アプリ ${NIPPOU_GAS_VERSION}）。${how}`
-    : `日報に書く.gs が古いままです（版が分かりません）。${how}`, 'warn');
+  gasChigauShow(setNippouMsg, '日報に書く.gs', now, NIPPOU_GAS_VERSION);
   return false;
 }
 
@@ -2404,15 +2585,7 @@ function cashShrink(file, quality) {
 function cashGasOk(res) {
   const now = res && res.v ? String(res.v) : '';
   if (now === CASH_GAS_VERSION) return true;
-
-  // ★「貼っただけ」では切り替わりません。デプロイを更新するまで、
-  //   サーバーは前の版のまま動きつづけます。そこを名指しで伝えます
-  const how = '★コードを貼っただけでは切り替わりません。'
-    + 'Apps Script の右上「デプロイ」→「デプロイを管理」→ '
-    + 'いま使っているデプロイの鉛筆 → バージョンを「新バージョン」→「デプロイ」';
-  setCashMsg(now
-    ? `Apps Script が古いままです（サーバー ${now} ／ アプリ ${CASH_GAS_VERSION}）。${how}`
-    : `Apps Script が古いままです（版が分かりません）。${how}`, 'warn');
+  gasChigauShow(setCashMsg, '現金売上.gs', now, CASH_GAS_VERSION);
   return false;
 }
 

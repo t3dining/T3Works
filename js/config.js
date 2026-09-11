@@ -1846,22 +1846,52 @@ function seisanMarkOf(line) {
  *   当てずっぽうではありません。
  */
 function seisanPayRows(lines, から) {
-  const out = {};
-  const 当たる = (line) => {
+  /* ★支払内訳は「明細」の見出しの**手前まで**です。
+       ここで止めないと、クレジット明細の中の「出前館クレジット」を
+       支払内訳の「クレジット」と取りちがえます。
+       2026年8月4日の紙で実際に起きました（クレジット 96,199円 のはずが、
+       出前館クレジットの 5,780円 を読んでいました）。 */
+  let 終わり = lines.length;
+  for (let i = から; i < lines.length; i++) {
+    if (/明細/.test(cashPlain(lines[i]))) { 終わり = i; break; }
+  }
+
+  /* その行に出ている名前を、**出てきた順に全部**返します。
+     ★1行に2つ出ることがあります。実際に「その他支払 0点 売掛金」という
+       1行になっていました（表の横並びが1行につぶれた形）。 */
+  const 名たち = (line) => {
     const p = cashPlain(line);
+    const 見つけ = [];
     for (const f of SEISAN_PAY) {
       if (f.skip.some((ng) => p.includes(cashPlain(ng)))) continue;
-      if (f.hit.some((h) => p.includes(cashPlain(h)))) return f;
+      let at = -1;
+      for (const h of f.hit) {
+        const k = p.indexOf(cashPlain(h));
+        if (k >= 0 && (at < 0 || k < at)) at = k;
+      }
+      if (at >= 0) 見つけ.push({ key: f.key, at: at });
     }
-    return null;
+    見つけ.sort((a, b) => a.at - b.at);
+    return 見つけ.map((x) => x.key);
   };
-  for (let i = から; i < lines.length; i++) {
+  const 当たる = (line) => {
+    const k = 名たち(line);
+    return k.length ? SEISAN_PAY.filter((f) => f.key === k[0])[0] : null;
+  };
+
+  /* ---- ふつうの形：名前のすぐ下に、件数と金額が続きます ----
+       現金 / 2点 / 57,368円
+     ★「売掛金 / 0点 / 円」のように **0が落ちる**ことがあります。
+       件数が 0点 なら金額も 0円 です。紙がそう言っているので、
+       当てずっぽうではありません。 */
+  const out = {};
+  for (let i = から; i < 終わり; i++) {
     const f = 当たる(lines[i]);
     if (!f || out[f.key] !== undefined) continue;
     const ここ = seisanMoneyOf(lines[i]);
     if (ここ !== null) { out[f.key] = ここ; continue; }
     let 件数 = null;
-    for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
+    for (let j = i + 1; j < Math.min(i + 4, 終わり); j++) {
       if (当たる(lines[j])) break;
       const c = /^[(]?\s*(\d+)\s*点[)]?$/.exec(cashNormalize(lines[j]).trim());
       if (c) { 件数 = Number(c[1]); continue; }
@@ -1871,53 +1901,68 @@ function seisanPayRows(lines, から) {
     if (out[f.key] === undefined && 件数 === 0) out[f.key] = 0;
   }
 
-  /* ★名前が先にまとまって並び、そのあとに件数と金額が続く形
-       現金 / クレジット / その他支払 / 売掛金
-       2210 / 点点点点                        ← 崩れた残骸。飛ばします
-       2点 / 57,368円 / 2点 / 20,602円 / 1点 / 16,764円 / 0点 / 円
-     こじゃれの紙で実際に出ました（2026-09-10）。
-     ★このときは「円の付いた金額」だけを数えます。
-       上の「2210」のような裸の数字は、件数がくっついたゴミだからです。
-     ★「0点」のあとに金額が無ければ 0円 です（紙がそう言っています）。 */
-  const まだ = SEISAN_PAY.filter((f) => out[f.key] === undefined).map((f) => f.key);
-  if (まだ.length === SEISAN_PAY.length) {
-    const 名の順 = [];
-    let 最後の名 = -1;
-    for (let i = から; i < lines.length; i++) {
-      const p = cashPlain(lines[i]);
-      if (/明細/.test(p)) break;
-      for (const f of SEISAN_PAY) {
-        if (f.skip.some((ng) => p.includes(cashPlain(ng)))) continue;
-        if (f.hit.some((h) => p.includes(cashPlain(h)))) {
-          if (名の順.indexOf(f.key) < 0) { 名の順.push(f.key); 最後の名 = i; }
-          break;
-        }
+  /* ---- 積み上がった形：名前が先に全部並び、そのあとに件数と金額 ----
+
+       現金 / 6点 / クレジット / 8点 / その他支払 0点 売掛金 / 0点
+       点点点点                         ← 崩れた残骸。飛ばします
+       303,451円 / 96,199円 / 吧 / 吧   ← 0円は「吧」などに化けて落ちます
+
+     ★見分け方は「**名前が全部、最初の金額より先に出ている**」かどうかです。
+       ふつうの形なら、1つ目の名前のすぐ下に1つ目の金額が来ます。
+     ★ここでは「円・¥・m の付いた金額」だけを数えます。「2210」のような
+       裸の数字は、件数がくっついた残骸だからです。
+     ★件数の数と名前の数がそろっていれば、**0点のものは0円**と決められます。
+       紙がそう言っているので、当てずっぽうではありません。
+     ★数が合わなければ**何も返しません**。順番で結ぶのは危ういので、
+       合わないときは読まないのが決まりです。 */
+  const 名の順 = [];
+  let 最初の名 = -1;
+  let 最後の名 = -1;
+  for (let i = から; i < 終わり; i++) {
+    名たち(lines[i]).forEach((k) => {
+      if (名の順.indexOf(k) < 0) 名の順.push(k);
+      if (最初の名 < 0) 最初の名 = i;
+      最後の名 = i;
+    });
+  }
+  /* ★数えはじめは「1つ目の名前」からです。支払内訳の見出しのすぐ下に、
+       **前の欄（値割引明細）の残骸**が落ちていた紙がありました
+       （0点 / 0円 / 0点 / 円 …）。見出しから数えると、その0円を
+       現金の金額と取りちがえます。 */
+  let 最初の金 = -1;
+  const 件数の順 = [];
+  const 金額の順 = [];
+  for (let i = Math.max(最初の名, から); i < 終わり && 最初の名 >= 0; i++) {
+    const raw = cashNormalize(lines[i]).trim();
+    const 点 = raw.match(/(\d+)\s*点/g);
+    if (点) 点.forEach((t) => { 件数の順.push(Number(t.replace(/[^\d]/g, ''))); });
+    if (/[円¥m]/.test(raw)) {
+      const v = seisanMoneyOf(lines[i]);
+      if (v !== null) { 金額の順.push(v); if (最初の金 < 0) 最初の金 = i; }
+    }
+  }
+  const 積み上がり = 名の順.length >= 2 && 最後の名 >= 0
+    && (最初の金 < 0 || 最後の名 < 最初の金);
+  if (積み上がり) {
+    const 積 = {};
+    let よし = false;
+    if (金額の順.length === 名の順.length) {
+      // 4つとも金額が出ている
+      名の順.forEach((k, n) => { 積[k] = 金額の順[n]; });
+      よし = true;
+    } else if (件数の順.length === 名の順.length) {
+      // 0点のものは金額が落ちています
+      const 要る = [];
+      名の順.forEach((k, n) => { if (件数の順[n] === 0) 積[k] = 0; else 要る.push(k); });
+      if (金額の順.length === 要る.length) {
+        要る.forEach((k, n) => { 積[k] = 金額の順[n]; });
+        よし = true;
       }
     }
-    if (名の順.length >= 2 && 最後の名 >= 0) {
-      let n = 0;
-      let 件数 = null;
-      for (let i = 最後の名 + 1; i < lines.length && n < 名の順.length; i++) {
-        const raw = cashNormalize(lines[i]).trim();
-        if (/明細/.test(cashPlain(lines[i]))) break;
-        const c = /^[(]?\s*(\d+)\s*点[)]?$/.exec(raw);
-        if (c) {
-          // 前の件数が0のまま金額が来なかったら、その名前は0円です
-          if (件数 === 0) { out[名の順[n]] = 0; n += 1; }
-          件数 = Number(c[1]);
-          continue;
-        }
-        // ★円・¥・m の付いた金額だけを数えます（裸の数字は数えません）
-        if (!/[円¥m]/.test(raw)) continue;
-        const v2 = seisanMoneyOf(lines[i]);
-        if (v2 === null) {
-          if (件数 === 0) { out[名の順[n]] = 0; n += 1; 件数 = null; }
-          continue;
-        }
-        out[名の順[n]] = v2; n += 1; 件数 = null;
-      }
-      if (件数 === 0 && n < 名の順.length) out[名の順[n]] = 0;
-    }
+    // ★積み上がった形と分かったら、**ふつうの形で読んだ分は捨てます。**
+    //   ふつうの形の読み方は、この並びだと必ず取りちがえます
+    if (よし) return 積;
+    return {};
   }
   return out;
 }
@@ -2079,10 +2124,41 @@ function parseSeisan(text) {
 
   /* ⑤ 客単価（組単価・点単価とまちがえないように） */
   for (let i = 0; i < 支払から; i++) {
-    if (!cashPlain(lines[i]).includes('客単価')) continue;
+    const p5 = cashPlain(lines[i]);
+    if (!p5.includes('客単価')) continue;
+    // (a) ふつうの形：同じ行か、すぐ下に金額があります
+    let 取れた = false;
     for (let j = i; j < Math.min(i + 3, 支払から); j++) {
       const m = seisanMoneyOf(lines[j]);
-      if (m !== null) { v.per = m; break; }
+      if (m !== null) { v.per = m; 取れた = true; break; }
+    }
+    /* (b) 見出しだけが1行に並ぶ形。2026年8月4日の紙で出ました。
+
+             組数・客数 組単価 客単価     ← 見出しが4つ横並び
+             14組 / 85人 / 28,546円 / 4,701円
+
+       ★見出しの並び順と、**円の付いた金額**の並び順で結びます。
+         「14組」「85人」は円が無いので数えません。
+       ★数が合わなければ読みません（順番で結ぶのは危ういため）。
+         読めなくても、客単価は日報に入れないので困りません。
+         ただし「総売上 ÷ 客数 ＝ 客単価」の検算が減るので、
+         **客数が確かだと言えなくなります。** */
+    if (!取れた) {
+      const 見出し = [];
+      ['組単価', '客単価', '点単価'].forEach((h) => {
+        const at = p5.indexOf(h);
+        if (at >= 0) 見出し.push({ h: h, at: at });
+      });
+      見出し.sort((a, b) => a.at - b.at);
+      const 金 = [];
+      for (let j = i + 1; j < 支払から; j++) {
+        if (/単価|内税|明細|支払|割引|値引/.test(cashPlain(lines[j]))) break;
+        if (!/[円¥]/.test(cashNormalize(lines[j]))) continue;
+        const m = seisanMoneyOf(lines[j]);
+        if (m !== null) 金.push(m);
+      }
+      const n5 = 見出し.map((x) => x.h).indexOf('客単価');
+      if (見出し.length === 金.length && n5 >= 0) v.per = 金[n5];
     }
     break;
   }
