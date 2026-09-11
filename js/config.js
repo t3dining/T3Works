@@ -2254,20 +2254,36 @@ function parseSeisan(text) {
      対象額の 4,740 を税額として拾ってしまいました（2026-09-10）。
      どちらの紙でも「最後の金額が税額」は変わらないので、そちらで取ります。
      ★対象額しか無いときは読みません（対象額を税額と取りちがえないため）。 */
-  const 税 = [];
-  for (let i = 0; i < 支払から; i++) {
-    if (!/内税/.test(cashPlain(lines[i]))) continue;
-    const この欄 = [];
-    for (let j = i + 1; j < Math.min(i + 8, 支払から); j++) {
-      const p = cashPlain(lines[j]);
-      if (/内税|組数|客数|単価|明細|支払/.test(p)) break;
-      const m = seisanMoneyOf(lines[j]);
-      if (m !== null) この欄.push(m);
+  const 税を読む = (しるし) => {
+    const 税 = [];
+    for (let i = 0; i < 支払から; i++) {
+      if (!cashPlain(lines[i]).includes(しるし)) continue;
+      const この欄 = [];
+      for (let j = i + 1; j < Math.min(i + 8, 支払から); j++) {
+        const p = cashPlain(lines[j]);
+        if (/内税|外税|組数|客数|単価|明細|支払/.test(p)) break;
+        const m = seisanMoneyOf(lines[j]);
+        if (m !== null) この欄.push(m);
+      }
+      // 対象額と税額の2つ以上あるときだけ。最後が税額です
+      if (この欄.length >= 2) 税.push(この欄[この欄.length - 1]);
     }
-    // 対象額と税額の2つ以上あるときだけ。最後が税額です
-    if (この欄.length >= 2) 税.push(この欄[この欄.length - 1]);
-  }
-  if (税.length) v.tax = 税.reduce((a, b) => a + b, 0);
+    return 税.length ? 税.reduce((a, b) => a + b, 0) : null;
+  };
+  const 内 = 税を読む('内税');
+  if (内 !== null) v.tax = 内;
+  /* ★外税（上に乗せる税）が出る紙があります（2026年8月7日）。
+
+         外税(10%対象 / 4,200円) / 2点 / 420円
+
+     ★内税とちがって、**オーダの合計には入っていません。**
+         総売上 648,471 ＝ オーダ 648,051 ＋ 外税 420
+       そのため、次の2つが**外税のぶんだけずれます**。
+         純売上   総売上 − 内税 − **外税** ＝ 純売上
+         客単価   (総売上 − **外税**) ÷ 客数 ＝ 客単価
+       外税を見ていなかったので、この紙は2つとも合わずに止まっていました。 */
+  const 外 = 税を読む('外税');
+  if (外 !== null) v.taxOut = 外;
 
   const has = (k) => v[k] !== null && v[k] !== undefined;
 
@@ -2291,7 +2307,8 @@ function parseSeisan(text) {
        その200円を電子マネーに入れてしまうところでした（2026-09-10）。
        クレジット明細と同じく、**残りがちょうど 0 のときだけ 0円**にします。 */
   if (!has('net') && has('gross') && has('tax')) {
-    v.net = v.gross - v.tax; fixed.push('純売上'); 埋めた元.net = ['gross', 'tax'];
+    v.net = v.gross - v.tax - (v.taxOut || 0); fixed.push('純売上');
+    埋めた元.net = has('taxOut') ? ['gross', 'tax', 'taxOut'] : ['gross', 'tax'];
   }
   if (!has('kake') && has('gross') && has('cash') && has('creditAll') && has('other')) {
     const d = v.gross - v.cash - v.creditAll - v.other;
@@ -2351,14 +2368,21 @@ function parseSeisan(text) {
       ['other'].concat(その他キー));
   }
   if (has('gross') && has('tax') && has('net') && !埋めた元.net) {
-    add('総売上 − 内税 ＝ 純売上', v.gross - v.tax, v.net, ['gross', 'tax', 'net']);
+    // ★外税は、出ている紙だけ引きます（出ない日がふつうです）
+    add(has('taxOut') ? '総売上 − 内税 − 外税 ＝ 純売上' : '総売上 − 内税 ＝ 純売上',
+      v.gross - v.tax - (v.taxOut || 0), v.net,
+      has('taxOut') ? ['gross', 'tax', 'net', 'taxOut'] : ['gross', 'tax', 'net']);
   }
   if (has('per') && v.per > 0 && has('guests') && has('gross') && v.guests) {
-    const calc = Math.round(v.gross / v.guests);
+    // ★客単価は**外税を乗せる前**の金額でついています（オーダの合計）
+    const もと = v.gross - (v.taxOut || 0);
+    const calc = Math.round(もと / v.guests);
     checks.push({
-      name: '総売上 ÷ 客数 ＝ 客単価', left: calc, right: v.per,
+      name: has('taxOut') ? '(総売上 − 外税) ÷ 客数 ＝ 客単価' : '総売上 ÷ 客数 ＝ 客単価',
+      left: calc, right: v.per,
       // ★1円未満の丸めがあるので、少しの差は通します
-      ok: Math.abs(calc - v.per) <= 2, covers: ['guests', 'per', 'gross'],
+      ok: Math.abs(calc - v.per) <= 2,
+      covers: has('taxOut') ? ['guests', 'per', 'gross', 'taxOut'] : ['guests', 'per', 'gross'],
     });
   }
 
@@ -2397,6 +2421,7 @@ const SEISAN_NAMES = {
   uberCard: 'Uberクレジット', demaeCard: '出前館クレジット',
   other: 'その他支払', emoney: '電子マネー', kake: '売掛金',
   gross: '総売上', net: '純売上', guests: '客数', per: '客単価', tax: '内税',
+  taxOut: '外税',
 };
 
 /* ------------------------------------------------------------
