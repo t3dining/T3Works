@@ -2159,13 +2159,35 @@ function parseSeisan(text) {
        まだ1つも金額を読んでいないうちのオーダは、**ただの見出し**です。
        ★内税・組数・単価などは、はっきり「そのあとの欄」なので、
          金額を読む前でも打ち切ります。オーダだけを分けます。 */
+  /* ★総売上と純売上が**同じ行**に並ぶ紙があります（2026年8月12日）。
+
+         売上 純売上
+         324,906円 295,763円      ← 1行に2つ
+
+     seisanMoneyOf は**その行の最後の1つ**しか返さないので、
+     純売上だけを拾って「総売上＝純売上」にしていました。
+     ここでは、その行にある金額を**全部、出てきた順に**数えます。 */
+  const その行の金 = (line) => {
+    const t = cashNormalize(line).replace(/[（）]/g, '').trim();
+    const 出 = [];
+    const re = /(\d[\d,.\s]*)\s*([点組人円¥m]?)/g;
+    let m;
+    while ((m = re.exec(t)) !== null) {
+      if (m[2] !== '円' && m[2] !== '¥' && m[2] !== 'm') continue;
+      const n = cashNumOf(m[1]);
+      if (n !== null) 出.push(n);
+    }
+    if (出.length) return 出;
+    // 円が落ちた紙のために、1行まるごと数のときだけ拾います
+    const 一つ = seisanMoneyOf(line);
+    return 一つ === null ? [] : [一つ];
+  };
   const 売上まで = [];
   for (let i = 0; i < 支払から; i++) {
     const p = cashPlain(lines[i]);
     if (/内税|組数|客数|単価|値引|割引|明細/.test(p)) break;
     if (/オーダ|才一夕/.test(p) && 売上まで.length) break;
-    const m = seisanMoneyOf(lines[i]);
-    if (m !== null) 売上まで.push(m);
+    その行の金(lines[i]).forEach((m) => 売上まで.push(m));
   }
   if (売上まで.length >= 2) { v.gross = 売上まで[0]; v.net = 売上まで[1]; }
   else if (売上まで.length === 1) { v.gross = 売上まで[0]; }
