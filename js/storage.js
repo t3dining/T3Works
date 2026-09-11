@@ -994,6 +994,10 @@ const StaffAccounts = {
           if (!String(v.n || '').trim()) return;
           out[String(code)] = {
             n: String(v.n).trim(), admin: !!v.admin, off: !!v.off,
+            // ★登録した順。**番号を鍵にした入れ物は、数字の小さい順に並び替えられます。**
+            //   入れた順はそのままでは残らないので、順番を覚える欄を持ちます
+            //   （担当者のリストと同じで、あとから増えた人が下に付きます）
+            at: String(v.at || ''),
           };
         });
         return out;
@@ -1005,11 +1009,24 @@ const StaffAccounts = {
   },
 
   /** いま使える人だけ（辞めた人を外す）。[{ code, n, admin }] */
-  live() {
+  /** 登録した順にならべた [{ code, n, admin, off, at }]（辞めた人も含みます） */
+  ordered() {
     const all = this.all();
-    return Object.keys(all).filter((c) => !all[c].off)
-      .map((c) => ({ code: c, n: all[c].n, admin: all[c].admin }))
-      .sort((a, b) => a.n.localeCompare(b.n, 'ja'));
+    return Object.keys(all)
+      .map((c) => ({ code: c, ...all[c] }))
+      // ★at が無いもの（この欄より前に登録した人）は、**先に**置きます
+      .sort((a, b) => {
+        if (a.at && b.at) return a.at < b.at ? -1 : (a.at > b.at ? 1 : 0);
+        if (a.at) return 1;
+        if (b.at) return -1;
+        return 0;
+      });
+  },
+
+  /** いま使える人だけ（辞めた人を外す）。登録した順 */
+  live() {
+    return this.ordered().filter((v) => !v.off)
+      .map((v) => ({ code: v.code, n: v.n, admin: v.admin }));
   },
 
   /** 辞めた人も含めて、番号から名前を引きます（過去の記録の表示用） */
@@ -1021,7 +1038,10 @@ const StaffAccounts = {
   save(map) {
     localStorage.setItem(this._key, JSON.stringify(map || {}));
     if (typeof Sync !== 'undefined' && Sync.enqueue) {
-      Sync.enqueue([{ t: 'setting', n: 'staffAccounts', v: map || {} }]);
+      // ★`enqueue` は**opを1つ**受け取ります。配列を渡すと、送信箱に配列がそのまま入り、
+      //   サーバーは設定として読めません。**黙ってサーバーに届きません。**
+      //   2026-09-11、これで登録した名簿が端末の中だけにあり、消えたときに戻せませんでした
+      Sync.enqueue({ t: 'setting', n: 'staffAccounts', v: map || {} }, true);
     }
   },
 

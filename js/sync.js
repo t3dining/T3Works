@@ -445,13 +445,17 @@ const Sync = {
            （サーバーは設定を選ばずに全部返します）。
            ★サーバー側でも止めます（gas/コード.gs）。ここは二重の押さえです。
            ★現場の端末に残っている写しは、その場で消します。 */
-      if (window.T3_ADMIN_PAGE) {
-        if (settings.staffAccounts) {
-          localStorage.setItem(StaffAccounts._key, JSON.stringify(settings.staffAccounts));
-        }
-      } else {
-        localStorage.removeItem(StaffAccounts._key);
+      if (window.T3_ADMIN_PAGE && settings.staffAccounts) {
+        localStorage.setItem(StaffAccounts._key, JSON.stringify(settings.staffAccounts));
       }
+      /* ★ここに「マネージ以外なら消す」を置いていました。**外しました。**
+           2026-09-11、ko-dai さんが登録した社員のアカウントが**消えました。**
+           端末の保存は**ページごとではなく、おおもと（オリジン）ごと**です。
+           `/manage/` と `/` は同じおおもとなので鍵も共通で、
+           **同じ端末でワークスを開いた瞬間に、マネージで登録したものが消えます。**
+           守りのつもりで足したものが、**唯一の控えを消していました。**
+           配らないようにするのは**サーバーの仕事**です（`ADMIN_ONLY_SETTINGS`）。
+           消す処理は、守りとしては弱く、壊し方としては強すぎました。 */
       Object.keys(設定の入れ先).forEach((n) => {
         if (settings[n]) localStorage.setItem(設定の入れ先[n], JSON.stringify(settings[n]));
       });

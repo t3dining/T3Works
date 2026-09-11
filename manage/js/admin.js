@@ -1692,15 +1692,15 @@ function copyShiftCode(p, btn) {
  *    サーバー（GAS）です。端末側で判定すると、画面をいじれば通ります。
  * ============================================================ */
 function renderAccounts() {
-  const all = StaffAccounts.all();
-  const codes = Object.keys(all).sort((x, y) => all[x].n.localeCompare(all[y].n, 'ja'));
-  const 生きている = codes.filter((c) => !all[c].off).length;
-  el.acctCount.textContent = codes.length
-    ? `${生きている}人（使えなくした人 ${codes.length - 生きている}）` : 'まだ登録なし';
+  // ★登録した順（あとから増えた人が下に付きます。担当者のリストと同じ並び方です）
+  const 並び = StaffAccounts.ordered();
+  const 生きている = 並び.filter((v) => !v.off).length;
+  el.acctCount.textContent = 並び.length
+    ? `${生きている}人（使えなくした人 ${並び.length - 生きている}）` : 'まだ登録なし';
 
   el.acctList.innerHTML = '';
-  codes.forEach((code) => {
-    const v = all[code];
+  並び.forEach((v) => {
+    const code = v.code;
     const li = document.createElement('li');
     li.className = 'acct-row' + (v.off ? ' is-off' : '');
 
@@ -1780,7 +1780,8 @@ function addAccount() {
       && !window.confirm(`${name}さんは、もう登録されています。\nもう1つ番号を作りますか？`)) return;
   const code = StaffAccounts.newCode();
   if (!code) { window.alert('番号を作れませんでした。もう一度押してください。'); return; }
-  map[code] = { n: name, admin: false, off: false };
+  // ★登録した時刻。これが無いと、あとで「入れた順」に並べ直せません
+  map[code] = { n: name, admin: false, off: false, at: new Date().toISOString() };
   StaffAccounts.save(map);
   el.acctName.value = '';
   renderAccounts(); 保存しました();
