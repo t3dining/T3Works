@@ -2157,6 +2157,22 @@ const NIPPOU_PARTS = {
  *   4店舗のように引くと、二重に引いてしまいます。
  * ★検算に通った数だけを渡します（通らなかったものは入れません）。
  */
+/* ------------------------------------------------------------
+ *  0円だった欄は、日報に書きません
+ *
+ *  ★画面には 0 と出します（読めたことは分かるように）。
+ *    でも日報のマスには**何も入れません**（ko-dai さんの決め・2026-09-11）。
+ *  ★客数は人数なので、0でも書きます。0人なら何かおかしいので、
+ *    空欄にして気づけなくするより、0 と入っていた方が分かります。
+ *  ★書かないので、**日報に前から入っている数は消えません。**
+ *    そこだけ、これまでと変わります。
+ * ---------------------------------------------------------- */
+const NIPPOU_ZERO_OK = ['guests'];      // 0でも書く欄
+
+function nippouZeroSkip(キー, 値) {
+  return 値 === 0 && NIPPOU_ZERO_OK.indexOf(キー) < 0;
+}
+
 function seisanPartData() {
   const j = cashEdit.j || {};
   const sure = cashEdit.sure || {};
@@ -2165,6 +2181,7 @@ function seisanPartData() {
     const さき = SEISAN_TO_NIPPOU[もと];
     if (j[もと] === null || j[もと] === undefined) return;
     if (!sure[もと]) return;                       // 検算に守られていない数は入れません
+    if (nippouZeroSkip(さき, j[もと])) return;     // ★0円は書きません
     values[NIPPOU_LABELS[さき]] = j[もと];
   });
   return { values, calc: {}, extra: [] };
@@ -2179,7 +2196,9 @@ function nippouPartData(part) {
     const values = {};
     CASH_NIPPOU_ROWS.forEach((r) => {
       if ((NIPPOU_MINUS[r.key] || []).length) return;      // 式で入れる分は calc へ
-      if (n[r.key] !== null && n[r.key] !== undefined) values[NIPPOU_LABELS[r.key]] = n[r.key];
+      if (n[r.key] === null || n[r.key] === undefined) return;
+      if (nippouZeroSkip(r.key, n[r.key])) return;         // ★0円は書きません
+      values[NIPPOU_LABELS[r.key]] = n[r.key];
     });
     return { values, calc: nippouCalc(), extra: [] };
   }
@@ -2400,8 +2419,16 @@ function renderNippouTable() {
     const usable = !!(cashEdit.sure || {})[もと];
     from.textContent = fmt(raw);
     minus.textContent = cut ? `− ${cut.toLocaleString('ja-JP')}` : '';
-    to.textContent = usable ? fmt(seisan ? raw : n[row.key]) : '—';
-    if (!usable) to.classList.add('is-ng');
+    const 入れる = seisan ? raw : n[row.key];
+    if (!usable) {
+      to.textContent = '—';
+      to.classList.add('is-ng');
+    } else if (nippouZeroSkip(row.key, 入れる)) {
+      to.textContent = '書きません';       // ★0円の欄は、日報に何も入れません
+      to.style.color = '#888';
+    } else {
+      to.textContent = fmt(入れる);
+    }
     tr.append(th, from, minus, to);
     el.cashNippou.appendChild(tr);
   });
