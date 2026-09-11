@@ -1899,27 +1899,48 @@ function seisanPayRows(lines, から) {
        件数が 0点 なら金額も 0円 です。紙がそう言っているので、
        当てずっぽうではありません。 */
   const out = {};
+  const 点の数 = (line) => {
+    const c = /^[(]?\s*(\d+)\s*点[)]?$/.exec(cashNormalize(line).trim());
+    return c ? Number(c[1]) : null;
+  };
   for (let i = から; i < 終わり; i++) {
-    const f = 当たる(lines[i]);
-    if (!f || out[f.key] !== undefined) continue;
+    /* ★1行に名前が2つ並ぶことがあります（`その他支払 売掛金`。2026年8月24日の紙）。
+         そのときは、下に**名前の数だけ（件数・金額）が順に**続きます。
+
+             その他支払 売掛金
+             2点 / ◯◯,◯◯◯円     ← その他支払
+             0点 / 円           ← 売掛金
+
+       ★どれか1つでも読みずみなら、この行は見送ります。
+         対応づけがずれて、ちがう欄に入れてしまうためです。 */
+    const きたち = 名たち(lines[i]);
+    if (!きたち.length) continue;
+    if (きたち.some((k) => out[k] !== undefined)) continue;
+
     const ここ = seisanMoneyOf(lines[i]);
-    if (ここ !== null) { out[f.key] = ここ; continue; }
+    if (きたち.length === 1 && ここ !== null) { out[きたち[0]] = ここ; continue; }
+
+    let n = 0;
     let 件数 = null;
-    for (let j = i + 1; j < Math.min(i + 4, 終わり); j++) {
+    const 端 = Math.min(i + 1 + きたち.length * 3, 終わり);
+    for (let j = i + 1; j < 端 && n < きたち.length; j++) {
       if (当たる(lines[j])) break;
-      const c = /^[(]?\s*(\d+)\s*点[)]?$/.exec(cashNormalize(lines[j]).trim());
-      if (c) {
-        件数 = Number(c[1]);
+      const c = 点の数(lines[j]);
+      if (c !== null) {
         /* ★0点なら0円です。**下に金額らしきものが落ちていても見ません。**
              2026年8月11日の紙で「売掛金 / 0点 / 20円」となっていました。
              その20円は値割引の欄から落ちてきたもので、売掛金ではありません。
-             拾うと 512,844 になり、総売上 512,824 と合わずに止まりました。
            ★紙が「0点」と言っているなら、その欄は使われていません。 */
-        if (件数 === 0) { out[f.key] = 0; break; }
+        if (件数 === 0) { out[きたち[n]] = 0; n += 1; }
+        件数 = c;
+        if (件数 === 0 && n < きたち.length) { out[きたち[n]] = 0; n += 1; 件数 = null; }
         continue;
       }
       const val = seisanMoneyOf(lines[j]);
-      if (val === null) continue;
+      if (val === null) {
+        if (件数 === 0 && n < きたち.length) { out[きたち[n]] = 0; n += 1; 件数 = null; }
+        continue;
+      }
       /* ★件数の「点」が落ちて、裸の数になることがあります。
 
              現金 / 13 / ◯◯◯,◯◯◯円      ← 「13点」の点が落ちた
@@ -1929,15 +1950,15 @@ function seisanPayRows(lines, から) {
          ★明細のときと同じ見方です。**単位の無い裸の数のすぐ下に、
            単位つきの金額が来ている**なら、その裸の数は件数です。
          ★下が名前の行なら飛ばしません。円の落ちた紙では、裸の数が
-           そのまま金額です（現金 / 6点 / 281,940 / 次の名前…）。 */
+           そのまま金額です（現金 / 6点 / ◯◯◯,◯◯◯ / 次の名前…）。 */
       if (!seisanMarked(lines[j])) {
         const 次 = lines[j + 1];
         if (次 !== undefined && j + 1 < 終わり && !当たる(次)
             && seisanMarked(次) && seisanMoneyOf(次) !== null) continue;
       }
-      out[f.key] = val; break;
+      out[きたち[n]] = val; n += 1; 件数 = null;
     }
-    if (out[f.key] === undefined && 件数 === 0) out[f.key] = 0;
+    if (n < きたち.length && 件数 === 0) out[きたち[n]] = 0;
   }
 
   /* ---- 積み上がった形：名前が先に全部並び、そのあとに件数と金額 ----
