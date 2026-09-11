@@ -1744,6 +1744,51 @@ function renderAccounts() {
     adm.appendChild(box);
     adm.appendChild(document.createTextNode('管理'));
 
+    /* ★並べ替え。名前を打ち直さずに順番だけ変えられます（番号も変わりません）。
+         順番は `at`（登録した時刻）で決まるので、隣どうしで入れかえます */
+    const 動かす = (さ) => {
+      const 並び = StaffAccounts.ordered();
+      const i = 並び.findIndex((x) => x.code === code);
+      const j = i + さ;
+      if (i < 0 || j < 0 || j >= 並び.length) return;
+      const map = StaffAccounts.all();
+      // ★`at` が空の人がいると入れかえられないので、その場で順番どおりに振り直します
+      並び.forEach((x, n) => {
+        map[x.code].at = new Date(Date.UTC(2000, 0, 1) + n * 60000).toISOString();
+      });
+      const a = map[並び[i].code].at;
+      map[並び[i].code].at = map[並び[j].code].at;
+      map[並び[j].code].at = a;
+      StaffAccounts.save(map);
+      renderAccounts(); 保存しました();
+    };
+    const 上へ = document.createElement('button');
+    上へ.type = 'button'; 上へ.className = 'row-edit'; 上へ.textContent = '▲';
+    上へ.title = '1つ上へ';
+    上へ.addEventListener('click', () => 動かす(-1));
+    const 下へ = document.createElement('button');
+    下へ.type = 'button'; 下へ.className = 'row-edit'; 下へ.textContent = '▼';
+    下へ.title = '1つ下へ';
+    下へ.addEventListener('click', () => 動かす(1));
+
+    /* ★消す。**「使えなくする」とは別もの**です。
+         ・使えなくする … 名前は残る。過去の記録が誰のものか分かる（辞めた人はこちら）
+         ・消す         … 跡形もなく消えます。**打ちまちがいを消すためのもの**です */
+    const 消す = document.createElement('button');
+    消す.type = 'button'; 消す.className = 'row-edit';
+    消す.textContent = '消す';
+    消す.addEventListener('click', () => {
+      if (!window.confirm(
+        `${v.n}さんを、一覧から消します。\n\n`
+        + '★辞めた方には「使えなくする」を使ってください。\n'
+        + '　消すと、過去の記録に名前が出ていても誰のものか分からなくなります。\n\n'
+        + '打ちまちがいを消すときだけ、こちらを使ってください。')) return;
+      const map = StaffAccounts.all();
+      delete map[code];
+      StaffAccounts.save(map);
+      renderAccounts(); 保存しました();
+    });
+
     const off = document.createElement('button');
     off.type = 'button'; off.className = 'row-edit';
     off.textContent = v.off ? 'また使えるようにする' : '使えなくする';
@@ -1761,7 +1806,7 @@ function renderAccounts() {
       renderAccounts(); 保存しました();
     });
 
-    [name, num, copy, adm, off].forEach((n) => li.appendChild(n));
+    [name, num, copy, adm, 上へ, 下へ, off, 消す].forEach((n) => li.appendChild(n));
     el.acctList.appendChild(li);
   });
 }
