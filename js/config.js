@@ -1908,12 +1908,17 @@ function seisanPayRows(lines, から) {
   };
   for (let i = から; i < 終わり; i++) {
     /* ★1行に名前が2つ並ぶことがあります（`その他支払 売掛金`。2026年8月24日の紙）。
-         そのときは、下に**名前の数だけ（件数・金額）が順に**続きます。
+         件数が名前の行に入りこむこともあります（`その他支払 1点 売掛金`。8月30日の紙）。
 
-             その他支払 売掛金
-             2点 / ◯◯,◯◯◯円     ← その他支払
-             0点 / 円           ← 売掛金
+             その他支払 1点 売掛金     ← その他支払の件数は、この行の中
+             0点                      ← 売掛金の件数
+             点点
+             ◯◯,◯◯◯円                 ← その他支払の金額
+             0円                      ← 売掛金の金額
 
+       ★そこで「件数」と「金額」を**それぞれ集めてから**、名前の並び順に結びます。
+         件数の数が名前の数とそろっていれば、**0点のものは0円**、
+         残りが金額を順に受け取ります。
        ★どれか1つでも読みずみなら、この行は見送ります。
          対応づけがずれて、ちがう欄に入れてしまうためです。 */
     const きたち = 名たち(lines[i]);
@@ -1923,45 +1928,45 @@ function seisanPayRows(lines, から) {
     const ここ = seisanMoneyOf(lines[i]);
     if (きたち.length === 1 && ここ !== null) { out[きたち[0]] = ここ; continue; }
 
-    let n = 0;
-    let 件数 = null;
+    // 名前の行に入りこんでいる件数も数えます
+    const 件数たち = [];
+    const 金額たち = [];
+    (cashNormalize(lines[i]).match(/(\d+)\s*点/g) || []).forEach((t) => {
+      件数たち.push(Number(t.replace(/[^\d]/g, '')));
+    });
     const 端 = Math.min(i + 1 + きたち.length * 3, 終わり);
-    for (let j = i + 1; j < 端 && n < きたち.length; j++) {
+    for (let j = i + 1; j < 端; j++) {
       if (当たる(lines[j])) break;
       const c = 点の数(lines[j]);
-      if (c !== null) {
-        /* ★0点なら0円です。**下に金額らしきものが落ちていても見ません。**
-             2026年8月11日の紙で「売掛金 / 0点 / 20円」となっていました。
-             その20円は値割引の欄から落ちてきたもので、売掛金ではありません。
-           ★紙が「0点」と言っているなら、その欄は使われていません。 */
-        if (件数 === 0) { out[きたち[n]] = 0; n += 1; }
-        件数 = c;
-        if (件数 === 0 && n < きたち.length) { out[きたち[n]] = 0; n += 1; 件数 = null; }
-        continue;
-      }
+      if (c !== null) { 件数たち.push(c); continue; }
       const val = seisanMoneyOf(lines[j]);
-      if (val === null) {
-        if (件数 === 0 && n < きたち.length) { out[きたち[n]] = 0; n += 1; 件数 = null; }
-        continue;
-      }
+      if (val === null) continue;
       /* ★件数の「点」が落ちて、裸の数になることがあります。
 
              現金 / 13 / ◯◯◯,◯◯◯円      ← 「13点」の点が落ちた
                     ↑これを金額にすると、現金が13円になります
                       （2026年8月21日の紙）
 
-         ★明細のときと同じ見方です。**単位の無い裸の数のすぐ下に、
-           単位つきの金額が来ている**なら、その裸の数は件数です。
-         ★下が名前の行なら飛ばしません。円の落ちた紙では、裸の数が
-           そのまま金額です（現金 / 6点 / ◯◯◯,◯◯◯ / 次の名前…）。 */
+         ★単位の無い裸の数のすぐ下に、単位つきの金額が来ているなら、その裸の数は件数です。
+         ★下が名前の行なら飛ばしません。円の落ちた紙では、裸の数がそのまま金額です。 */
       if (!seisanMarked(lines[j])) {
         const 次 = lines[j + 1];
         if (次 !== undefined && j + 1 < 終わり && !当たる(次)
             && seisanMarked(次) && seisanMoneyOf(次) !== null) continue;
       }
-      out[きたち[n]] = val; n += 1; 件数 = null;
+      金額たち.push(val);
     }
-    if (n < きたち.length && 件数 === 0) out[きたち[n]] = 0;
+
+    if (件数たち.length === きたち.length) {
+      /* ★0点なら0円です。**下に金額らしきものが落ちていても見ません。**
+           2026年8月11日の紙で「売掛金 / 0点 / 20円」となっていました。
+           その20円は値割引の欄から落ちてきたもので、売掛金ではありません。 */
+      const 要る = [];
+      きたち.forEach((k, n) => { if (件数たち[n] === 0) out[k] = 0; else 要る.push(k); });
+      要る.forEach((k, n) => { if (金額たち[n] !== undefined) out[k] = 金額たち[n]; });
+    } else if (金額たち.length === きたち.length) {
+      きたち.forEach((k, n) => { out[k] = 金額たち[n]; });
+    }
   }
 
   /* ---- 積み上がった形：名前が先に全部並び、そのあとに件数と金額 ----
@@ -2309,8 +2314,41 @@ function parseSeisan(text) {
     // (a) ふつうの形：同じ行か、すぐ下に金額があります
     let 取れた = false;
     for (let j = i; j < Math.min(i + 3, 支払から); j++) {
+      // ★ほかの「◯単価」に当たったら、そこで止めます。
+      //   見出しが縦に並ぶ紙で、組単価の金額を客単価として拾っていました
+      if (j > i && /単価/.test(cashPlain(lines[j]))) break;
       const m = seisanMoneyOf(lines[j]);
       if (m !== null) { v.per = m; 取れた = true; break; }
+    }
+
+    /* (c) 見出しが**縦に並ぶ**形（2026年8月30日の紙）
+
+             組単価
+             客単価
+             点単価
+             ◯◯,◯◯◯円      ← 組単価
+             ◯,◯◯◯円       ← 客単価
+             325円         ← 点単価
+
+       ★見出しが続くあいだ数えて、そのあとの金額と**並び順で結びます。**
+       ★数が合わなければ読みません。 */
+    if (!取れた) {
+      let 頭 = i;
+      while (頭 - 1 >= 0 && /単価/.test(cashPlain(lines[頭 - 1]))
+             && seisanMoneyOf(lines[頭 - 1]) === null) 頭 -= 1;
+      const 並び = [];
+      let j = 頭;
+      while (j < 支払から && /単価/.test(cashPlain(lines[j]))
+             && seisanMoneyOf(lines[j]) === null) { 並び.push(j); j += 1; }
+      if (並び.length >= 2 && 並び.indexOf(i) >= 0) {
+        const 金 = [];
+        for (let k = j; k < 支払から; k++) {
+          if (/単価|内税|明細|支払|割引|値引|客数|組数/.test(cashPlain(lines[k]))) break;
+          const m = seisanMoneyOf(lines[k]);
+          if (m !== null) 金.push(m);
+        }
+        if (金.length === 並び.length) { v.per = 金[並び.indexOf(i)]; 取れた = true; }
+      }
     }
     /* (b) 見出しだけが1行に並ぶ形。2026年8月4日の紙で出ました。
 
