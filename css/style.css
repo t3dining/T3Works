@@ -2991,6 +2991,14 @@ body.is-wide .page { max-width: 1700px; }
 }
 /* 使えなくした人は、消さずに残したうえで色を落とします */
 .acct-row.is-off { opacity: .55; }
+/* 長押しで持ち上がっているあいだ。クローズの項目と同じ見え方にそろえます */
+.acct-row.is-drag {
+  background: var(--surface-2); border-radius: 9px;
+  box-shadow: 0 6px 18px rgba(10, 12, 16, .18);
+  position: relative; z-index: 2;
+}
+/* ★指を下ろしたところで持ち上がるまで、行の上では縦スクロールだけ受け付けます */
+.acct-row { touch-action: pan-y; }
 .acct-row.is-off .acct-row__name { text-decoration: line-through; }
 .admin-warn { color: var(--ng); }
 /* -------- 表を見せるモーダル（出してもらった希望） --------

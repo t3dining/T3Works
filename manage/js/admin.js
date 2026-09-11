@@ -922,18 +922,48 @@ async function removeSection(sec) {
  *  ・同じ区分の中だけで動かせます（別の区分へは移せません）
  *  矢印ボタンでの移動も今までどおり使えます。
  * ============================================================ */
-const drag = { row: null, card: null, timer: null, y: 0, active: false, raf: 0 };
+/* ★どの一覧を並べ替えているかは、この表で決めます。
+     2026-09-11、社員のアカウントにも長押しの並べ替えを付けるとき、
+     **同じものをもう1つ書かずに**、ここに1行足すだけで済むようにしました。
+     （行の選び方・末尾の止め場所・IDの取り方・保存の仕方が違うだけです） */
+const 並べ替えの型 = {
+  '.sec-card': {
+    行: '.item-row', 末尾: '.sec-card__add',
+    id: (r) => r.dataset.itemId,
+    保存: (box, 順) => applyItemOrder(box.dataset.secId, 順),
+  },
+  '.acct-list': {
+    行: '.acct-row', 末尾: null,
+    id: (r) => r.dataset.code,
+    保存: (box, 順) => applyAcctOrder(順),
+  },
+};
+const 型をさがす = (row) => {
+  const box = row && row.closest(Object.keys(並べ替えの型).join(','));
+  if (!box) return null;
+  const 名 = Object.keys(並べ替えの型).find((k) => box.matches(k));
+  return { box, 型: 並べ替えの型[名] };
+};
+
+const drag = { row: null, card: null, 型: null, timer: null, y: 0, active: false, raf: 0 };
 let justDragged = false; // 並べ替え直後の click で編集に入らないようにする
 
 function startLongPress(e, row, atOnce) {
   // ボタンを押したとき、名前を編集中のときは並べ替えを始めない
-  if (!atOnce && e.target.closest('.icon-btn, .every-btn')) return;
+  // ★ボタンや札の上からは始めません。**`button` でまとめて外します。**
+  //   `.icon-btn, .every-btn` と名指しにしていたので、社員のアカウントの
+  //   `.row-edit`（コピー・消す）を長押しすると行が持ち上がっていました
+  //   （2026-09-11）。取っ手（atOnce）からは、今までどおりすぐ始まります
+  if (!atOnce && e.target.closest('button, label, .icon-btn, .every-btn')) return;
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
   if (e.pointerType === 'mouse' && e.button !== 0) return;
 
+  const み = 型をさがす(row);
+  if (!み) return;
   cancelLongPress();
   drag.row = row;
-  drag.card = row.closest('.sec-card');
+  drag.card = み.box;
+  drag.型 = み.型;
   drag.y = e.clientY;
   // 取っ手からは待ちません。行のどこかを押したときだけ0.35秒待ちます
   // （すぐ持ち上げると、画面をスクロールしたいときに邪魔になるためです）
@@ -973,7 +1003,7 @@ function onPointerMove(e) {
 
 /** 指の位置に合わせて、行を差し込む場所を決める */
 function moveRowTo(y) {
-  const others = [...drag.card.querySelectorAll('.item-row')].filter((r) => r !== drag.row);
+  const others = [...drag.card.querySelectorAll(drag.型.行)].filter((r) => r !== drag.row);
   const after = others.find((r) => {
     const box = r.getBoundingClientRect();
     return y < box.top + box.height / 2;
@@ -981,8 +1011,12 @@ function moveRowTo(y) {
   if (after) {
     if (after.previousElementSibling !== drag.row) drag.card.insertBefore(drag.row, after);
   } else {
-    const addBtn = drag.card.querySelector('.sec-card__add');
-    if (addBtn && addBtn.previousElementSibling !== drag.row) drag.card.insertBefore(drag.row, addBtn);
+    const addBtn = drag.型.末尾 ? drag.card.querySelector(drag.型.末尾) : null;
+    if (addBtn) {
+      if (addBtn.previousElementSibling !== drag.row) drag.card.insertBefore(drag.row, addBtn);
+    } else if (drag.card.lastElementChild !== drag.row) {
+      drag.card.appendChild(drag.row);
+    }
   }
 }
 
@@ -1004,6 +1038,7 @@ function endDrag() {
   const wasActive = drag.active;
   const card = drag.card;
   const row = drag.row;
+  const 型 = drag.型;
   cancelLongPress();
   if (!wasActive || !card) return;
 
@@ -1013,8 +1048,8 @@ function endDrag() {
   setTimeout(() => { justDragged = false; }, 400);
 
   // 画面の並びをそのまま保存する
-  const order = [...card.querySelectorAll('.item-row')].map((r) => r.dataset.itemId);
-  applyItemOrder(card.dataset.secId, order);
+  const order = [...card.querySelectorAll(型.行)].map(型.id);
+  型.保存(card, order);
 }
 
 function cancelLongPress() {
@@ -1026,6 +1061,7 @@ function cancelLongPress() {
   drag.active = false;
   drag.row = null;
   drag.card = null;
+  drag.型 = null;
   document.removeEventListener('pointermove', onPointerMove);
   document.removeEventListener('pointerup', endDrag);
   document.removeEventListener('pointercancel', endDrag);
@@ -1744,32 +1780,12 @@ function renderAccounts() {
     adm.appendChild(box);
     adm.appendChild(document.createTextNode('管理'));
 
-    /* ★並べ替え。名前を打ち直さずに順番だけ変えられます（番号も変わりません）。
-         順番は `at`（登録した時刻）で決まるので、隣どうしで入れかえます */
-    const 動かす = (さ) => {
-      const 並び = StaffAccounts.ordered();
-      const i = 並び.findIndex((x) => x.code === code);
-      const j = i + さ;
-      if (i < 0 || j < 0 || j >= 並び.length) return;
-      const map = StaffAccounts.all();
-      // ★`at` が空の人がいると入れかえられないので、その場で順番どおりに振り直します
-      並び.forEach((x, n) => {
-        map[x.code].at = new Date(Date.UTC(2000, 0, 1) + n * 60000).toISOString();
-      });
-      const a = map[並び[i].code].at;
-      map[並び[i].code].at = map[並び[j].code].at;
-      map[並び[j].code].at = a;
-      StaffAccounts.save(map);
-      renderAccounts(); 保存しました();
-    };
-    const 上へ = document.createElement('button');
-    上へ.type = 'button'; 上へ.className = 'row-edit'; 上へ.textContent = '▲';
-    上へ.title = '1つ上へ';
-    上へ.addEventListener('click', () => 動かす(-1));
-    const 下へ = document.createElement('button');
-    下へ.type = 'button'; 下へ.className = 'row-edit'; 下へ.textContent = '▼';
-    下へ.title = '1つ下へ';
-    下へ.addEventListener('click', () => 動かす(1));
+    /* ★並べ替えは**長押ししてドラッグ**です（2026-09-11、ko-dai さんの希望で
+         ▲▼ のボタンからこちらに変えました）。仕組みはクローズ・週間掃除と
+         **同じもの**を使っています（`並べ替えの型`）。
+         0.35秒押すと持ち上がり、すぐ動かしたときは画面のスクロールになります */
+    li.dataset.code = code;
+    li.addEventListener('pointerdown', (e) => startLongPress(e, li, false));
 
     /* ★消す。**「使えなくする」とは別もの**です。
          ・使えなくする … 名前は残る。過去の記録が誰のものか分かる（辞めた人はこちら）
@@ -1806,9 +1822,21 @@ function renderAccounts() {
       renderAccounts(); 保存しました();
     });
 
-    [name, num, copy, adm, 上へ, 下へ, off, 消す].forEach((n) => li.appendChild(n));
+    [name, num, copy, adm, off, 消す].forEach((n) => li.appendChild(n));
     el.acctList.appendChild(li);
   });
+}
+
+/** 画面の並び（番号の順）を、そのまま保存します */
+function applyAcctOrder(順) {
+  const map = StaffAccounts.all();
+  // ★`at`（登録した時刻）で並んでいるので、画面の順にふり直します。
+  //   実際の登録時刻ではなくなりますが、**この欄は順番のためだけ**に使っています
+  順.forEach((code, n) => {
+    if (map[code]) map[code].at = new Date(Date.UTC(2000, 0, 1) + n * 60000).toISOString();
+  });
+  StaffAccounts.save(map);
+  renderAccounts(); 保存しました();
 }
 
 function 保存しました() {
