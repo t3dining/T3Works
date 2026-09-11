@@ -2008,11 +2008,33 @@ function seisanDetailRows(lines, から) {
     }
     return null;
   };
+  /* その行に「円・¥・m の付いた数」があるか */
+  const 単位つき = (line) => {
+    const t = cashNormalize(line || '');
+    return /\d[\d,.\s]*\s*[円¥m]/.test(t) || /¥\s*\d/.test(t);
+  };
   for (let i = から; i < lines.length; i++) {
     const f = 当たる(lines[i]);
     const 金 = seisanMoneyOf(lines[i]);
     if (f) { 名前.push(f.key); if (金 !== null) 金額.push(金); continue; }
-    if (金 !== null) 金額.push(金);
+    if (金 === null) continue;
+    /* ★件数の「点」が落ちて、裸の数になることがあります。
+
+           Uberク / y下 / 47 / 10,100円     ← 「4点」が「47」に化けた
+                          ↑これを金額に数えると、名前3つに金額4つで
+                            対応づけを見送り、**明細が丸ごと読めません**
+                            （2026年8月7日の紙の、2通り目の読み取り）
+
+       ★単位の無い裸の数のすぐ下に、**単位つきの金額**が来ているときは、
+         その裸の数は件数です。金額が2つ続けて並ぶことはありません
+         （あいだに必ず名前が入ります）。
+       ★下が名前の行なら飛ばしません。円の落ちた紙では、裸の数が
+         そのまま金額です（Uber クレジット / 5点 / 19,740 / 次の名前…）。 */
+    if (!単位つき(lines[i])) {
+      const 次 = lines[i + 1];
+      if (次 !== undefined && !当たる(次) && 単位つき(次) && seisanMoneyOf(次) !== null) continue;
+    }
+    金額.push(金);
   }
   const out = {};
   if (名前.length && 名前.length === 金額.length) {
