@@ -1498,6 +1498,7 @@ function renderNippouBox(done) {
     el.cashChecks.textContent = '';
     el.cashCheckMark.textContent = '';
     setNippouMsg('');
+    renderNippouWhere();     // ★書かない店舗では、行き先の札も消します
     return;
   }
 
@@ -1550,6 +1551,9 @@ function renderNippouBox(done) {
 
   renderNippouMinusNote();
   renderGridBox();
+  // ★写真を読んでいない日でも出します。「いまどこに書く設定か」を
+  //   確かめたいだけの日に、何も出ていないと分かりません
+  renderNippouWhere();
   cashPullAuto();          // ★日報で直されていたら、取り込みます
 
   // ★写真をまだ読んでいないときは、読み取りの表と検算は出しません。
@@ -2522,6 +2526,48 @@ async function nippouWritePart(part, btn) {
     cashWakeOff();
     nippouBtnDone(btn);
   }
+}
+
+/* ------------------------------------------------------------
+ *  この店舗が、どこに書くか（いつも出しておきます）
+ *
+ *  ★ボタンにも出していますが、ボタンは**入れるものがある日しか出ません。**
+ *    「いま こじゃれだけテスト用になっているか」を確かめたいだけの日に、
+ *    何も出ていないと分かりません（ko-dai さん・2026-09-12）。
+ *  ★ワークスとマネージは**同じ設定**を見ます（同じ鍵・同じ端末）。
+ *    ただし**端末ごと**です。iPhone で入れた設定は、Mac には入っていません。
+ * ---------------------------------------------------------- */
+function renderNippouWhere() {
+  /* ★日報に書かない店舗（おいでんテラスなど）では、札を消します。
+       消さないと、**前に見ていた店舗の札が残ります。**
+       試したとき、おいでんテラスに「popo は 本物の日報 に書きます」と
+       出ていました（2026-09-12）。行き先の札で店舗を取りちがえるのが
+       一番まずいので、出さないことにします。 */
+  const 出す = JOURNAL_STORES.includes(state.storeId);
+  let 札 = document.getElementById('cashNippouWhere');
+  if (!出す) { if (札) 札.textContent = ''; return; }
+  if (!札) {
+    札 = document.createElement('div');
+    札.id = 'cashNippouWhere';
+    札.style.cssText = 'font-size:12px;margin:6px 0 10px;line-height:1.5';
+    const 前 = el.cashToNippou;
+    if (!前 || !前.parentNode) return;
+    前.parentNode.insertBefore(札, 前);
+  }
+  if (nippouTestHanpa()) {
+    札.textContent = '★テスト用の日報のURLが入っていますが、店舗が選ばれていません。'
+      + 'このままでは書けません（マネージで選んでください）';
+    札.style.color = '#b03030';
+    札.style.fontWeight = '700';
+    return;
+  }
+  const test = nippouTestFor(state.storeId);
+  const 名 = getStore(state.storeId) ? getStore(state.storeId).name : state.storeId;
+  札.textContent = test
+    ? `★${名} は テスト用の日報 に書きます（本物の日報には入りません）`
+    : `${名} は 本物の日報 に書きます`;
+  札.style.color = test ? '#b03030' : '#777';
+  札.style.fontWeight = test ? '700' : '400';
 }
 
 /** 「日報に書く」＝ジャーナルの5つ（前からのボタン） */
