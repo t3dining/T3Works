@@ -310,6 +310,17 @@ body.is-dragging { cursor: grabbing; user-select: none; }
   background: var(--accent); border-color: var(--accent); color: #fff;
 }
 
+/* -------- 出す月（この月だけ出す） --------
+   ボタンの見た目は曜日（.dow-toggle）を使い回します。覚えることを増やさないためです。
+   曜日は7列ですが、月は12個あるので 6列×2段。狭い画面では 4列×3段にします */
+.mon-toggles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
+@media (max-width: 420px) {
+  .mon-toggles { grid-template-columns: repeat(4, 1fr); }
+}
+.mon-toggles .dow-toggle.is-on {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+
 /* シフトに入る人の、ふだんの持ち場（キッチン／ホール） */
 .shift-code__lanes { display: inline-flex; gap: 4px; }
 .lane-btn {

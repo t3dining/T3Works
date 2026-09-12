@@ -58,6 +58,7 @@ const el = {};
   'exportBtn', 'importFile',
   'pauseModal', 'pauseItem', 'pauseFrom', 'pauseTo', 'pauseAdd', 'pauseHint', 'pauseList',
   'dowModal', 'dowItem', 'dowPick', 'dowHint', 'dowEveryday',
+  'monModal', 'monItem', 'monPick', 'monHint', 'monEvery',
   'confirmDialog', 'confirmItem', 'confirmMessage', 'confirmOk',
   'pinModal', 'pinInput', 'pinReveal', 'pinError', 'pinOk',
   'settingsBtn', 'modal', 'syncInfo', 'syncNow', 'pinChange', 'syncLegend',
@@ -306,6 +307,14 @@ function buildItemRow(sec, item, index, count) {
     dow.addEventListener('click', () => openDow(sec.id, item.id));
     row.appendChild(dow);
 
+    const mon = document.createElement('button');
+    mon.type = 'button';
+    mon.className = 'icon-btn' + (item.onlyMonths ? ' icon-btn--on' : '');
+    mon.textContent = '月';
+    mon.title = '出す月の設定';
+    mon.addEventListener('click', () => openMon(sec.id, item.id));
+    row.appendChild(mon);
+
     const pause = document.createElement('button');
     pause.type = 'button';
     pause.className = 'icon-btn' + (item.pauses && item.pauses.length ? ' icon-btn--on' : '');
@@ -431,7 +440,7 @@ function specialTags(item) {
   const tags = [];
   if (item.onlyDays) tags.push(item.onlyDays.join('・') + '日だけ');
   if (item.onlyDows) tags.push(item.onlyDows.map((d) => DOW[d]).join('') + 'のみ');
-  if (item.onlyMonths) tags.push(item.onlyMonths.join('・') + '月のみ');
+  if (item.onlyMonths) tags.push(monthsText(item.onlyMonths) + 'のみ');
   if (item.hideOnDows) tags.push(item.hideOnDows.map((d) => DOW[d]).join('') + 'は非表示');
   if (item.type === 'number') tags.push('数値' + (item.unit ? `（${item.unit}）` : ''));
   if (item.pauses && item.pauses.length) {
@@ -1257,6 +1266,9 @@ function buildImported() {
       //   取り込みで毎日に戻ってしまうと、決めたことが黙って消えるためです
       if (ci.onlyDows) next.onlyDows = ci.onlyDows;
       else delete next.onlyDows;
+      // ★出す月も同じです（暖房などの季節ものが、取り込みで毎月に戻らないように）
+      if (ci.onlyMonths) next.onlyMonths = ci.onlyMonths;
+      else delete next.onlyMonths;
       return next;
     });
     Object.keys(leftover).forEach((id) => items.push(leftover[id]));
@@ -1418,6 +1430,90 @@ function updateDows(fn) {
 
 function toggleDow(d) {
   updateDows((cur) => (cur.includes(d) ? cur.filter((x) => x !== d) : cur.concat([d])));
+}
+
+/* ============================================================
+ *  出す月（この月だけ出す）
+ *
+ *  ★暖房・冷房のように、季節でやることが変わるものに使います。
+ *    炭まろの「個室の３つの暖房電源」が 11〜3月だけ、が実例です。
+ *  ★「休止」と違って、期間ではなく毎年くり返す決まりです。
+ *  ★1つも押していない状態＝毎月出す（onlyMonths を持たせません）。
+ *    12か月全部を押したときも同じなので、毎月に戻します。
+ * ============================================================ */
+const monTarget = { secId: null, itemId: null };
+
+/**
+ * 出す月を、読みやすい言葉にする
+ *
+ *  つながっていれば「6月〜9月」。**12月と1月はつながっている**ものとして
+ *  扱うので、暖房のような冬またぎも「11月〜3月」と出ます。
+ *  とびとびのときは「1・4・7月」のように並べます。
+ */
+function monthsText(list) {
+  const on = [...new Set(list)].sort((a, b) => a - b);
+  if (!on.length) return '';
+  const has = (m) => on.includes(m);
+  const prev = (m) => (m === 1 ? 12 : m - 1);
+  const next = (m) => (m === 12 ? 1 : m + 1);
+  // 「前の月が入っていない月」がつながりの始まり。1つだけなら、ひと続きです
+  const heads = on.filter((m) => !has(prev(m)));
+  if (heads.length !== 1) return on.join('・') + '月';
+  const run = [heads[0]];
+  while (has(next(run[run.length - 1])) && run.length < on.length) run.push(next(run[run.length - 1]));
+  // 2つだけなら「6・7月」の方が短くて読みやすいので、3つ以上のときだけ「〜」にします
+  return run.length >= 3 ? `${run[0]}月〜${run[run.length - 1]}月` : on.join('・') + '月';
+}
+
+function monItemOf() {
+  return currentSections()
+    .find((s) => s.id === monTarget.secId)
+    .items.find((i) => i.id === monTarget.itemId);
+}
+
+function openMon(secId, itemId) {
+  monTarget.secId = secId;
+  monTarget.itemId = itemId;
+  el.monItem.textContent = monItemOf().label;
+  renderMonPick();
+  el.monModal.classList.remove('is-hidden');
+}
+
+function renderMonPick() {
+  const item = monItemOf();
+  const on = item.onlyMonths || [];
+  el.monPick.innerHTML = '';
+
+  for (let m = 1; m <= 12; m += 1) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    // 曜日の選び方と同じ見た目を使い回します（覚えることを増やさない）
+    b.className = 'dow-toggle' + (on.includes(m) ? ' is-on' : '');
+    b.textContent = `${m}月`;
+    b.setAttribute('aria-pressed', on.includes(m) ? 'true' : 'false');
+    b.addEventListener('click', () => toggleMon(m));
+    el.monPick.appendChild(b);
+  }
+
+  el.monHint.textContent = on.length
+    ? `いまは${monthsText(on)}だけ出ます`
+    : 'いまは毎月出ます';
+}
+
+/** 出す月を書き換えて保存する */
+function updateMons(fn) {
+  const next = currentSections();
+  const item = next.find((s) => s.id === monTarget.secId).items.find((i) => i.id === monTarget.itemId);
+  const list = fn((item.onlyMonths || []).slice()).sort((a, b) => a - b);
+  // 1つも無い／12か月全部＝毎月。どちらも「決まりなし」にそろえます
+  if (list.length && list.length < 12) item.onlyMonths = list;
+  else delete item.onlyMonths;
+  saveSections(next);
+  renderMonPick();
+}
+
+function toggleMon(m) {
+  updateMons((cur) => (cur.includes(m) ? cur.filter((x) => x !== m) : cur.concat([m])));
 }
 
 /* ============================================================
@@ -3062,6 +3158,10 @@ function bindEvents() {
   el.dowEveryday.addEventListener('click', () => updateDows(() => []));
   el.dowModal.querySelectorAll('[data-dow-close]').forEach((n) =>
     n.addEventListener('click', () => el.dowModal.classList.add('is-hidden')));
+
+  el.monEvery.addEventListener('click', () => updateMons(() => []));
+  el.monModal.querySelectorAll('[data-mon-close]').forEach((n) =>
+    n.addEventListener('click', () => el.monModal.classList.add('is-hidden')));
   el.saveStaff.addEventListener('click', saveStaff);
   el.saveDrivers.addEventListener('click', saveDrivers);
   el.saveCatchStaff.addEventListener('click', saveCatchStaff);

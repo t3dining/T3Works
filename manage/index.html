@@ -13,8 +13,8 @@
 <link rel="icon" type="image/png" sizes="64x64" href="../img/manage-icon-64.png?v=2b8a9145">
 <title>T3 Works Manage｜T3Dining株式会社</title>
 <link rel="stylesheet" href="../css/style.css?v=ff0a159c">
-<link rel="stylesheet" href="css/admin.css?v=71f247ab">
-<meta name="app-version" content="0423febc">
+<link rel="stylesheet" href="css/admin.css?v=27e01b9d">
+<meta name="app-version" content="54c60a6b">
 </head>
 <body class="no-daytabs">
 
@@ -618,6 +618,31 @@
   </div>
 </div>
 
+<!-- ===== 出す月 =====
+     項目ごとに「この月だけ出す」を決めます。
+     暖房や冷房のように、季節でやることが変わるものに使います。
+     ★1つも押していないときは毎月出ます（onlyMonths を持たない状態） -->
+<div class="modal is-hidden" id="monModal">
+  <div class="modal__backdrop" data-mon-close></div>
+  <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="monTitle">
+    <h2 class="modal__title" id="monTitle">出す月</h2>
+    <p class="pause__item" id="monItem"></p>
+    <p class="admin-note">
+      押した月<b>だけ</b>チェックリストに出ます。<br>
+      1つも押していないときは<b>毎月</b>出ます。<br>
+      過去の記録はそのまま残ります（出なくなるのは、これからの日だけです）。
+    </p>
+
+    <div class="mon-toggles" id="monPick"></div>
+    <p class="ex-hint" id="monHint"></p>
+
+    <div class="modal__actions">
+      <button type="button" class="btn" id="monEvery">毎月にする</button>
+      <button type="button" class="btn btn--primary" data-mon-close>閉じる</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== 管理用PIN ===== -->
 <div class="modal is-hidden" id="pinModal">
   <div class="modal__backdrop"></div>
@@ -652,6 +677,6 @@
 <script src="../js/storage.js?v=6533b295"></script>
 <script src="../js/sync.js?v=41103746"></script>
 <script src="../js/update.js?v=c530219e"></script>
-<script src="js/admin.js?v=f85a33ac"></script>
+<script src="js/admin.js?v=0ce8548d"></script>
 </body>
 </html>
