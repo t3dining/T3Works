@@ -2419,6 +2419,16 @@ async function nippouWritePart(part, btn) {
     return;
   }
 
+  /* ★テスト用のURLだけ入れて、店舗を1つも選んでいないときは、書かせません。
+       2026年9月11日、バグるの数字がこじゃれ用のテスト日報に入っていました
+       （アプリは「書けました」と出していました）。どちらに倒しても事故になるので、
+       **選ぶまで止めます。** */
+  if (nippouTestHanpa()) {
+    setNippouMsg('★テスト用の日報のURLが入っていますが、どの店舗で使うかが選ばれていません。'
+      + 'このままだと**どの店舗の数字もテスト用の日報に入ってしまいます**。'
+      + 'マネージの「テスト用の日報へ書く」で店舗を選ぶか、URLを空にしてください', 'warn');
+    return;
+  }
   // ★テスト用の書き先が入っていれば、そちらへ書きます（この端末の中だけの設定です）
   const test = nippouTestFor(state.storeId);
   const folder = test ? '' : NippouFolders.get(state.storeId);
@@ -2449,7 +2459,8 @@ async function nippouWritePart(part, btn) {
     const rows = look.rows || [];
     const 食いちがい = nippouClash(rows);
     const ok = await askConfirm({
-      item: `${look.file}　${look.sheet}日のページ（${決.name}）`,
+      // ★書き先の名前を、押す前にも出します。テスト用なら、そう書きます
+      item: `${test ? '★テスト用の日報★　' : ''}${look.file}　${look.sheet}日のページ（${決.name}）`,
       message: rows.map((r) => `${r.name} ${cashShow(r.after)}`).join('／')
         + nippouClashText(食いちがい),
       okLabel: '書く',
@@ -2498,7 +2509,13 @@ async function nippouWritePart(part, btn) {
     }
     cashJobClear();                          // ここまで来たら、やり直す必要はありません
     cashWroteSave(dateStr, values, extra);   // ★日報で直されたかを見くらべるため
-    setNippouMsg(`${決.name}を日報に書きました（${res.sheet}日・${(res.rows || []).length}か所）`, 'ok');
+    /* ★どのファイルに書いたかを出します。
+         「アプリでは書けたことになっているのに、日報には入っていなかった」
+         ということがありました（バグる・2026-09-11）。
+         **テスト用の日報に入っていた**のが一番ありそうな形なので、
+         書き先の名前を、あとから見て分かるように残します。 */
+    setNippouMsg(`${決.name}を書きました　→ ${res.file}　${res.sheet}日`
+      + `（${(res.rows || []).length}か所）${test ? '　★テスト用の日報です' : ''}`, 'ok');
   } catch (e) {
     setNippouMsg(String(e && e.message || e), 'warn');
   } finally {
@@ -2546,9 +2563,11 @@ async function nippouSendNow(values, dateStr, test, folder, extra, calc) {
   // ③ 書いたあとの検算
   const want = (cashEdit.j || {}).gross;
   if (res.total === null || res.total === undefined || want === null || want === undefined) {
-    setNippouMsg(`記録して、日報に書きました（${res.sheet}日）`, 'ok');
+    setNippouMsg(`記録して、書きました　→ ${res.file}　${res.sheet}日`
+      + `${test ? '　★テスト用の日報です' : ''}`, 'ok');
   } else if (res.total === want) {
-    setNippouMsg(`記録して、日報に書きました（${res.sheet}日）　`
+    setNippouMsg(`記録して、書きました　→ ${res.file}　${res.sheet}日`
+      + `${test ? '　★テスト用の日報です' : ''}　`
       + `検算OK：当日総合計 ${cashText(res.total)} ＝ ジャーナルの売上`, 'ok');
   } else {
     setNippouMsg('日報には書きましたが、★検算が合いません。'
