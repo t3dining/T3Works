@@ -14,7 +14,7 @@
 <title>T3 Works Manage｜T3Dining株式会社</title>
 <link rel="stylesheet" href="../css/style.css?v=ff0a159c">
 <link rel="stylesheet" href="css/admin.css?v=27e01b9d">
-<meta name="app-version" content="ea9c2137">
+<meta name="app-version" content="f7e6f814">
 </head>
 <body class="no-daytabs">
 
@@ -409,6 +409,34 @@
     </div>
   </section>
 
+  <section class="admin-block" id="shiftHelpBlock">
+    <div class="admin-block__head">
+      <h2 class="admin-block__title">シフトの出し方</h2>
+    </div>
+    <p class="admin-note">
+      アルバイトの提出ページで、右上の <b>「？ 出し方」</b> を押すと出る説明です。
+      <b>店舗ごとに別々</b>に持てます。<br>
+      書き方は3つだけです。<br>
+      　<b>・</b> で始まる行 … その見出しの中の<b>手順</b>（1・2…と番号が付きます）<br>
+      　<b>※</b> で始まる行 … 囲みのない、ひとこと<br>
+      　それ以外の行 … <b>見出し</b>（ここから新しいまとまりが始まります）<br>
+      空の行は、まとまりの区切りです。
+      <b>「」でくくった言葉は、押すもの</b>として色が付きます。
+      見出しの頭が枠の名前（ランチなど）なら、その枠の色になります。<br>
+      ★<b>空にして保存すると、枠の設定から組み立てたものに戻ります。</b>
+      消えるのではありません。
+    </p>
+    <label class="field">
+      <span class="field__label" id="shiftHelpLabel">シフトの出し方</span>
+      <textarea class="field__input" id="shiftHelpText" rows="16" autocomplete="off"></textarea>
+    </label>
+    <div class="admin-actions">
+      <button type="button" class="btn" id="shiftHelpReset">枠から組み立て直す</button>
+      <button type="button" class="btn btn--primary" id="saveShiftHelp">出し方を保存</button>
+      <span class="admin-saved is-hidden" id="shiftHelpSaved">保存しました</span>
+    </div>
+  </section>
+
   <section class="admin-block">
     <div class="admin-block__head">
       <h2 class="admin-block__title">シフトの枠と時刻</h2>
@@ -692,10 +720,10 @@
 <!-- ★この画面だけが「社員のアカウント」を端末に持ちます。
      現場のアプリ（ワークス・マイン）には持たせません。番号は合言葉だからです -->
 <script>window.T3_ADMIN_PAGE = true;</script>
-<script src="../js/config.js?v=5b6128e2"></script>
+<script src="../js/config.js?v=dc0b6ae3"></script>
 <script src="../js/storage.js?v=6533b295"></script>
 <script src="../js/sync.js?v=1723e6cc"></script>
 <script src="../js/update.js?v=c530219e"></script>
-<script src="js/admin.js?v=b01d018c"></script>
+<script src="js/admin.js?v=3b296ad6"></script>
 </body>
 </html>

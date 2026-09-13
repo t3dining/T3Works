@@ -45,8 +45,8 @@
 <link rel="apple-touch-icon" href="../img/shift-icon-180.png?v=ab0bd671">
 <link rel="icon" href="../img/shift-icon-64.png?v=0254ff8c">
 
-<link rel="stylesheet" href="css/submit.css?v=23cadf83">
-<meta name="app-version" content="ea9c2137">
+<link rel="stylesheet" href="css/submit.css?v=72879aec">
+<meta name="app-version" content="f7e6f814">
 </head>
 <body>
 
@@ -186,50 +186,12 @@
       <button type="button" class="help__x" id="helpClose" aria-label="閉じる">✕</button>
     </div>
 
+    <!-- ★中身は js/submit.js が組み立てます（2026-09-13、ko-dai の指示）。
+         ここにべた書きしていたのは**バグるの形だけ**で、popo と
+         仕込み／営業の4店舗には**うその説明**が出ていました。
+         いまは店舗ごとに、マネージ →シフト →「シフトの出し方」で直せます。 -->
     <div class="help__body">
-
-      <section class="way way--open">
-        <h3 class="way__title"><span class="way__chip">立ち上げ</span>から入る人</h3>
-        <ol class="way__steps">
-          <li><b class="k k--open">立ち上げ</b> を押す</li>
-          <li><b class="k k--lunch">ランチだけ</b> か <b class="k k--full">F（通し）</b> を選ぶ</li>
-        </ol>
-      </section>
-
-      <section class="way way--full">
-        <h3 class="way__title"><span class="way__chip">F</span>で入る人</h3>
-        <ol class="way__steps">
-          <li><b class="k k--full">F</b> を押すだけ</li>
-        </ol>
-      </section>
-
-      <section class="way way--lunch">
-        <h3 class="way__title"><span class="way__chip">ランチ</span>だけの人</h3>
-        <ol class="way__steps">
-          <li><b class="k k--lunch">ランチ</b> を押す</li>
-          <li>出てきた時間を選ぶ</li>
-        </ol>
-      </section>
-
-      <section class="way way--dinner">
-        <h3 class="way__title"><span class="way__chip">ディナー</span>だけの人</h3>
-        <ol class="way__steps">
-          <li><b class="k k--dinner">ディナー</b> を押す</li>
-          <li>出てきた時間を選ぶ</li>
-        </ol>
-      </section>
-
-      <p class="help__aside">入れない日は、何も押さなくて大丈夫です。</p>
-
-      <section class="way way--go">
-        <h3 class="way__title">全部入れ終わったら</h3>
-        <ol class="way__steps">
-          <li>一番下の <b class="k k--go">提出する</b> を押す</li>
-          <li>上の方に <b>「出しました」</b> が出て、選んだ日が並んでいれば完了です</li>
-        </ol>
-      </section>
-
-      <p class="help__last">締切までは、何度でも出し直せます。</p>
+      <div id="helpWays"></div>
 
       <button type="button" class="btn btn--wide" id="helpClose2">閉じる</button>
     </div>
@@ -237,9 +199,9 @@
   </div>
 </div>
 
-<script src="../js/config.js?v=5b6128e2"></script>
+<script src="../js/config.js?v=dc0b6ae3"></script>
 <!-- シフト表を絵に描くところ。ワークスの「JPEGで保存」と同じものです -->
 <script src="../js/shift-sheet.js?v=2b29c50a"></script>
-<script src="js/submit.js?v=64c52df6"></script>
+<script src="js/submit.js?v=3f513bed"></script>
 </body>
 </html>

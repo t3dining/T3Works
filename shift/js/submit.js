@@ -1198,9 +1198,87 @@ function renderDone() {
  *    文を変えたいときは、そちらを書きかえてください。
  */
 function openHelp() {
+  renderHelp();
   el('help').classList.remove('is-hidden');
   document.body.classList.add('is-help');
   el('helpClose').focus();
+}
+
+/**
+ * 「出し方」の中身を組み立てます
+ *
+ * ★店舗ごとにちがいます（→ `shiftHelpTextOf`）。ここにべた書きしていた
+ *   ときは**バグるの形だけ**で、popo と仕込み／営業の4店舗には
+ *   うその説明が出ていました（2026-09-13、ko-dai の指示で直しました）。
+ * ★**開くたびに組み立てます。**マネージで直したものが、次に開いた
+ *   ときにはもう入っているようにするためです。
+ */
+function renderHelp() {
+  const box = el('helpWays');
+  box.innerHTML = '';
+  // 枠の名前が見出しの頭にあれば、その枠の色を付けます（今までの見た目のまま）
+  const 枠 = shiftWishSlots(me.store);
+  const 色 = (title) => {
+    const s = 枠.find((v) => v.name && title.indexOf(v.name) === 0);
+    if (s) return s.id === SHIFT_FULL_ID ? 'full' : s.id;
+    return title.indexOf('全部') === 0 ? 'go' : '';
+  };
+
+  shiftHelpBlocks(shiftHelpTextOf(me.store)).forEach((b) => {
+    if (b.kind === 'note') {
+      const p = document.createElement('p');
+      p.className = 'help__aside';
+      p.textContent = b.text;
+      box.appendChild(p);
+      return;
+    }
+    const sec = document.createElement('section');
+    const c = b.title ? 色(b.title) : '';
+    sec.className = 'way' + (c ? ` way--${c}` : '');
+    if (b.title) {
+      const h = document.createElement('h3');
+      h.className = 'way__title';
+      // 見出しの頭が枠の名前なら、そこだけ丸い印にします
+      const s = 枠.find((v) => v.name && b.title.indexOf(v.name) === 0);
+      if (s) {
+        const chip = document.createElement('span');
+        chip.className = 'way__chip';
+        chip.textContent = s.name;
+        h.appendChild(chip);
+        h.appendChild(document.createTextNode(b.title.slice(s.name.length)));
+      } else {
+        h.textContent = b.title;
+      }
+      sec.appendChild(h);
+    }
+    if (b.steps.length) {
+      const ol = document.createElement('ol');
+      ol.className = 'way__steps';
+      b.steps.forEach((t) => {
+        const li = document.createElement('li');
+        // 「…」で囲んだところは、押すものの名前として太くします
+        t.split(/(「[^」]*」)/).forEach((part) => {
+          if (part.length > 1 && part[0] === '「') {
+            const 語 = part.slice(1, -1);
+            // ★枠の名前に当てはまればその色。当てはまらない言葉は `k--plain`。
+            //   `.k` だけだと**白い字に地の色が無く、消えて見えます**
+            const 枠の = 枠.find((v) => v.name && 語.indexOf(v.name) === 0);
+            const c = 枠の ? (枠の.id === SHIFT_FULL_ID ? 'full' : 枠の.id)
+              : (語.indexOf('提出') === 0 ? 'go' : 'plain');
+            const b2 = document.createElement('b');
+            b2.className = `k k--${c}`;
+            b2.textContent = 語;
+            li.appendChild(b2);
+          } else if (part) {
+            li.appendChild(document.createTextNode(part));
+          }
+        });
+        ol.appendChild(li);
+      });
+      sec.appendChild(ol);
+    }
+    box.appendChild(sec);
+  });
 }
 
 function closeHelp() {

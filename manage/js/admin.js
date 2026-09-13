@@ -47,6 +47,8 @@ const el = {};
   'memoTagText', 'memoTagLabel', 'saveMemoTags', 'memoTagCount', 'memoTagSaved',
   'lineAskText', 'lineDoneText', 'lineAskLabel', 'lineDoneLabel',
   'lineOpenText', 'lineOpenLabel',
+  'shiftHelpBlock', 'shiftHelpText', 'shiftHelpLabel',
+  'saveShiftHelp', 'shiftHelpReset', 'shiftHelpSaved',
   'saveLineTexts', 'lineTextReset', 'lineTextSaved',
   'shiftCodeList', 'shiftSubmitUrl', 'viewShift',
   'viewTrain', 'trainStoreName', 'trainCount', 'trainInput', 'saveTrain', 'trainSaved',
@@ -2169,6 +2171,51 @@ function resetShiftLineTexts() {
   });
 }
 
+/* -------- シフトの出し方 --------
+ *
+ * ★入れ先は `_shiftset/店舗id` の `help` です（枠・時刻・LINEの文と同じ行）。
+ *   **この行はまるごと提出ページへ渡っています**（GASの `res.slots`）。
+ *   ですから、ここで保存すればアルバイトの画面にそのまま届きます。
+ *   **GASの貼り直しは要りません。**
+ */
+function renderShiftHelp() {
+  // シフトを組まない店舗には出しません（提出ページがありません）
+  const 使える = typeof shiftHelpTextOf === 'function' && shiftBuilds(state.storeId);
+  el.shiftHelpBlock.classList.toggle('is-hidden', !使える);
+  if (!使える) return;
+  el.shiftHelpLabel.textContent = `${getStore(state.storeId).name}：シフトの出し方`;
+  el.shiftHelpText.value = shiftHelpTextOf(state.storeId);
+}
+
+function saveShiftHelp() {
+  if (typeof shiftHelpTextOf !== 'function') return;
+  const 文 = String(el.shiftHelpText.value || '').trim();
+  // ★空は「消す」ではなく「組み立て直す」です。null を入れて、
+  //   読むときに `shiftHelpDefault` へ落ちるようにします
+  const 元 = (Store.getDay(SHIFT_SET_STORE, state.storeId).items || {})[SHIFT_HELP_KEY];
+  if (!文 && !(typeof 元 === 'string' && 元.trim())) {
+    // もともと組み立てたものを使っている店舗で、空のまま押されただけ。
+    // 書き込まずに戻します（要らない同期を1本増やさないため）
+    renderShiftHelp();
+    el.shiftHelpSaved.classList.remove('is-hidden');
+    setTimeout(() => el.shiftHelpSaved.classList.add('is-hidden'), 2500);
+    return;
+  }
+  if (!文) {
+    if (!window.confirm('空のまま保存すると、枠の設定から組み立てたものに戻ります。\n'
+      + 'いま書いてあった文は消えます。\n\nよろしいですか。')) return;
+  }
+  Store.setItem(SHIFT_SET_STORE, state.storeId, SHIFT_HELP_KEY, 文 || null);
+  renderShiftHelp();
+  el.shiftHelpSaved.classList.remove('is-hidden');
+  setTimeout(() => el.shiftHelpSaved.classList.add('is-hidden'), 2500);
+}
+
+/** 枠の設定から組み立て直します（欄に書き入れるだけ。保存は押してもらいます） */
+function resetShiftHelp() {
+  el.shiftHelpText.value = shiftHelpDefault(state.storeId);
+}
+
 function renderShiftSlots() {
   const storeId = state.storeId;
   const 時刻で入れる = shiftUsesRange(storeId);
@@ -3008,6 +3055,7 @@ function renderAll() {
     renderShiftStaff();
     renderShiftMemoTags();
     renderShiftLineTexts();
+    renderShiftHelp();
     renderShiftSlots();
   } else if (state.view === 'train') {
     renderChecklistEditor();
@@ -3274,6 +3322,8 @@ function bindEvents() {
   el.saveShiftSlots.addEventListener('click', saveShiftSlots);
   el.saveMemoTags.addEventListener('click', saveShiftMemoTags);
   el.saveLineTexts.addEventListener('click', saveShiftLineTexts);
+  el.saveShiftHelp.addEventListener('click', saveShiftHelp);
+  el.shiftHelpReset.addEventListener('click', resetShiftHelp);
   el.lineTextReset.addEventListener('click', resetShiftLineTexts);
   el.memoTagText.addEventListener('input', updateMemoTagCount);
   el.resetShiftSlots.addEventListener('click', resetShiftSlots);

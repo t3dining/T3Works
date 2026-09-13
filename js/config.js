@@ -2743,7 +2743,11 @@ function nippouTestFor(storeId) {
 /** 日報に5つを自動で入れられる店舗（ジャーナルの様式が同じもの）
  *  ★こじゃれは精算レポートという別の様式で、まだ読めません。
  *    読み取り全文をもらえれば足せます。おいでんテラスも未確認です。 */
-const JOURNAL_STORES = ['sumimaro', 'chacoru', 'baguru', 'popo', 'kojare'];
+/* ★おいでんテラスも日報に書きます（2026-09-13 に足しました）。
+     紙の様式は3つ目（`oiden`）ですが、**日報への入れ方はバグる・popo と同じ**です。
+     Uber・出前館・ロケットナウは、いまは使っていませんが、
+     使うようになったらそのまま引き算されます（`NIPPOU_MINUS`）。 */
+const JOURNAL_STORES = ['sumimaro', 'chacoru', 'baguru', 'popo', 'kojare', 'oiden'];
 
 /* ------------------------------------------------------------
  *  おいでんテラス（精算）の読み取り
@@ -2876,9 +2880,14 @@ function parseOiden(text) {
     }
     閉じる();
   }
+  /* ★`credit` に入れます（`creditAll` ではありません）。
+       おいでんテラスは**バグる・popo と同じ道**を通ります（`nippouValues`）。
+       そちらが見るのは `cash` / `credit` / `emoney` / `net` / `guests` の5つです。
+       こじゃれ（`creditAll`）とは別なので、混ぜないでください。 */
   支払.forEach((x) => {
     if (/現金/.test(x.名)) v.cash = x.金;
-    else if (/カード|クレジット/.test(x.名)) v.creditAll = x.金;
+    else if (/カード|クレジット/.test(x.名)) v.credit = x.金;
+    else if (/QR|ＱＲ/i.test(x.名)) v.qr = x.金;
     else if (/マネー|電子/.test(x.名)) v.emoney = x.金;
     else if (/商品券/.test(x.名)) v.voucher1 = x.金;
     else if (/掛/.test(x.名)) v.kake = x.金;
@@ -2902,7 +2911,7 @@ function parseOiden(text) {
   }
   if (支払.length && has('gross')) {
     add('支払方法の合計 ＝ 総売上', 支払合計, v.gross,
-      ['gross', 'cash', 'creditAll', 'emoney', 'voucher1', 'kake']);
+      ['gross', 'cash', 'credit', 'qr', 'emoney', 'voucher1', 'kake']);
   }
   if (税内 !== null && has('tax')) {
     add('消費税内訳の合計 ＝ 消費税総額', 税内, v.tax, ['tax']);
@@ -3021,6 +3030,13 @@ const NIPPOU_LABELS = {
   uberCard:  'ウーバークレジット',
   rocket:    'ロケットナウ',
   kake:      '売掛金',            // ★こじゃれの精算レポートで使います（B16）
+  /* ★おいでんテラスの QR支払（B10）。
+       **A10 の文字が分かるまで空のままにしてあります。**
+       空のあいだ、QRの金額は日報に**書きません**（`nippouQrOk`）。
+       あてずっぽうで別の行の名前を入れると、**QRのお金が電子マネーの行などに
+       混ざって、当日総合計は合ったまま**になります。検算で捕まりません。
+       ★分かったら、ここに日報のA10の文字をそのまま入れてください。 */
+  qr:        '',
   // ★その他支払明細に出るもの（こじゃれ）。popo の日報では 7・8・9 行目でした
   recruit:   'リクルートポイント',   // ホットペッパー（B7）
   gurunavi:  'ぐるなびポイント',     // ぐるなび（B8）
@@ -3252,9 +3268,13 @@ const NIPPOU_MINUS = {
   cash:   ['demaeCash', 'uberCash'],
   credit: ['demaeCard', 'uberCard', 'rocket'],
   emoney: [],
+  qr:     [],          // ★おいでんテラスのQR支払。引くものはありません
   net:    [],
   guests: [],
 };
+
+/** QRの行の名前が分かっているか（分かるまで日報には書きません） */
+function nippouQrOk() { return !!NIPPOU_LABELS.qr; }
 
 /**
  * ジャーナルの読み取りと、手で入れた分から、日報に入れる5つを作ります。
@@ -3263,7 +3283,9 @@ const NIPPOU_MINUS = {
  */
 function nippouValues(j, m) {
   const out = {};
-  ['cash', 'credit', 'emoney', 'net', 'guests'].forEach((k) => {
+  // ★並べ直さず NIPPOU_MINUS の鍵をそのまま回します。
+  //   行を1つ足すたびに2か所直すと、片方を忘れます（実際に何度かやりました）
+  Object.keys(NIPPOU_MINUS).forEach((k) => {
     if (j[k] === null || j[k] === undefined) { out[k] = null; return; }
     out[k] = NIPPOU_MINUS[k].reduce((a, x) => a - cashMinusOr0(m && m[x]), j[k]);
   });
@@ -4144,6 +4166,8 @@ function setShiftSlots(storeId, items) {
   shiftSlotsGiven = {
     storeId,
     list: shiftMergeSlots(src, storeId),
+    // ★「出し方」の文も、この行に入って渡ってきます（→ SHIFT_HELP_KEY）
+    help: typeof src[SHIFT_HELP_KEY] === 'string' ? src[SHIFT_HELP_KEY] : '',
     // ★入れ方（時刻を入れるか、通しの境目はどこか）も一緒に控えます。
     //   ここを渡し忘れると、提出ページだけ古い決まりで動きます
     style: src[SHIFT_STYLE_KEY] || {},
@@ -4689,6 +4713,118 @@ function shiftShortKey(slotId, laneId) {
 
 /** 1つのマスで足りないと書ける、一番多い人数 */
 const SHIFT_SHORT_MAX = 9;
+
+/* -------- シフトの出し方（提出ページの「? 出し方」） --------
+ *
+ * ★2026-09-13 まで、この中身は `shift/index.html` に**べた書き**でした。
+ *   書いてあったのは**バグるの形**（立ち上げ・F・ランチ・ディナー）だけで、
+ *   ほかの5店舗では**うその説明**が出ていました。
+ *     popo          … 枠を押さず、出勤〜退勤の時刻を入れるお店
+ *     仕込み／営業の4店舗 … 枠は2つ。F もランチもありません
+ *   ko-dai さんの指示で、**店舗ごとにマネージで直せる**ようにしました。
+ *
+ * ★入れ先は `_shiftset/店舗id` の `help` です（枠・時刻・LINEの文と同じ行）。
+ *   **この行はまるごと提出ページへ渡っています**（`res.slots`）。
+ *   ですから**GASの貼り直しは要りません。**
+ *
+ * ★書き方は3つだけです。覚えることを増やすと、直せなくなります。
+ *     ・ で始まる行   … その見出しの中の「手順」（番号が付きます）
+ *     ※ で始まる行   … 囲みのない、ひとこと
+ *     それ以外の行   … 見出し（ここから新しいまとまりが始まります）
+ *   空の行は、まとまりの区切りです。
+ */
+const SHIFT_HELP_KEY = 'help';        // `_shiftset/店舗id` の中のキー
+
+/**
+ * その店舗の「出し方」（マネージで直していなければ、枠から組み立てたもの）
+ */
+function shiftHelpTextOf(storeId) {
+  // 提出ページ。Apps Script からもらった `_shiftset` の中身を使います
+  if (shiftSlotsGiven && shiftSlotsGiven.storeId === storeId) {
+    const v = shiftSlotsGiven.help;
+    if (typeof v === 'string' && v.trim()) return v;
+    return shiftHelpDefault(storeId);
+  }
+  try {
+    if (typeof Store !== 'undefined' && storeId) {
+      const v = (Store.getDay(SHIFT_SET_STORE, storeId).items || {})[SHIFT_HELP_KEY];
+      if (typeof v === 'string' && v.trim()) return v;
+    }
+  } catch (e) {
+    // 設定が読めなくても、組み立てた方で動かします
+  }
+  return shiftHelpDefault(storeId);
+}
+
+/**
+ * 枠の設定から「出し方」を組み立てます（マネージで直す前の姿）
+ *
+ * ★**その店舗で本当に起きることだけ**書きます。書けるのは枠の設定から
+ *   分かることだけで、お店の中の決めごと（何時に来るか等）は書きません。
+ *   足りないところは、マネージで足してもらいます。
+ */
+function shiftHelpDefault(storeId) {
+  const 行 = [];
+  if (shiftUsesRange(storeId)) {
+    // popo … 枠を押さず、出勤と退勤を選ぶお店
+    行.push('入れる日', '・「出勤」と「退勤」の時刻を選ぶ',
+      '・入れない日は、出勤を「—」のままにしておく', '');
+  } else {
+    const 枠 = shiftWishSlots(storeId);
+    const 次 = shiftAfterOpen(storeId);
+    枠.forEach((slot) => {
+      // 立ち上げ（仕込み）だけ「から」。そこ**から**続けて入る枠だからです
+      行.push(slot.id === 'open' ? `${slot.name}から入る人` : `${slot.name}で入る人`);
+      行.push(`・「${slot.name}」を押す`);
+      if (slot.id === 'open' && 次) {
+        // 立ち上げ（仕込み）を押すと、続けて入る枠も一緒に入ります
+        const 通し = 枠.find((s) => s.id === SHIFT_FULL_ID);
+        行.push(通し
+          ? `・「${次.name}だけ」か「${通し.name}（通し）」を選ぶ`
+          : `・「${次.name}」も一緒に入ります`);
+      } else if (slot.askTime !== false && (slot.times || []).length > 1) {
+        行.push('・出てきた時間を選ぶ');
+      }
+      行.push('');
+    });
+    // ★押すものがある店舗にだけ書きます。時刻を入れるお店では
+    //   「何も押さなくて」が当てはまりません（上に書いてあります）
+    行.push('※入れない日は、何も押さなくて大丈夫です。', '');
+  }
+  行.push('全部入れ終わったら', '・一番下の「提出する」を押す',
+    '・上の方に「出しました」が出て、選んだ日が並んでいれば完了です', '');
+  行.push('※締切までは、何度でも出し直せます。');
+  return 行.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/**
+ * 「出し方」の文を、画面に出せるまとまりに分けます
+ *
+ * ★読めない書き方をされても**落としません。**見出しだけのまとまりも、
+ *   手順だけのまとまりも、そのまま出します。アルバイトが見る画面なので、
+ *   「書き方がちがいます」と出して**何も見せない**方が困ります。
+ */
+function shiftHelpBlocks(text) {
+  const out = [];
+  let いま = null;
+  String(text || '').split('\n').forEach((raw) => {
+    const line = raw.trim();
+    if (!line) { いま = null; return; }
+    if (line[0] === '※') {
+      out.push({ kind: 'note', text: line.slice(1).trim() });
+      いま = null;
+      return;
+    }
+    if (line[0] === '・') {
+      if (!いま) { いま = { kind: 'way', title: '', steps: [] }; out.push(いま); }
+      いま.steps.push(line.slice(1).trim());
+      return;
+    }
+    いま = { kind: 'way', title: line, steps: [] };
+    out.push(いま);
+  });
+  return out.filter((b) => (b.kind === 'note' ? b.text : (b.title || b.steps.length)));
+}
 
 /* -------- 足りない日を、LINEに送る文にする --------
  *

@@ -2492,6 +2492,21 @@ async function nippouWritePart(part, btn) {
     return;
   }
 
+  /* ★おいでんテラスで、紙にQR支払が出ているのに、日報のどの行に書くかが
+       まだ決まっていないときは書きません。
+
+     ★書いてしまうと、QRの金額**だけが落ちた**日報ができます。
+       当日総合計が合わなくなるので気づけますが、**気づいてから直すより、
+       書く前に止めた方が安全**です。日報は本物の記録です。
+     ★行の名前（日報のA10）が分かって `NIPPOU_LABELS.qr` に入れば、
+       この止めは自然に外れます。 */
+  if (part === 'journal' && journalFormatOf(state.storeId) === 'oiden'
+      && !nippouQrOk() && (cashEdit.j || {}).qr) {
+    setNippouMsg('★QR支払が読み取れていますが、日報のどの行に書くかが決まっていません。'
+      + 'このまま書くとQRの金額だけが抜けます。日報のA10の項目名を教えてください', 'warn');
+    return;
+  }
+
   nippouBtnBusy(btn, '日報を見に行っています…');
   await cashWakeOn();          // ★画面を消させません（消えると止まります）
   try {
@@ -2686,6 +2701,16 @@ function cashSureValues() {
  * ★ほかの4店舗は、これまでどおり5つです。
  */
 function cashNippouRowsFor(storeId) {
+  /* ★おいでんテラスは、4店舗と同じ5つに **QR支払** を足した6つです。
+       日報への入れ方（引き算）は4店舗と同じなので、行だけ足します。
+     ★QRの行の名前が分かるまでは出しません（`nippouQrOk`）。 */
+  if (journalFormatOf(storeId) === 'oiden') {
+    return nippouQrOk()
+      ? CASH_NIPPOU_ROWS.slice(0, 3)
+        .concat([{ key: 'qr', name: NIPPOU_LABELS.qr }])
+        .concat(CASH_NIPPOU_ROWS.slice(3))
+      : CASH_NIPPOU_ROWS;
+  }
   if (journalFormatOf(storeId) !== 'seisan') return CASH_NIPPOU_ROWS;
   return [
     { key: 'cash', name: '現金売上', もと: 'cash' },

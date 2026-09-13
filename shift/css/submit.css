@@ -458,6 +458,14 @@ body {
 .k--lunch  { background: var(--lunch); }
 .k--dinner { background: var(--dinner); }
 .k--go     { background: var(--accent); }
+/* ★枠のどれにも当てはまらない言葉（「出勤」「退勤」など）。
+   `.k` は白い字なので、地の色が無いと**見えなくなります。**
+   2026-09-13、出し方を店舗ごとに直せるようにしたとき、
+   マネージで打った言葉がまっ白に消えていました */
+.k--plain  {
+  background: transparent; color: var(--text);
+  box-shadow: inset 0 0 0 1.5px var(--line);
+}
 /* 暗い画面では枠の色が明るくなるので、字の方を暗くします */
 @media (prefers-color-scheme: dark) {
   .way__chip, .k--open, .k--full, .k--lunch, .k--dinner { color: #14161a; }
