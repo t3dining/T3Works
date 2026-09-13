@@ -408,6 +408,8 @@ function renderDemoSwitch() {
       demoView = v.id;
       // 確定後の見本が無ければ、その場で作ります（お店がまだ組んでいないとき）
       if (v.id === 'built' && !(built && Object.keys(built).length)) built = demoBuilt();
+      // ★過去を選んでいたら外します。押した方が出ないと「効いていない」と見えます
+      pastPick = null;
       renderPeriod();
     });
     box.appendChild(b);
@@ -458,8 +460,13 @@ function renderPeriod() {
     ? { y: period.y, m: period.m, half: period.half, built, 前か: false } : null;
   const 選んだ = pastPick ? past.find((v) => v.key === pastPick) : null;
   const 過去の = (v) => (v ? { y: v.y, m: v.m, half: v.half, built: v.built, 前か: true } : null);
+  // ★見本（テスト用）でも、過去のシフトは出します。
+  //   はじめ「見本は作り物の画面だから」と外していましたが、**ko-dai さんが
+  //   確かめに使うのは見本の番号です**。外すと、本人が見られません
+  //   （2026-09-13、実際に「表示されない」と言われました）。
+  //   見本の「確定後」を押したときだけ、作り物の方を出します
   shown = me.demo
-    ? (demoView === 'built' && いまの ? いまの : null)
+    ? (過去の(選んだ) || (demoView === 'built' && いまの ? いまの : 過去の(past[0])))
     : (過去の(選んだ) || いまの || 過去の(past[0]));
   const hasBuilt = !!shown;
   renderPastBar();
@@ -560,7 +567,8 @@ function renderPeriod() {
  */
 function renderPastBar() {
   const bar = el('pastBar');
-  if (me.demo || !past.length) { bar.classList.add('is-hidden'); return; }
+  // ★見本（テスト用）でも出します。ko-dai さんが確かめに使う番号だからです
+  if (!past.length) { bar.classList.add('is-hidden'); return; }
   bar.classList.remove('is-hidden');
 
   // 「1つ前」…いま出しているものが一番新しい過去なら、押しても変わらないので光らせます
@@ -581,7 +589,8 @@ function renderPastBar() {
   box.innerHTML = '';
 
   // いまの半月が確定ずみなら、そこへ戻るボタンも並べます
-  if (built && Object.keys(built).length && period) {
+  // ★見本のときは、押した方（希望を入れる／確定後）で決まるので出しません
+  if (!me.demo && built && Object.keys(built).length && period) {
     box.appendChild(pastBtn(`${shiftRangeLabel(period.y, period.m, period.half)}（いま）`,
       null, !pastPick));
   }

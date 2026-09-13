@@ -3024,7 +3024,7 @@ const CASH_PHOTO_Q_RETRY = 0.9;
  *   サーバーが返してくる印とちがっていたら、貼り直しがまだ、ということです。
  *   写真を撮ったときに、その場で画面に出します。
  */
-const CASH_GAS_VERSION = '69d20519';
+const CASH_GAS_VERSION = 'b3b00925';
 
 /**
  * 貼ってほしい 日報に書く.gs の版の印

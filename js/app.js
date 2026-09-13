@@ -2986,7 +2986,19 @@ async function cashReadPhoto(dataUrl, dateStr, file) {
     //   見た目では分からない食いちがいが出るためです
     if (!cashGasOk(res, true)) return;      // 読むだけ（ドライブには残しません）
 
-    let got = parseJournalCash(res.text || '');
+    // ★どれくらい読めたかを数にします。送り直したものと見くらべるためです。
+    //   cash … 現金の金額が読めたか　j … 日報の5つが検算を通ったか
+    //   n    … 日報に書ける数がいくつ取れたか（同点のときの決め手）
+    const 読めた具合 = (text) => {
+      const c = parseJournalCash(text || '');
+      const out = { cash: c.how === 'ng' ? 0 : 1, j: 0, n: 0 };
+      if (JOURNAL_STORES.includes(state.storeId)) {
+        const j = parseJournalFor(state.storeId, text || '');
+        out.j = j.ok ? 1 : 0;
+        out.n = Object.keys(j.sure || {}).filter((k) => j.sure[k]).length;
+      }
+      return out;
+    };
 
     // ★小さくして送ったせいで読み取れなかったのかもしれません。
     //   そのときだけ、元の画質でもう一度送り直します（ふだんは1回で終わります）
@@ -2994,18 +3006,32 @@ async function cashReadPhoto(dataUrl, dateStr, file) {
     //   写真しか残っていないので、送り直しても同じ結果にしかなりません。
     //   ここで file を見ずに送り直そうとして、画面に
     //   「file is not defined」と出していました（2026-09-05 に直しました）
-    if (file && !res.ocrError && got.how === 'ng') {
+    // ★2026-09-13、送り直す場面を増やしました。
+    //   それまでは**現金の金額が読めなかったときだけ**でした。ところが
+    //   こじゃれのように日報の5つも読む店では、現金は読めているのに
+    //   **検算が合わない**（＝どこかを読みまちがえている）ことの方が多く、
+    //   その場合は1回も送り直さずに、手入力に落ちていました。
+    //   アプリは「合っていない」と分かっているのだから、もう一度撮り直さずに、
+    //   きれいな画質で送り直してから聞くべきです。
+    const 前 = 読めた具合(res.text);
+    const 日報も読む = JOURNAL_STORES.includes(state.storeId);
+    if (file && !res.ocrError && (!前.cash || (日報も読む && !前.j))) {
       setCashWait('もう一度、きれいな写真で読み取っています…');
       const big = await cashShrink(file, CASH_PHOTO_Q_RETRY);
       const res2 = await Sync.ask('journal', {
         mode: 'read', store: state.storeId, date: dateStr, image: big,
       });
-      if (res2.ok && parseJournalCash(res2.text || '').how !== 'ng') {
-        res = res2;
-        dataUrl = big;
-        got = parseJournalCash(res2.text || '');
+      // ★**よくなったときだけ**入れかえます。
+      //   ここを「2回目を使う」にすると、1回目で読めていた日に
+      //   2回目が外して、読めていたものを失います
+      if (res2.ok) {
+        const 後 = 読めた具合(res2.text);
+        const よい = 後.cash > 前.cash || 後.j > 前.j
+          || (後.cash === 前.cash && 後.j === 前.j && 後.n > 前.n);
+        if (よい) { res = res2; dataUrl = big; }
       }
     }
+    let got = parseJournalCash(res.text || '');
     cashEdit.ms = Date.now() - from;
     cashEdit.size = Math.round(dataUrl.length * 3 / 4 / 1024);
     cashEdit.gas = res.v || '（分かりません）';
