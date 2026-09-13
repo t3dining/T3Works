@@ -2749,6 +2749,23 @@ function nippouTestFor(storeId) {
      使うようになったらそのまま引き算されます（`NIPPOU_MINUS`）。 */
 const JOURNAL_STORES = ['sumimaro', 'chacoru', 'baguru', 'popo', 'kojare', 'oiden'];
 
+/**
+ * ポイント（ホットペッパーグルメ）を日報に書く店舗
+ *
+ * ★バグるとおいでんテラスだけです（ko-dai さん・2026-09-13）。
+ *   炭まろ・ちゃこる・popo は、紙にポイントの行が出ても**日報に書きません。**
+ *   画面の表にも出しません。
+ * ★★読むのはやめません。「支払方法の合計 ＝ 売上」の検算に要るためです。
+ *   読まないと、ポイントのあった日に合計が合わなくなって、
+ *   **その日が丸ごと読めなくなります。**
+ * ★こじゃれは紙が「ホットペッパー」と名前で出すので、こちらは通りません
+ *   （`SEISAN_TO_NIPPOU` の `recruit` で別に書いています）。
+ */
+const JOURNAL_POINT_STORES = ['baguru', 'oiden'];
+function journalPointOk(storeId) {
+  return JOURNAL_POINT_STORES.indexOf(storeId) >= 0;
+}
+
 /* ------------------------------------------------------------
  *  おいでんテラス（精算）の読み取り
  *
@@ -2798,7 +2815,7 @@ function oidenPayName(line) {
   if (!p) return false;
   if (/[円個人件枚]/.test(p)) return false;
   if (/%|標準|軽減/.test(p)) return false;
-  return /支払|現金|カード|マネー|商品券|掛/.test(p);
+  return /支払|現金|カード|マネー|商品券|掛|ポイント|ホットペッパー/.test(p);
 }
 
 /**
@@ -3006,7 +3023,8 @@ function parseOiden(text) {
     else if (/カード|クレジット/.test(x.名)) v.credit = x.金;
     else if (/QR|ＱＲ/i.test(x.名) || /マネー|電子/.test(x.名)) {
       v.emoney = (v.emoney || 0) + x.金;
-    } else if (/商品券/.test(x.名)) v.voucher1 = x.金;
+    } else if (/ポイント|ホットペッパー/.test(x.名)) v.point = x.金;
+    else if (/商品券/.test(x.名)) v.voucher1 = x.金;
     else if (/掛/.test(x.名)) v.kake = x.金;
   });
   /* ★出ていない支払方法は、その日は使われていません。**0円です。**

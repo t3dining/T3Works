@@ -1574,6 +1574,21 @@ function renderCash() {
  *  ★出前館・ウーバー・ロケットナウはジャーナルに出ないので、
  *    手で入れてもらって引きます（日報でやっている式と同じです）。
  * ---------------------------------------------------------- */
+/**
+ * その店舗で、日報に書く行
+ *
+ * ★ポイント（リクルートポイント）は、使う店舗だけ出します。
+ *   使わない店舗に出すと、いつも「—」や「0」が並んで、
+ *   **本当に読めなかったときと見分けがつきません。**
+ * ★表を作るところ・日報へ渡すところ・式を作るところ、**全部ここを通します。**
+ *   1か所でも直に CASH_NIPPOU_ROWS を見ていると、
+ *   画面に出ないのに書かれる（またはその逆）が起きます。
+ */
+function cash日報の行(storeId) {
+  return CASH_NIPPOU_ROWS.filter(
+    (r) => r.key !== 'point' || journalPointOk(storeId));
+}
+
 const CASH_NIPPOU_ROWS = [
   { key: 'cash', name: '現金売上' },
   { key: 'credit', name: 'クレジット' },
@@ -2179,7 +2194,7 @@ function renderNippouMinusNote() {
 function nippouSend() {
   const n = nippouValues(cashEdit.j || {}, cashEdit.m);
   const values = {};
-  CASH_NIPPOU_ROWS.forEach((r) => {
+  cash日報の行(state.storeId).forEach((r) => {
     // ★引くものがある行（現金売上・クレジット）は、答えではなく
     //   **引き算の式**を入れます。nippouCalc() の方で作ります
     if ((NIPPOU_MINUS[r.key] || []).length) return;
@@ -2220,7 +2235,7 @@ function nippouSend() {
 function nippouCalc() {
   const j = cashEdit.j || {};
   const calc = {};
-  CASH_NIPPOU_ROWS.forEach((r) => {
+  cash日報の行(state.storeId).forEach((r) => {
     const 引く = NIPPOU_MINUS[r.key] || [];
     if (!引く.length) return;
     if (j[r.key] === null || j[r.key] === undefined) return;
@@ -2479,7 +2494,7 @@ function nippouPartData(part) {
     if (journalFormatOf(state.storeId) === 'seisan') return seisanPartData();
     const n = nippouValues(cashEdit.j || {}, cashEdit.m);
     const values = {};
-    CASH_NIPPOU_ROWS.forEach((r) => {
+    cash日報の行(state.storeId).forEach((r) => {
       if ((NIPPOU_MINUS[r.key] || []).length) return;      // 式で入れる分は calc へ
       if (n[r.key] === null || n[r.key] === undefined) return;
       if (nippouZeroSkip(r.key, n[r.key])) return;         // ★0円は書きません
@@ -2822,7 +2837,7 @@ function cashSureValues() {
  * ★ほかの4店舗は、これまでどおり5つです。
  */
 function cashNippouRowsFor(storeId) {
-  if (journalFormatOf(storeId) !== 'seisan') return CASH_NIPPOU_ROWS;
+  if (journalFormatOf(storeId) !== 'seisan') return cash日報の行(storeId);
   return [
     { key: 'cash', name: '現金売上', もと: 'cash' },
     { key: 'credit', name: 'クレジット', もと: 'cardId' },
