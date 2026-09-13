@@ -2492,21 +2492,6 @@ async function nippouWritePart(part, btn) {
     return;
   }
 
-  /* ★おいでんテラスで、紙にQR支払が出ているのに、日報のどの行に書くかが
-       まだ決まっていないときは書きません。
-
-     ★書いてしまうと、QRの金額**だけが落ちた**日報ができます。
-       当日総合計が合わなくなるので気づけますが、**気づいてから直すより、
-       書く前に止めた方が安全**です。日報は本物の記録です。
-     ★行の名前（日報のA10）が分かって `NIPPOU_LABELS.qr` に入れば、
-       この止めは自然に外れます。 */
-  if (part === 'journal' && journalFormatOf(state.storeId) === 'oiden'
-      && !nippouQrOk() && (cashEdit.j || {}).qr) {
-    setNippouMsg('★QR支払が読み取れていますが、日報のどの行に書くかが決まっていません。'
-      + 'このまま書くとQRの金額だけが抜けます。日報のA10の項目名を教えてください', 'warn');
-    return;
-  }
-
   nippouBtnBusy(btn, '日報を見に行っています…');
   await cashWakeOn();          // ★画面を消させません（消えると止まります）
   try {
@@ -2701,16 +2686,6 @@ function cashSureValues() {
  * ★ほかの4店舗は、これまでどおり5つです。
  */
 function cashNippouRowsFor(storeId) {
-  /* ★おいでんテラスは、4店舗と同じ5つに **QR支払** を足した6つです。
-       日報への入れ方（引き算）は4店舗と同じなので、行だけ足します。
-     ★QRの行の名前が分かるまでは出しません（`nippouQrOk`）。 */
-  if (journalFormatOf(storeId) === 'oiden') {
-    return nippouQrOk()
-      ? CASH_NIPPOU_ROWS.slice(0, 3)
-        .concat([{ key: 'qr', name: NIPPOU_LABELS.qr }])
-        .concat(CASH_NIPPOU_ROWS.slice(3))
-      : CASH_NIPPOU_ROWS;
-  }
   if (journalFormatOf(storeId) !== 'seisan') return CASH_NIPPOU_ROWS;
   return [
     { key: 'cash', name: '現金売上', もと: 'cash' },
@@ -9695,7 +9670,7 @@ function renderShiftPick() {
           // ★時刻を入れる店舗では、出勤時刻を変えたら入る行も変わります
           //   （10:30 は立ち上げ、11:00 はランチ…）。同じ行に置いたままだと
           //   「ランチの行に18時の人がいる」ことになって読みまちがえます
-          const 行き先 = 時刻で入れる ? shiftSlotByTime(t) : slotId;
+          const 行き先 = 時刻で入れる ? shiftSlotByTime(t, state.storeId) : slotId;
           now[slotId].splice(index, 1);
           now[行き先].push(直した);
           now[行き先] = shiftSort(now[行き先]);
@@ -9807,7 +9782,7 @@ function renderShiftPick() {
           const 退勤 = shiftPickAt.end || (isWish && item.e) || '';
           if (退勤) add.e = 退勤;
           // ★出勤時刻で入る行が決まる店舗では、押した行ではなく時刻で決めます
-          const 行き先 = shiftUsesRange(state.storeId) ? shiftSlotByTime(t) : slotId;
+          const 行き先 = shiftUsesRange(state.storeId) ? shiftSlotByTime(t, state.storeId) : slotId;
           now[行き先].push(add);
           now[行き先] = shiftSort(now[行き先]);
           shiftFillShort(now, 行き先, shiftPickAt.laneId);
@@ -9896,7 +9871,7 @@ function applyShiftFreeTime() {
   //   立ち上げの欄に「18:00」と書いてあるより、ディナーの欄に
   //   入っていた方が、表を見たときに読みまちがえません。
   //   立ち上げへは戻しません（立ち上げに入れたいときは、立ち上げの ＋ から）。
-  let to = shiftSlotByTime(t);
+  let to = shiftSlotByTime(t, state.storeId);
   if (to === 'open') to = slotId;
   // ★F（通し）の人を17時以降にずらしたら、それはもう通しではありません。
   //   通しの印（灰色の塗り）を外して、ディナーの枠へ移します

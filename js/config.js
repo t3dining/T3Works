@@ -2884,12 +2884,17 @@ function parseOiden(text) {
        おいでんテラスは**バグる・popo と同じ道**を通ります（`nippouValues`）。
        そちらが見るのは `cash` / `credit` / `emoney` / `net` / `guests` の5つです。
        こじゃれ（`creditAll`）とは別なので、混ぜないでください。 */
+  /* ★**QR支払は「電子マネー」の行に入ります**（日報のA10。2026-09-13に確かめました）。
+       専用の行はありません。
+     ★電子マネーとQRが**両方出る日**に備えて、上書きではなく**足します。**
+       上書きにすると、片方のお金が黙って消えます。
+       当日総合計は合わなくなるので気づけますが、気づく前に書いてしまいます。 */
   支払.forEach((x) => {
     if (/現金/.test(x.名)) v.cash = x.金;
     else if (/カード|クレジット/.test(x.名)) v.credit = x.金;
-    else if (/QR|ＱＲ/i.test(x.名)) v.qr = x.金;
-    else if (/マネー|電子/.test(x.名)) v.emoney = x.金;
-    else if (/商品券/.test(x.名)) v.voucher1 = x.金;
+    else if (/QR|ＱＲ/i.test(x.名) || /マネー|電子/.test(x.名)) {
+      v.emoney = (v.emoney || 0) + x.金;
+    } else if (/商品券/.test(x.名)) v.voucher1 = x.金;
     else if (/掛/.test(x.名)) v.kake = x.金;
   });
   /* ★現金の欄が出ない日は、現金の会計が無かった日です。
@@ -2911,7 +2916,7 @@ function parseOiden(text) {
   }
   if (支払.length && has('gross')) {
     add('支払方法の合計 ＝ 総売上', 支払合計, v.gross,
-      ['gross', 'cash', 'credit', 'qr', 'emoney', 'voucher1', 'kake']);
+      ['gross', 'cash', 'credit', 'emoney', 'voucher1', 'kake']);
   }
   if (税内 !== null && has('tax')) {
     add('消費税内訳の合計 ＝ 消費税総額', 税内, v.tax, ['tax']);
@@ -2940,10 +2945,34 @@ function parseOiden(text) {
  *
  *   nikkei … 日計レポート（炭まろ・ちゃこる・バグる・popo）
  *   seisan … 精算レポート（こじゃれ）
- *   oiden  … 精算（おいでんテラス。2026-09-13 に足しました）
+ *   oiden  … 精算（おいでんテラス）
+ *
+ * ★★**6店舗ぜんぶ書きます。既定値は置きません**（2026-09-13）。
+ *
+ *   それまでは `{ kojare: 'seisan' }` の1行で、**書いていない店舗は日計レポート**
+ *   という作りでした。**最初に作った店舗の様式が、そのまま全店舗の決まりに
+ *   なっていた**わけです。
+ *
+ *   ★これが本当に事故になりました。おいでんテラスは3つ目のレジなのに、
+ *     日計レポートとして読もうとして、**落ちずに「現金 0円」を返して**いました。
+ *     紙が全額クレジットの日だったので、**正しく見えました。**
+ *     現金のある日なら、0円のまま記録されていたはずです。
+ *
+ *   ★**落ちない間違いは、報告が来ません。**だから既定値をやめます。
+ *     知らない店舗は「読めません」と言わせます。手で入れてもらう方が、
+ *     まちがった数が静かに残るよりましです。
+ *     7店舗目を足す人は、ここに1行書いてください。
  */
-const JOURNAL_FORMAT = { kojare: 'seisan', oiden: 'oiden' };
-function journalFormatOf(storeId) { return JOURNAL_FORMAT[storeId] || 'nikkei'; }
+const JOURNAL_FORMAT = {
+  sumimaro: 'nikkei',
+  chacoru:  'nikkei',
+  baguru:   'nikkei',
+  popo:     'nikkei',
+  kojare:   'seisan',
+  oiden:    'oiden',
+};
+/** その店舗の様式。**書いていない店舗は空文字**（既定値は置きません） */
+function journalFormatOf(storeId) { return JOURNAL_FORMAT[storeId] || ''; }
 
 /**
  * 紙の様式に合わせて読み取ります
@@ -2954,7 +2983,10 @@ function parseJournalFor(storeId, text) {
   const 様 = journalFormatOf(storeId);
   if (様 === 'seisan') return parseSeisan(text);
   if (様 === 'oiden') return parseOiden(text);
-  return parseJournal(text);
+  if (様 === 'nikkei') return parseJournal(text);
+  // ★知らない店舗。**当てずっぽうで読みません**（上の説明のとおり）
+  return { v: {}, checks: [], fixed: [], sure: {}, cut: false, ok: false,
+    missing: [], why: 'この店舗の紙の様式が登録されていません（JOURNAL_FORMAT）' };
 }
 
 /**
@@ -2968,7 +3000,9 @@ function parseJournalFor(storeId, text) {
  *   0円として記録すると、**現金のあった日が0円で残ります。**
  */
 function parseCashFor(storeId, text) {
-  if (journalFormatOf(storeId) !== 'oiden') return parseJournalCash(text);
+  const 様 = journalFormatOf(storeId);
+  if (!様) return { yen: null, how: 'ng' };     // ★知らない店舗は読みません
+  if (様 !== 'oiden') return parseJournalCash(text);
   const r = parseOiden(text);
   if (!r.sure.cash || r.v.cash === undefined || r.v.cash === null) {
     return { yen: null, how: 'ng' };
@@ -3030,13 +3064,7 @@ const NIPPOU_LABELS = {
   uberCard:  'ウーバークレジット',
   rocket:    'ロケットナウ',
   kake:      '売掛金',            // ★こじゃれの精算レポートで使います（B16）
-  /* ★おいでんテラスの QR支払（B10）。
-       **A10 の文字が分かるまで空のままにしてあります。**
-       空のあいだ、QRの金額は日報に**書きません**（`nippouQrOk`）。
-       あてずっぽうで別の行の名前を入れると、**QRのお金が電子マネーの行などに
-       混ざって、当日総合計は合ったまま**になります。検算で捕まりません。
-       ★分かったら、ここに日報のA10の文字をそのまま入れてください。 */
-  qr:        '',
+
   // ★その他支払明細に出るもの（こじゃれ）。popo の日報では 7・8・9 行目でした
   recruit:   'リクルートポイント',   // ホットペッパー（B7）
   gurunavi:  'ぐるなびポイント',     // ぐるなび（B8）
@@ -3267,14 +3295,11 @@ function nippouGridSplit(grid) {
 const NIPPOU_MINUS = {
   cash:   ['demaeCash', 'uberCash'],
   credit: ['demaeCard', 'uberCard', 'rocket'],
-  emoney: [],
-  qr:     [],          // ★おいでんテラスのQR支払。引くものはありません
+  emoney: [],          // ★おいでんテラスのQR支払も、この行に入ります
   net:    [],
   guests: [],
 };
 
-/** QRの行の名前が分かっているか（分かるまで日報には書きません） */
-function nippouQrOk() { return !!NIPPOU_LABELS.qr; }
 
 /**
  * ジャーナルの読み取りと、手で入れた分から、日報に入れる5つを作ります。
@@ -4359,11 +4384,28 @@ function shiftShowsFullMark(storeId) {
  *   自動で枠を移します。10:00の欄に「18:00」と書いてあるより、
  *   ディナーの欄に入っていた方が読みまちがえません。
  */
-function shiftSlotByTime(t) {
+function shiftSlotByTime(t, storeId) {
   const n = Number(t);
   if (!isFinite(n)) return null;
-  if (n >= 17) return 'dinner';
-  if (n >= 11) return 'lunch';
+  // ★境目は**その店舗の設定**から取ります。11 と 17 を書き固めていました
+  //   （2026-09-13 まで）。マネージで「Fの境目」やランチの時刻を直しても
+  //   **入る行だけが動かない**ので、設定と表が食いちがいます。
+  //   **落ちません。**「ランチの行に16時の人がいる」という形になるだけです。
+  //   ★storeId を渡さなければ、今までどおり 17 と 11 で動きます
+  //     （初めの設定がその値なので、いまの6店舗では出かたが変わりません）。
+  // ★`Number('')` は **0** です（NaN ではありません）。`isFinite` だけで
+  //   見ると、設定が空のときに境目が0時になり、**何時でもディナー**に
+  //   なりました（2026-09-13、この直しを試していて出しました）。
+  //   読めない・0以下は「決めていない」とみなして、今までの値に戻します
+  const 数 = (v, もとの) => {
+    const x = Number(v);
+    return isFinite(x) && x > 0 ? x : もとの;
+  };
+  const 夜 = 数(shiftStyleOf(storeId).lunchTo, 17);
+  const 昼 = shiftSlotsOf(storeId).find((v) => v.id === 'lunch');
+  const 昼から = 数(昼 && (昼.times || [])[0], 11);
+  if (n >= 夜) return 'dinner';
+  if (n >= 昼から) return 'lunch';
   return 'open';
 }
 

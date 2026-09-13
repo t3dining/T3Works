@@ -894,7 +894,7 @@ function setRange(dateStr, from, to) {
     return;
   }
   const owari = to && Number(to) > Number(from) ? to : '';
-  const one = { s: shiftSlotByTime(from), t: from };
+  const one = { s: shiftSlotByTime(from, me.store), t: from };
   if (owari) one.e = owari;
   picked[dateStr] = [one];
   renderPeriod();
