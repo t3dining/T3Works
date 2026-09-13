@@ -14,7 +14,7 @@
 <link rel="icon" type="image/png" sizes="64x64" href="../img/mine-icon-64.png?v=ea09f133">
 <title>T3 Works Mine｜T3Dining株式会社</title>
 <link rel="stylesheet" href="../css/style.css?v=ff0a159c">
-<meta name="app-version" content="9e046d07">
+<meta name="app-version" content="0f3b7036">
 </head>
 <body data-mode="mine" data-assets="../">
 
@@ -60,6 +60,17 @@
 </header>
 
 <main class="page">
+
+<!-- ★同期が止まっているときだけ出ます。
+     **どの画面にいても出ます。**2026-09-14 まで、この帯は
+     クローズの日別画面（#viewDay）の中に置いてありました。
+     つまり **15ある画面のうち1つでしか読めません**でした。
+     店舗選択・週間掃除・シフト・現金売上・提出記録…では、
+     ヘッダーの赤い丸だけで、**なぜ止まったのかが読めません。**
+     ★書く関数（renderSyncWarn）は画面に関わらず動いていたので、
+     **置き場所だけの問題**でした。動いているのに見えない、が一番たちが悪いです。
+     （配達記録とマネージは、はじめから main の直下にあります。そろえました） -->
+<p class="sync-warn is-hidden" id="syncWarn"></p>
 
   <!-- ===== 店舗選択（アプリを開いて最初の画面） ===== -->
   <section class="view view--stores is-hidden" id="viewStores">
@@ -187,9 +198,6 @@
   <!-- ===== クローズ（閉店時の確認作業） ===== -->
   <section class="view view--day" id="viewDay">
 
-    <!-- 同期が止まっているときだけ出ます。ここが止まっていると、
-         誰かが提出しても、この端末の画面は変わりません -->
-    <p class="sync-warn is-hidden" id="syncWarn"></p>
 
     <div class="day-head">
       <div class="day-head__left">
