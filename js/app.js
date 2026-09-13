@@ -859,13 +859,32 @@ function calcPadMake() {
   const 答え = document.createElement('span');
   答え.style.cssText = 'flex:0 0 auto;font-weight:700;font-size:13px;color:#7fd39b';
   頭.append(欄名, 答え);
-  const 式 = document.createElement('div');
+  /* ★★窓の中で**式を直せます**（ko-dai さん・2026-09-13）。
+
+       それまでは見るだけの窓でした。入力欄は細くて後ろが見えないので、
+       **途中をまちがえたときに、カーソルをそこへ持っていけません**でした。
+       窓は式が全部見えるので、**ここで触れるのが一番早い**です。
+
+     ★`inputmode="none"` を付けます。触ってもシステムのキーボードは出ません。
+       出てしまうと、自前のテンキーと二重になって画面が埋まります。
+     ★入力欄そのものは今までどおりです。窓で打った分は、すぐ欄へ写します。 */
+  const 式 = document.createElement('textarea');
+  式.rows = 1;
+  式.inputMode = 'none';
+  式.spellcheck = false;
+  式.autocapitalize = 'off';
+  式.autocomplete = 'off';
   式.style.cssText = [
     'font-size:17px', 'font-weight:700', 'color:#fff', 'line-height:1.35',
     'font-family:ui-monospace,SFMono-Regular,Menlo,monospace',
     'word-break:break-all', 'max-height:4.1em', 'overflow-y:auto',
     'min-height:1.35em', '-webkit-overflow-scrolling:touch',
+    'width:100%', 'box-sizing:border-box', 'display:block',
+    'background:transparent', 'border:0', 'outline:none', 'padding:0',
+    'resize:none', 'caret-color:#7fd39b',
   ].join(';');
+  // 窓で打ったら、そのまま入力欄へ写します
+  式.addEventListener('input', () => calcPad写す());
   窓.append(頭, 式);
   pad.appendChild(窓);
   pad.窓の中 = { 欄名: 欄名, 答え: 答え, 式: 式 };
@@ -959,11 +978,13 @@ function calcPadEcho() {
   const i = calcPadFor;
   const 文字 = i ? String(i.value || '') : '';
   欄名.textContent = calcPadLabel(i);
-  式.textContent = 文字;
+  /* ★窓を触っているあいだは、窓の中身を書きかえません。
+       書きかえるとカーソルが末尾へ飛んで、**途中を直せなくなります。**
+       （窓で打った分は、すでに入力欄へ写っています） */
+  if (document.activeElement !== 式) 式.value = 文字;
+  式.placeholder = 'まだ何も入っていません';
   式.style.color = '#fff';
   if (!文字.trim()) {
-    式.textContent = 'まだ何も入っていません';
-    式.style.color = '#6a6a6a';
     答え.textContent = '';
   } else {
     const n = (typeof cashMinusNum === 'function') ? cashMinusNum(文字) : null;
@@ -982,8 +1003,16 @@ function calcPadEcho() {
       答え.style.color = '#7fd39b';
     }
   }
+  /* ★中身に合わせて高さを変えます（textarea は放っておくと1行のままです）。
+       いったん縮めてから測らないと、短くしたときに高いままになります */
+  try {
+    式.style.height = 'auto';
+    式.style.height = `${Math.min(式.scrollHeight, Math.round(17 * 1.35 * 3))}px`;
+  } catch (e) { /* 気にしません */ }
   // ★長い式は折り返して、**一番下（＝いま打っているところ）**を見せます
-  try { 式.scrollTop = 式.scrollHeight; } catch (e) { /* 気にしません */ }
+  if (document.activeElement !== 式) {
+    try { 式.scrollTop = 式.scrollHeight; } catch (e) { /* 気にしません */ }
+  }
   // ★窓が2行・3行と伸びると、テンキー全体も高くなります。
   //   足した余白を付け直さないと、打っている欄が隠れます
   calcPadFit();
@@ -1008,18 +1037,53 @@ function calcPadFit() {
   } catch (e) { /* 取れなくても、打つのに困りません */ }
 }
 
+/** キーボードの上の窓（式を直せるところ） */
+function calcPad窓() {
+  return calcPad && calcPad.窓の中 ? calcPad.窓の中.式 : null;
+}
+
+/**
+ * 窓に打った分を、入力欄へ写します
+ *
+ * ★窓と入力欄の**どちらを触っても同じになる**ようにするための1か所です。
+ *   2か所で別々に写すと、必ず片方が古びます。
+ */
+function calcPad写す() {
+  const i = calcPadFor;
+  const 窓 = calcPad窓();
+  if (!i || !窓 || i.readOnly) return;
+  if (!calcPadAlive(i)) { calcPadClose(); return; }
+  i.value = 窓.value;
+  i.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/**
+ * いま打ち込む先
+ *
+ * ★窓を触っているなら**窓**、そうでなければ入力欄です。
+ *   窓の途中にカーソルを置いてからキーを押すと、**そこに入ります。**
+ *   これが無いと、途中を直そうとしても末尾に付いてしまいます。
+ */
+function calcPad打つ先() {
+  const 窓 = calcPad窓();
+  if (窓 && document.activeElement === 窓) return 窓;
+  return calcPadFor;
+}
+
 /** カーソルのところに字を入れます */
 function calcPadInsert(c) {
   const i = calcPadFor;
   if (!i || i.readOnly) return;
   if (!calcPadAlive(i)) { calcPadClose(); return; }   // ★欄が作り直されて外れています
-  let at = i.selectionStart;
-  let to = i.selectionEnd;
-  if (at === null || at === undefined) { at = i.value.length; to = at; }
-  i.value = i.value.slice(0, at) + c + i.value.slice(to);
+  const t = calcPad打つ先();
+  let at = t.selectionStart;
+  let to = t.selectionEnd;
+  if (at === null || at === undefined) { at = t.value.length; to = at; }
+  t.value = t.value.slice(0, at) + c + t.value.slice(to);
   const 次 = at + c.length;
-  try { i.setSelectionRange(次, 次); } catch (e) { /* 効かない欄もあります */ }
-  i.dispatchEvent(new Event('input', { bubbles: true }));
+  try { t.setSelectionRange(次, 次); } catch (e) { /* 効かない欄もあります */ }
+  if (t !== i) calcPad写す();
+  else i.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 /** 1文字消します */
@@ -1027,18 +1091,20 @@ function calcPadBack() {
   const i = calcPadFor;
   if (!i || i.readOnly) return;
   if (!calcPadAlive(i)) { calcPadClose(); return; }
-  let at = i.selectionStart;
-  let to = i.selectionEnd;
-  if (at === null || at === undefined) { at = i.value.length; to = at; }
+  const t = calcPad打つ先();
+  let at = t.selectionStart;
+  let to = t.selectionEnd;
+  if (at === null || at === undefined) { at = t.value.length; to = at; }
   if (at === to) {
     if (at === 0) return;
-    i.value = i.value.slice(0, at - 1) + i.value.slice(to);
-    try { i.setSelectionRange(at - 1, at - 1); } catch (e) { /* 同上 */ }
+    t.value = t.value.slice(0, at - 1) + t.value.slice(to);
+    try { t.setSelectionRange(at - 1, at - 1); } catch (e) { /* 同上 */ }
   } else {
-    i.value = i.value.slice(0, at) + i.value.slice(to);
-    try { i.setSelectionRange(at, at); } catch (e) { /* 同上 */ }
+    t.value = t.value.slice(0, at) + t.value.slice(to);
+    try { t.setSelectionRange(at, at); } catch (e) { /* 同上 */ }
   }
-  i.dispatchEvent(new Event('input', { bubbles: true }));
+  if (t !== i) calcPad写す();
+  else i.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 /** 全部消します */
@@ -1046,6 +1112,8 @@ function calcPadClear() {
   const i = calcPadFor;
   if (!i || i.readOnly) return;
   if (!calcPadAlive(i)) { calcPadClose(); return; }
+  const 窓 = calcPad窓();
+  if (窓) 窓.value = '';
   i.value = '';
   i.dispatchEvent(new Event('input', { bubbles: true }));
 }
