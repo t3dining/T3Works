@@ -9908,7 +9908,51 @@ function shiftShortLines(list) {
 
 /** そのまま送れる文にします（文は店舗ごとにマネージで直せます） */
 function shiftLineMessage(kindId, list) {
+  if (kindId === 'open') return shiftOpenMessage();
   return shiftLineFill(shiftLineTextOf(state.storeId, kindId), shiftShortLines(list));
+}
+
+/**
+ * 定休日なのに「この日は営業する」と入れてある日
+ *
+ * ★店舗を名指しにしていません。**その店舗の定休日の曜日**に例外が
+ *   入っている日を拾います。いまは バグる・おいでんテラスが火曜、
+ *   ちゃこるが日曜、こじゃれ・炭まろ・popo は定休日なしなので、
+ *   ko-dai さんの言われたとおりの出かたになります。
+ *   ★名指しにすると、マネージで定休日を変えたときに**黙って合わなくなります**
+ *     （定休日はマネージの「⚙ 設定 → 定休日」で変えられます）。
+ * ★ただ例外が入っているだけでは出しません。**その曜日が定休日のときだけ**です。
+ *   ふだん営業している日に「営業する」と入れても、知らせることがありません。
+ * ★過ぎた日も外しません。募集は先の半月にかけるものなので、
+ *   この文を出す時点では全部これからの日です（足りない日の方は、
+ *   もう入れられないので過ぎた日を外しています）。
+ */
+function shiftOpenDays() {
+  const 定休 = Closed.dows(state.storeId);
+  if (!定休.length) return [];
+  return shiftDays(state.y, state.m, shiftHalf).filter((dateStr) => {
+    if (Closed.exceptionOn(state.storeId, dateStr) !== 'open') return false;
+    return 定休.includes(new Date(dateStr.replace(/-/g, '/')).getDay());
+  }).map((dateStr) => {
+    const [, m, d] = dateStr.split('-').map(Number);
+    const dow = new Date(dateStr.replace(/-/g, '/')).getDay();
+    return `${m}/${d}（${DOW[dow]}）`;
+  });
+}
+
+/** 募集を始めたことを知らせる文 */
+function shiftOpenMessage() {
+  const 表 = {};
+  表[SHIFT_LINE_MARK_HALF] = shiftHalfLabel(state.m, shiftHalf);
+  表[SHIFT_LINE_MARK_DUE] = shiftDueText(shiftDueOf(shiftRec()), DOW);
+  表[SHIFT_LINE_MARK_OPEN] = shiftOpenDays().join('・');
+  // ★期限が入っていない半月もあります（期限を決められるようになる前に
+  //   募集を始めたもの）。そのときは「期限はまでです！」になるので、
+  //   営業する日と同じように**行ごと落とします**
+  return shiftLineFillMarks(
+    shiftLineTextOf(state.storeId, 'open'), 表,
+    [SHIFT_LINE_MARK_OPEN, SHIFT_LINE_MARK_DUE],
+  );
 }
 
 /**
@@ -9920,6 +9964,7 @@ function shiftLineMessage(kindId, list) {
  *   その場で変わります（人を入れれば減り、足せば増えます）。
  * ★出す場面を分けます。押しても意味のないボタンを置くと、
  *   「壊れているのか」と迷います。
+ *     シフト募集       … 募集中のとき
  *     足りない日をさがす … 足りない日が1日でもあるとき
  *     シフト確定       … 確定ずみのとき（足りない日が無くても出します）
  */
@@ -9930,6 +9975,9 @@ function shiftShortCopyBox(rec) {
   const list = shiftShortDays(rec);
   const 確定 = shiftPhaseOf(rec) === SHIFT_BUILT;
   const 出す = [];
+  // ★募集中のあいだ、ずっと出しておきます。始めた直後に押すのがふつうですが、
+  //   「送りそびれた」「もう一度流したい」ことがあるためです
+  if (shiftPhaseOf(rec) === SHIFT_OPEN) 出す.push({ id: 'open', label: 'シフト募集をLINEにコピー' });
   if (list.length) 出す.push({ id: 'ask', label: `足りない日をLINEにコピー（${list.length}日分）` });
   if (確定) 出す.push({ id: 'done', label: 'シフト確定をLINEにコピー' });
   if (!出す.length) return;

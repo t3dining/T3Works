@@ -2031,6 +2031,68 @@ function seisanPayRows(lines, から) {
         要る.forEach((k, n) => { 積[k] = 金額の順[n]; });
         よし = true;
       }
+    } else {
+      /* ---- どちらもそろわないとき：**行の並びのまま**配ります ----
+
+           現金 / クレジット / その他支払 / 売掛金
+           点点点点                    ← 件数が4つとも1行に潰れています
+           2点 / ◯◯,◯◯◯円
+           6点 / ◯◯,◯◯◯円
+           ◯◯,◯◯◯円                  ← 件数の行が落ちています
+           0点 / 円                   ← 金額の「円」だけ残っています
+
+         （2026年8月30日の紙の、3通り目の読み取り）
+
+         ★件数3つ・金額3つ・名前4つで、上のどちらの数え方でもそろいません。
+           それまでは、ここで**何も読まずに捨てて**いました。
+         ★紙は筋が通っています（現金＋クレジット＋その他支払＋売掛金 ＝ 総売上）。
+           落ちているのは「件数の行」と「金額の数字」だけで、**並び順は保たれています。**
+         ★そこで、件数と金額を出てきた順に見て、名前へ順に配ります。
+             件数が来たら    … その名前の件数として持っておきます
+             金額が来たら    … その名前に入れて、次の名前へ進みます
+             件数だけで次の件数が来たら … 0点なら0円。0点でなければ**読みません**
+         ★取りちがえても、検算で止まります。
+             現金＋クレジット＋その他支払＋売掛金 ＝ 総売上
+             クレジット明細の合計 ＝ クレジット
+             その他支払明細の合計 ＝ その他支払
+           合わない読み方は、日報に入りません。 */
+      const 並び = [];
+      for (let i = Math.max(最初の名, から); i < 終わり && 最初の名 >= 0; i++) {
+        const raw = cashNormalize(lines[i]).trim();
+        (raw.match(/(\d+)\s*点/g) || []).forEach((t) => {
+          並び.push({ 種: '点', v: Number(t.replace(/[^\d]/g, '')) });
+        });
+        if (/[円¥m]/.test(raw)) {
+          const v = seisanMoneyOf(lines[i]);
+          if (v !== null) 並び.push({ 種: '金', v });
+        }
+      }
+      let n = 0;
+      let 待ちの件数 = null;
+      let だめ = false;
+      for (let t = 0; t < 並び.length && n < 名の順.length && !だめ; t++) {
+        const 札 = 並び[t];
+        if (札.種 === '点') {
+          if (待ちの件数 !== null) {
+            // 前の名前に金額が来ないまま、次の件数が来ました
+            if (待ちの件数 !== 0) { だめ = true; break; }
+            積[名の順[n]] = 0; n += 1;
+          }
+          待ちの件数 = 札.v;
+          continue;
+        }
+        /* ★「0点」と言っているのに金額が出てきたときは読みません。
+             よその欄から落ちてきた数だからです（8月11日の紙の 20円）。 */
+        if (待ちの件数 === 0) { だめ = true; break; }
+        積[名の順[n]] = 札.v;
+        待ちの件数 = null;
+        n += 1;
+      }
+      // 最後が「件数だけ」で終わったとき（0点なら0円）
+      if (!だめ && 待ちの件数 !== null && n < 名の順.length) {
+        if (待ちの件数 === 0) { 積[名の順[n]] = 0; n += 1; }
+      }
+      if (!だめ && n === 名の順.length) よし = true;
     }
     // ★積み上がった形と分かったら、**ふつうの形で読んだ分は捨てます。**
     //   ふつうの形の読み方は、この並びだと必ず取りちがえます
@@ -4420,6 +4482,17 @@ const SHIFT_SHORT_MAX = 9;
 const SHIFT_LINE_KEY = 'line';          // `_shiftset/店舗id` の中のキー
 const SHIFT_LINE_MARK = '{足りない日}';  // ここに足りない日が入ります
 
+/* -------- 募集を始めるときの文に使う印 --------
+ *
+ * ★`{足りない日}` は行そのものを入れかえますが、こちらは**言葉1つ**を
+ *   入れかえます。`{期限}` は「9月25日（金）」のような形になります。
+ * ★`{営業する日}` だけは、当てはまる日が無ければ**その行ごと落とします。**
+ *   定休日に営業する日が無い店舗の方が多いためです（→ shiftLineFillMarks）。
+ */
+const SHIFT_LINE_MARK_HALF = '{期間}';        // 「9月前半」「9月後半」
+const SHIFT_LINE_MARK_DUE  = '{期限}';        // 「9月25日（金）」
+const SHIFT_LINE_MARK_OPEN = '{営業する日}';  // 「9/22（火）」。無ければ行ごと消えます
+
 /**
  * LINEに送る文の、初めの形
  *
@@ -4431,14 +4504,29 @@ const SHIFT_LINE_MARK = '{足りない日}';  // ここに足りない日が入�
  */
 const SHIFT_LINE_KINDS = [
   {
+    id: 'open',
+    name: 'シフト募集を始めるとき',
+    // ★3行目は、定休日なのに営業する日があるときだけ出ます。
+    //   バグる・おいでんテラスは火曜、ちゃこるは日曜が定休日なので、
+    //   その曜日に「この日は営業する」と入れた日がここに出ます。
+    //   定休日のない店舗（こじゃれ・炭まろ・popo）では**行ごと消えます**
+    text: `${SHIFT_LINE_MARK_HALF}のシフト提出をお願いします！\n`
+      + `期限は${SHIFT_LINE_MARK_DUE}までです！\n`
+      + `${SHIFT_LINE_MARK_OPEN}は営業するので出れる人は提出お願いします！`,
+    // その文に**必ず入っていてほしい**印。保存のときに聞き直します
+    marks: [SHIFT_LINE_MARK_HALF, SHIFT_LINE_MARK_DUE],
+  },
+  {
     id: 'ask',
     name: '足りない人をさがすとき',
     text: `${SHIFT_LINE_MARK}\n\n少しでも入れる人いたらお願いします！`,
+    marks: [SHIFT_LINE_MARK],
   },
   {
     id: 'done',
     name: 'シフトを確定したとき',
     text: `シフト確定しました！\n各自確認をお願いします！\n\n${SHIFT_LINE_MARK}\n出れる人がいたら連絡ください！`,
+    marks: [SHIFT_LINE_MARK],
   },
 ];
 
@@ -4482,6 +4570,51 @@ function shiftLineFill(text, 行) {
   while (out.length && !out[0].trim()) out.shift();
   while (out.length && !out[out.length - 1].trim()) out.pop();
   return out.join('\n');
+}
+
+/**
+ * 文の中の `{期間}` `{期限}` `{営業する日}` を入れかえます
+ *
+ * ★`shiftLineFill`（足りない日）と分けてあります。あちらは**行を増やす**もの、
+ *   こちらは**言葉1つを差しかえる**ものだからです。1つにまとめると、
+ *   どちらの向きに動くのかが読めなくなります。
+ * ★中身が空の印は、**その行ごと落とします**（`落とす` に並べたものだけ）。
+ *   定休日に営業する日が無い店舗の方が多く、「は営業するので…」だけが
+ *   残ると、何の日か分からない文が送られてしまいます。
+ */
+function shiftLineFillMarks(text, 表, 落とす) {
+  const 消す = Array.isArray(落とす) ? 落とす : [];
+  const out = [];
+  String(text || '').split('\n').forEach((line) => {
+    const 空で消す = 消す.some((印) => line.indexOf(印) >= 0 && !String(表[印] || '').trim());
+    if (空で消す) return;
+    let 行 = line;
+    Object.keys(表).forEach((印) => {
+      行 = 行.split(印).join(String(表[印] == null ? '' : 表[印]));
+    });
+    out.push(行);
+  });
+  while (out.length && !out[0].trim()) out.shift();
+  while (out.length && !out[out.length - 1].trim()) out.pop();
+  return out.join('\n');
+}
+
+/** 「9月前半」「9月後半」 */
+function shiftHalfLabel(m, half) {
+  return `${m}月${half === 1 ? '前半' : '後半'}`;
+}
+
+/**
+ * 提出の期限を、文の中に置ける形にします（「9月25日（金）」）
+ *
+ * ★`shiftDueLabel` は末尾に「まで」が付きます。文の側に「までです！」と
+ *   書いてあるので、そのまま使うと「まででまでです」になります
+ */
+function shiftDueText(dateStr, dowNames) {
+  if (!dateStr) return '';
+  const [, m, d] = dateStr.split('-').map(Number);
+  const dow = new Date(dateStr.replace(/-/g, '/')).getDay();
+  return `${m}月${d}日（${dowNames[dow]}）`;
 }
 
 /** 半角の数字を全角にします（１２３…） */

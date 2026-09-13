@@ -14,7 +14,7 @@
 <title>T3 Works Manage｜T3Dining株式会社</title>
 <link rel="stylesheet" href="../css/style.css?v=ff0a159c">
 <link rel="stylesheet" href="css/admin.css?v=27e01b9d">
-<meta name="app-version" content="b750a879">
+<meta name="app-version" content="b7a3e009">
 </head>
 <body class="no-daytabs">
 
@@ -44,6 +44,16 @@
 </header>
 
 <main class="page page--admin">
+
+<!-- ★保存が止まっているときだけ出ます。
+     2026-09-13 まで、マネージには**この帯がありませんでした。**
+     丸（sync-chip）は出るのに理由の文が無く、読めるのは
+     ・丸の title … 指では出ません
+     ・設定モーダルの中（#syncInfo） … 開かないと見えません
+     のどちらかだけでした。**ここで直した項目が現場に届いていないことに、気づけません。**
+     配達記録が7つのアプリを数えて見つけました（同じ穴が2つありました）。
+     ★CSSは css/style.css の .sync-warn を使い回します。足していません -->
+<p class="sync-warn is-hidden" id="syncWarn"></p>
 
 <!-- ===== 店舗選択（管理アプリを開いて最初の画面） ===== -->
 <section class="view view--stores is-hidden" id="viewStores">
@@ -370,11 +380,20 @@
       人を入れて赤が減れば、<b>文からも減ります</b>。<br>
       足りない日が1日も無いときは、<b>{足りない日} の行ごと消えます</b>（空行だけが残りません）。<br>
       <b>{足りない日} を消してしまっても、足りない日は文の最後に足します</b>（黙って落としません）。<br>
+      <b>シフト募集を始めるとき</b>の文では、<b>{期間}</b>が「9月前半」、
+      <b>{期限}</b>が「9月25日（金）」に変わります。
+      <b>{営業する日}</b>は、<b>定休日なのに「この日は営業する」と入れた日</b>です
+      （バグる・おいでんテラスは火曜、ちゃこるは日曜）。
+      そういう日が1日も無いときは、<b>{営業する日} の行ごと消えます</b>。<br>
       ★<b>「＠All」を入れても、メンションにはなりません。</b>
       LINEのメンションは文字ではなく、打つときにアプリが付ける印です。
       貼り付けるとただの文字として送られます。全員に知らせたいときは、
       <b>貼り付ける前にLINEで「@」を打って All を選んでください</b>。
     </p>
+    <label class="field">
+      <span class="field__label" id="lineOpenLabel">シフト募集を始めるとき</span>
+      <textarea class="field__input" id="lineOpenText" rows="4" autocomplete="off"></textarea>
+    </label>
     <label class="field">
       <span class="field__label" id="lineAskLabel">足りない人をさがすとき</span>
       <textarea class="field__input" id="lineAskText" rows="5" autocomplete="off"></textarea>
@@ -673,10 +692,10 @@
 <!-- ★この画面だけが「社員のアカウント」を端末に持ちます。
      現場のアプリ（ワークス・マイン）には持たせません。番号は合言葉だからです -->
 <script>window.T3_ADMIN_PAGE = true;</script>
-<script src="../js/config.js?v=067d91ab"></script>
+<script src="../js/config.js?v=15d382aa"></script>
 <script src="../js/storage.js?v=6533b295"></script>
 <script src="../js/sync.js?v=1723e6cc"></script>
 <script src="../js/update.js?v=c530219e"></script>
-<script src="js/admin.js?v=6a7eeece"></script>
+<script src="js/admin.js?v=b01d018c"></script>
 </body>
 </html>

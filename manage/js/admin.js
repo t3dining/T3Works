@@ -30,7 +30,7 @@ const state = {
 
 const el = {};
 [
-  'appLogo', 'homeBtn', 'storeTabs', 'syncChip',
+  'appLogo', 'homeBtn', 'storeTabs', 'syncChip', 'syncWarn',
   'viewStores', 'storeGrid',
   'viewMenu', 'menuTitle', 'menuGrid', 'menuBackBtn',
   'pageBar', 'pageBarName', 'pageBarRow', 'pageBarHome',
@@ -46,6 +46,7 @@ const el = {};
   'shiftSlotList', 'saveShiftSlots', 'resetShiftSlots', 'shiftSlotCount', 'shiftSlotSaved',
   'memoTagText', 'memoTagLabel', 'saveMemoTags', 'memoTagCount', 'memoTagSaved',
   'lineAskText', 'lineDoneText', 'lineAskLabel', 'lineDoneLabel',
+  'lineOpenText', 'lineOpenLabel',
   'saveLineTexts', 'lineTextReset', 'lineTextSaved',
   'shiftCodeList', 'shiftSubmitUrl', 'viewShift',
   'viewTrain', 'trainStoreName', 'trainCount', 'trainInput', 'saveTrain', 'trainSaved',
@@ -2077,6 +2078,28 @@ function saveShiftMemoTags() {
  *   `gas/コード.gs`（本部のファイル）も直す必要があるためです。
  *   ここはふつうの記録と同じ道で同期します。
  */
+/**
+ * どの文をどの欄に出すか
+ *
+ * ★ここを `k.id === 'ask' ? ... : ...` と書いていました。**2つのうちは合っていても、
+ *   3つめを足したとたんに「ask でないもの」が全部 done の欄に入ります。**
+ *   2026-09-13 に「シフト募集を始めるとき」を足すとき、その形だと
+ *   募集の文が確定の欄に出て、保存すると確定の文を上書きするところでした。
+ * ★表に無い文は**出しません**（黙ってよその欄に入れません）。
+ */
+const LINE_欄 = {
+  open: { text: 'lineOpenText', label: 'lineOpenLabel' },
+  ask:  { text: 'lineAskText',  label: 'lineAskLabel' },
+  done: { text: 'lineDoneText', label: 'lineDoneLabel' },
+};
+
+/** その文の欄（無ければ null） */
+function lineBoxOf(kindId) {
+  const 名 = LINE_欄[kindId];
+  if (!名 || !el[名.text] || !el[名.label]) return null;
+  return { 欄: el[名.text], 名札: el[名.label] };
+}
+
 function renderShiftLineTexts() {
   const 箱 = el.lineAskText.closest('.admin-block');
   // シフトを組まない店舗には出しません（送る文の使いどころがありません）
@@ -2086,36 +2109,50 @@ function renderShiftLineTexts() {
 
   const 店 = getStore(state.storeId).name;
   SHIFT_LINE_KINDS.forEach((k) => {
-    const 欄 = k.id === 'ask' ? el.lineAskText : el.lineDoneText;
-    const 名 = k.id === 'ask' ? el.lineAskLabel : el.lineDoneLabel;
-    名.textContent = `${店}：${k.name}`;
-    欄.value = shiftLineTextOf(state.storeId, k.id);
+    const 場所 = lineBoxOf(k.id);
+    if (!場所) return;
+    場所.名札.textContent = `${店}：${k.name}`;
+    場所.欄.value = shiftLineTextOf(state.storeId, k.id);
   });
 }
 
 function saveShiftLineTexts() {
   if (typeof shiftLineTextOf !== 'function') return;
-  const 中身 = {};
+  // ★いま入っているものから始めます。**欄の無い文を消さないため**です。
+  //   ここを `{}` から始めると、画面に欄が1つ足りないだけで、
+  //   その文の直したものが保存のたびに黙って消えます
+  const 前 = (Store.getDay(SHIFT_SET_STORE, state.storeId).items || {})[SHIFT_LINE_KEY];
+  const 中身 = (前 && typeof 前 === 'object') ? { ...前 } : {};
+  const 出ている = [];
   SHIFT_LINE_KINDS.forEach((k) => {
-    const 欄 = k.id === 'ask' ? el.lineAskText : el.lineDoneText;
-    中身[k.id] = String(欄.value || '');
+    const 場所 = lineBoxOf(k.id);
+    if (!場所) return;
+    中身[k.id] = String(場所.欄.value || '');
+    出ている.push(k);
   });
   // ★空のまま保存させません。空だと、押しても何も入らない文ができます
-  const 空 = SHIFT_LINE_KINDS.filter((k) => !中身[k.id].trim()).map((k) => k.name);
+  const 空 = 出ている.filter((k) => !中身[k.id].trim()).map((k) => k.name);
   if (空.length) {
     window.alert(`${空.join('と')}の文が空です。\n`
       + '空のまま保存すると、コピーしても何も入りません。\n\n'
       + '初めの文に戻すなら「初めの文に戻す」を押してください。');
     return;
   }
-  // ★{足りない日} が入っていない文は、そのままでも動きます（最後に足します）。
-  //   ただし**入れたつもりで打ちまちがえた**ときに黙って形が変わるので、聞き直します
-  const 無い = SHIFT_LINE_KINDS
-    .filter((k) => 中身[k.id].indexOf(SHIFT_LINE_MARK) < 0).map((k) => k.name);
+  // ★印が入っていない文は、そのままでも動きます（足りない日は最後に足し、
+  //   募集の文はその言葉が入らないだけです）。ただし**入れたつもりで
+  //   打ちまちがえた**ときに黙って形が変わるので、聞き直します。
+  //   ★見る印は文ごとに違います（`marks`）。{足りない日} を全部の文に
+  //     求めると、募集の文で毎回いらない問い合わせが出ます
+  const 無い = [];
+  出ている.forEach((k) => {
+    (k.marks || [SHIFT_LINE_MARK]).forEach((印) => {
+      if (中身[k.id].indexOf(印) < 0) 無い.push(`${k.name}：${印}`);
+    });
+  });
   if (無い.length) {
-    if (!window.confirm(`${無い.join('と')}の文に ${SHIFT_LINE_MARK} が入っていません。\n\n`
-      + `足りない日は、文の**最後**に足されます。\n`
-      + '途中に入れたいときは、その場所に ' + SHIFT_LINE_MARK + ' と書いてください。\n\n'
+    if (!window.confirm(`つぎの印が文に入っていません。\n\n  ${無い.join('\n  ')}\n\n`
+      + '入っていないと、その言葉は文に出ません\n'
+      + '（足りない日だけは、文の最後に足されます）。\n\n'
       + 'このまま保存しますか。')) return;
   }
   Store.setItem(SHIFT_SET_STORE, state.storeId, SHIFT_LINE_KEY, 中身);
@@ -2127,8 +2164,8 @@ function saveShiftLineTexts() {
 /** 初めの文に戻します（欄に書き入れるだけ。保存は押してもらいます） */
 function resetShiftLineTexts() {
   SHIFT_LINE_KINDS.forEach((k) => {
-    const 欄 = k.id === 'ask' ? el.lineAskText : el.lineDoneText;
-    欄.value = k.text;
+    const 場所 = lineBoxOf(k.id);
+    if (場所) 場所.欄.value = k.text;
   });
 }
 
@@ -2991,6 +3028,42 @@ function renderSyncStatus() {
   el.syncChip.innerHTML = Sync.iconSvg(s.kind);
   el.syncChip.title = `${text}（タップで今すぐ保存）`;
   el.syncChip.setAttribute('aria-label', `保存の状態：${text}`);
+  renderSyncWarn();
+}
+
+/**
+ * 保存が止まっている理由を、画面に出す
+ *
+ * ★丸の色だけでは「なぜ止まったか」が分かりません。
+ *   `js/sync.js` は理由を3つに分けて `Sync.lastError` に入れています
+ *   （電波が無い／サーバーが返事をしない／つながらない）。やることが全部ちがうので、
+ *   **読める場所に出さないと、分けた意味がありません。**
+ *
+ * ★マネージで止まると、**ここで直した項目・担当者・定休日・社員の番号が
+ *   現場の端末に届きません。**画面は直ったように見えるので、そこを書きます。
+ *
+ * ★文は短くします。`Sync.lastError` が「入力は消えません」まで言っているので、
+ *   同じことを重ねません（重ねると、片方が変わったときに食いちがいます）。
+ */
+function renderSyncWarn() {
+  if (!el.syncWarn) return;
+  const n = Sync.outbox ? Sync.outbox().length : 0;
+
+  if (Sync.lastError) {
+    el.syncWarn.className = 'sync-warn';
+    el.syncWarn.textContent = `${Sync.lastError}`
+      + (n ? `（未保存 ${n}件）` : '')
+      + '　直した内容は、まだ現場の端末に届いていません。'
+      + 'ヘッダーのしるしを押すと、いま送ります。';
+    return;
+  }
+  if (n) {
+    el.syncWarn.className = 'sync-warn is-waiting';
+    el.syncWarn.textContent = `まだ送れていない直しが ${n}件 あります。`
+      + '送れるまで、現場の端末には届きません。';
+    return;
+  }
+  el.syncWarn.className = 'sync-warn is-hidden';
 }
 
 /* ============================================================
