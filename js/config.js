@@ -1724,6 +1724,60 @@ function journalPick(cands) {
  *     sure   … その数を使ってよいか（守ってくれる式が通ったか）
  *     ok     … 5つとも使えるか
  */
+/**
+ * 客数のあたりが「名前が先にまとまって並ぶ」形か見て、順に結びます
+ *
+ * ★2026年9月13日のバグるの紙（ko-dai さん）。
+ *
+ *     客数 / 男性 / 女性 / 選択なし / 客単価(税込) / 客単価(税抜)   ← 名前が先に6つ
+ *     ◯◯◯客 / ◯◯ / ◯◯ / 0 / ¥◯,◯◯◯ / ¥◯,◯◯◯              ← 値が6つ
+ *
+ *   ふつうは「名前の下に値」なので、この並びだと**2つずれて**入っていました。
+ *   客数が読めず、女性と選択なしにちがう数が入ります。
+ *
+ * ★★**男性 ＋ 女性 ＋ 選択なし ＝ 客数** にならなければ使いません。
+ *   順で結ぶのは危ういので、紙の中の足し算で確かめてから入れます。
+ * ★名前の数と値の数がそろわないときも使いません。
+ */
+function journal客数の積み上がり(lines) {
+  const 名 = [
+    { key: 'guests', み: (p) => /客数/.test(p) && !/組数|客単価/.test(p) },
+    { key: 'men', み: (p) => /男性/.test(p) },
+    { key: 'women', み: (p) => /女性/.test(p) },
+    { key: 'nosel', み: (p) => /選択なし/.test(p) },
+    { key: 'per', み: (p) => /客単価/.test(p) && !/税抜/.test(p) },
+    { key: '', み: (p) => /客単価/.test(p) && /税抜/.test(p) },
+  ];
+  const 素 = lines.map((l) => cashPlain(l || '').trim());
+  // 名前が続いているところを探します
+  for (let i = 0; i < 素.length; i++) {
+    const 並び = [];
+    let j = i;
+    while (j < 素.length) {
+      const 当 = 名.find((x) => x.み(素[j]) && !/\d/.test(素[j]));
+      if (!当 || 並び.some((y) => y.当 === 当)) break;
+      並び.push({ 当, i: j });
+      j += 1;
+    }
+    if (並び.length < 4) continue;              // 4つ以上そろって初めて見ます
+    const 値 = [];
+    for (let k = j; k < 素.length && 値.length < 並び.length; k++) {
+      const c = /^[¥￥]?\s*(\d[\d,]*)\s*[客人]?$/.exec(素[k]);
+      if (c) { 値.push(Number(c[1].replace(/,/g, ''))); continue; }
+      if (素[k]) break;                          // 数でない行が挟まったら、そこまで
+    }
+    if (値.length !== 並び.length) continue;
+    const out = {};
+    並び.forEach((x, n) => { if (x.当.key) out[x.当.key] = 値[n]; });
+    // ★足し算で確かめます。合わなければ使いません
+    if (out.guests === undefined) continue;
+    const 足す = (out.men || 0) + (out.women || 0) + (out.nosel || 0);
+    if (足す !== out.guests) continue;
+    return out;
+  }
+  return null;
+}
+
 function parseJournal(text) {
   const lines = String(text || '').split(/\r?\n/);
   const pairs = journalPairs(lines);
@@ -1733,6 +1787,12 @@ function parseJournal(text) {
 
   const picked = journalFill(journalPick(cands));
   const v = picked.v;
+  /* ★客数が読めなかったときだけ、「名前が先に並ぶ形」を試します。
+       ふつうに読めている紙には触りません（127枚の試験を動かさないため）。 */
+  if (v.guests === null || v.guests === undefined) {
+    const 積 = journal客数の積み上がり(lines);
+    if (積) Object.keys(積).forEach((k) => { v[k] = 積[k]; });
+  }
   const fixed = picked.fixed;
   const has = (k) => v[k] !== null && v[k] !== undefined;
   const sumPay = () => JOURNAL_PAY.reduce((a, k) => a + (v[k] || 0), 0);
