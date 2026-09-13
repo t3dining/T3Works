@@ -3109,8 +3109,14 @@ function parseOiden(text) {
     add('純売上 ＋ 消費税 ＝ 総売上', v.net + v.tax, v.gross, ['net', 'tax', 'gross']);
   }
   if (支払.length && has('gross')) {
+    /* ★この一覧に入れ忘れると、**読めているのに書かれません。**
+         検算が守っている数だけを使う作りなので、ここに無いものは
+         「確かめられていない」扱いになります。
+       ★2026-09-13、ポイントを足したときに**ここだけ直し忘れて**、
+         画面には 2,000 と出るのに日報には入らない、という形になりました。
+         支払方法を1つ足すときは、**必ずここも足してください。** */
     add('支払方法の合計 ＝ 総売上', 支払合計, v.gross,
-      ['gross', 'cash', 'credit', 'emoney', 'voucher1', 'kake']);
+      ['gross', 'cash', 'credit', 'point', 'emoney', 'voucher1', 'kake']);
   }
   if (税内 !== null && has('tax')) {
     add('消費税内訳の合計 ＝ 消費税総額', 税内, v.tax, ['tax']);
@@ -3122,7 +3128,8 @@ function parseOiden(text) {
     checks.push({
       name: '売上のない日（支払方法の欄が出ていません。紙は下まで写っています）',
       left: 0, right: 0, ok: true,
-      covers: ['gross', 'net', 'tax', 'cash', 'credit', 'emoney', 'voucher1', 'kake', 'guests'],
+      covers: ['gross', 'net', 'tax', 'cash', 'credit', 'point', 'emoney',
+        'voucher1', 'kake', 'guests'],
     });
   }
 
