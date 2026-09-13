@@ -1434,6 +1434,19 @@ function renderCash() {
     el.cashStaff.style.fontSize = '16px';
     setCashMsg('');
     showCashPhoto();
+
+    /* ★読んでいる間に別の日を開いていた分が預けてあれば、ここで出します。
+         （2026-09-12、バグるで前の日の数字が日報に入った件の後始末。
+           くわしくは `cashReadPhoto` の頭に書いてあります） */
+    const 預かり = cashYomiMachi[key];
+    if (預かり) {
+      delete cashYomiMachi[key];
+      const got = cashYomiApply(預かり);
+      if (got.how === 'read') el.cashSales.value = cashText(got.yen);
+      else if (got.how === 'none') el.cashSales.value = '0';
+      setCashMsg('さきほど読み取った分です。紙と見くらべてください', 'ok');
+      showCashPhoto();
+    }
   }
 
   el.cashTabDay.classList.toggle('is-on', cashTab === 'day');
@@ -1799,6 +1812,8 @@ function renderGridBox() {
       name.style.whiteSpace = 'normal';
       name.style.wordBreak = 'break-word';
       row.appendChild(name);
+      // ★人数から金額を自動で入れる行（交通費）で、両方の欄を結ぶために持っておきます
+      const 欄 = {};
       [['f', r.fx, F名], ['g', r.gx, G名]].forEach(([which, 式か, ラベル]) => {
         const i = document.createElement('input');
         i.type = 'text';
@@ -1824,12 +1839,24 @@ function renderGridBox() {
         i.addEventListener('input', () => {
           if (!cashEdit[入れ先][r.name]) cashEdit[入れ先][r.name] = {};
           cashEdit[入れ先][r.name][which] = i.value;
+          /* ★人数を打ったら、金額を入れます（交通費 ＝ 人数 × 300円）。
+               人数が空のときは金額に触りません。打ったものを勝手に消さないためです。
+               金額のマスを日報が計算しているとき（readOnly）も触りません。 */
+          const 単価 = 入れ先 === 'jinken' && which === 'f' ? jinkenAutoYen(r.name) : null;
+          if (単価 !== null && 欄.g && !欄.g.readOnly && String(i.value).trim() !== '') {
+            const 人 = cashMinusNum(i.value);
+            if (人 !== null) {
+              欄.g.value = cashText(人 * 単価);
+              cashEdit[入れ先][r.name].g = 欄.g.value;
+            }
+          }
           cashHandSave();
           renderGridNote();
           renderGridButton();
         });
         i.addEventListener('blur', () => cashHandSave(true));
         calcPadBind(i);         // ★自前のテンキーを出します（＝や＋も打てます）
+        欄[which] = i;
         row.appendChild(i);
       });
       wrap.appendChild(row);
@@ -2448,6 +2475,23 @@ async function nippouWritePart(part, btn) {
   }
 
   const dateStr = ymd(state.y, state.m, state.d);
+
+  /* ★★書く直前に、「その数字は、この日のものか」をもう一度見ます。
+
+       2026年9月12日、バグるで**前の日の数字が日報に書き込まれました。**
+       読み取りに何秒もかかるあいだに別の日のタブを開くと、読み終わった結果が
+       **いま開いている日**に入っていたためです（`cashReadPhoto` で直しました）。
+
+     ★元を直したので、ここは**二重の守り**です。それでも置きます。
+       日報は**本物の記録**で、まちがって上書きすると元に戻せません。
+       読み取りの直しが将来ほどけても、ここで止まります。 */
+  const 書く先 = `${state.storeId}/${dateStr}`;
+  if (part === 'journal' && cashEdit.key !== 書く先) {
+    setNippouMsg('★いま出ている数字は、この日の読み取りではありません。'
+      + 'この日をもう一度開いてから、書いてください', 'warn');
+    return;
+  }
+
   nippouBtnBusy(btn, '日報を見に行っています…');
   await cashWakeOn();          // ★画面を消させません（消えると止まります）
   try {
@@ -2964,7 +3008,82 @@ async function onCashFile(e) {
  *    続きからやり直すとき（cashResume）は、控えに小さくした写真しか
  *    残っていません。そのときは file が空で呼ばれ、送り直しはしません。
  */
+/**
+ * 読み終わったけれど、別の日を開いていたので渡せなかった分の置き場
+ *
+ *   { '店舗/2026-09-12': { res, dataUrl, ms, 店 } }
+ *
+ * ★その日を開いたときに出します（`renderCash`）。読んだものは捨てません。
+ * ★端末の中の変数なので、アプリを閉じると消えます。そのときは
+ *   いままでどおり「続きからやり直す」（`cashResume`）が拾います。
+ */
+const cashYomiMachi = {};
+
+/**
+ * 読み取った結果を、いま開いている日に入れます
+ *
+ *   返り = parseJournalCash の結果（現金の金額と、その読めぐあい）
+ *
+ * ★**呼ぶ前に「同じ日・同じ店舗か」を確かめてください。**
+ *   この関数は確かめません。入れるだけです。
+ * ★様式は引数の `店` で決めます。`state.storeId` を見てはいけません。
+ *   読んでいる間に店舗を移られると、紙の様式を取りちがえます。
+ */
+function cashYomiApply(積) {
+  const res = 積.res;
+  const got = parseJournalCash(res.text || '');
+  cashEdit.ms = 積.ms;
+  cashEdit.size = Math.round(積.dataUrl.length * 3 / 4 / 1024);
+  cashEdit.gas = res.v || '（分かりません）';
+  /* ★どの読み取りで読んだか（'vision' か 'drive'）。
+       落ちた先が見えないと、「効かなかった」のか「試すこと自体が失敗した」のかを
+       切り分けられません（2026-09-13、それで1日つぶしました）。
+     ★`cashEdit.how` は**別のもの**です（現金が読めたかどうか）。
+       同じ名前にしかけたので、ここは ocrHow にしています。 */
+  cashEdit.ocrHow = res.ocrHow || '';
+
+  cashEdit.pending = 積.dataUrl;
+  // ★読み取った文字はそのまま持っておきます。金額が違って入ったときに、
+  //   何が読めていたのかを見られるようにするためです（紙の形が変わったときの手がかり）
+  cashEdit.text = res.text || '';
+  el.cashOcrLink.classList.toggle('is-hidden', !cashEdit.text);
+  cashEdit.ocr = got.yen;
+  cashEdit.how = got.how;
+
+  // ★同じ文字から、日報に入れる5つも読みます。
+  //   検算が通らなければ使いません（現金だけの読み取りは、これまでどおり動きます）
+  if (JOURNAL_STORES.includes(積.店)) {
+    const jr = parseJournalFor(積.店, res.text || '');
+    // ★検算が通らなくても入れます。ここを null にすると箱ごと消えてしまい、
+    //   うまくいかなかったことすら分からなくなります（実際にそうなりました）
+    cashEdit.j = jr.v;
+    cashEdit.checks = jr.checks;
+    cashEdit.sure = jr.sure || {};
+    cashEdit.jok = jr.ok;
+    cashEdit.jcut = !!jr.cut;
+    cashEdit.jwhy = jr.ok ? ''
+      : (jr.why || (jr.missing.length ? jr.missing.join('、') + ' を読み取れませんでした' : '読み取れませんでした'));
+  }
+  return got;
+}
+
 async function cashReadPhoto(dataUrl, dateStr, file) {
+  /* ★★どの店舗の、どの日のために読んでいるのかを、**始めに控えます。**
+
+       2026年9月12日、バグるで**前の日の数字が日報に書き込まれました。**
+       原因はここでした。読み取りは何秒もかかり、**その間に別の日のタブを
+       開けます**（2026-09-11に「タブを移っても読み取りを続ける」ようにしたので、
+       なおさらです）。読み終わったとき、この関数は結果を
+       **「いま開いている日」に入れて**いました。撮った日ではなく。
+
+       ★同じことが**店舗**でも起きます。読んでいる間に別の店舗へ移ると、
+         紙の様式まで取りちがえます（日計レポートを精算レポートとして読む、など）。
+
+       ★なので、入れる直前に「まだ同じ日・同じ店舗か」を見ます。
+         移っていたら**いま開いている日には入れず**、下の置き場に預けて、
+         その日を開いたときに出します。**読んだものは捨てません。** */
+  const 元のキー = `${state.storeId}/${dateStr}`;
+  const 元の店 = state.storeId;
   cashEdit.busy = true;
   el.cashTake.classList.add('is-busy');
   await cashWakeOn();          // ★画面を消させません（消えると止まります）
@@ -2975,7 +3094,7 @@ async function cashReadPhoto(dataUrl, dateStr, file) {
     const from = Date.now();
     let res = await Sync.ask('journal', {
       mode: 'read',
-      store: state.storeId,
+      store: 元の店,
       date: dateStr,
       image: dataUrl,
     });
@@ -2992,8 +3111,10 @@ async function cashReadPhoto(dataUrl, dateStr, file) {
     const 読めた具合 = (text) => {
       const c = parseJournalCash(text || '');
       const out = { cash: c.how === 'ng' ? 0 : 1, j: 0, n: 0 };
-      if (JOURNAL_STORES.includes(state.storeId)) {
-        const j = parseJournalFor(state.storeId, text || '');
+      // ★★`state.storeId` ではなく `元の店` です。読んでいる間に店舗を移られると、
+      //   紙の様式を取りちがえます（日計レポートを精算レポートとして読む、など）
+      if (JOURNAL_STORES.includes(元の店)) {
+        const j = parseJournalFor(元の店, text || '');
         out.j = j.ok ? 1 : 0;
         out.n = Object.keys(j.sure || {}).filter((k) => j.sure[k]).length;
       }
@@ -3014,12 +3135,12 @@ async function cashReadPhoto(dataUrl, dateStr, file) {
     //   アプリは「合っていない」と分かっているのだから、もう一度撮り直さずに、
     //   きれいな画質で送り直してから聞くべきです。
     const 前 = 読めた具合(res.text);
-    const 日報も読む = JOURNAL_STORES.includes(state.storeId);
+    const 日報も読む = JOURNAL_STORES.includes(元の店);
     if (file && !res.ocrError && (!前.cash || (日報も読む && !前.j))) {
       setCashWait('もう一度、きれいな写真で読み取っています…');
       const big = await cashShrink(file, CASH_PHOTO_Q_RETRY);
       const res2 = await Sync.ask('journal', {
-        mode: 'read', store: state.storeId, date: dateStr, image: big,
+        mode: 'read', store: 元の店, date: dateStr, image: big,
       });
       // ★**よくなったときだけ**入れかえます。
       //   ここを「2回目を使う」にすると、1回目で読めていた日に
@@ -3031,39 +3152,18 @@ async function cashReadPhoto(dataUrl, dateStr, file) {
         if (よい) { res = res2; dataUrl = big; }
       }
     }
-    let got = parseJournalCash(res.text || '');
-    cashEdit.ms = Date.now() - from;
-    cashEdit.size = Math.round(dataUrl.length * 3 / 4 / 1024);
-    cashEdit.gas = res.v || '（分かりません）';
-    /* ★どの読み取りで読んだか（'vision' か 'drive'）。
-         落ちた先が見えないと、「効かなかった」のか「試すこと自体が失敗した」のかを
-         切り分けられません（2026-09-13、それで1日つぶしました）。
-       ★`cashEdit.how` は**別のもの**です（現金が読めたかどうか）。
-         同じ名前にしかけたので、ここは ocrHow にしています。 */
-    cashEdit.ocrHow = res.ocrHow || '';
-
-    cashEdit.pending = dataUrl;
-    // ★読み取った文字はそのまま持っておきます。金額が違って入ったときに、
-    //   何が読めていたのかを見られるようにするためです（紙の形が変わったときの手がかり）
-    cashEdit.text = res.text || '';
-    el.cashOcrLink.classList.toggle('is-hidden', !cashEdit.text);
-    cashEdit.ocr = got.yen;
-    cashEdit.how = got.how;
-
-    // ★同じ文字から、日報に入れる5つも読みます。
-    //   検算が通らなければ使いません（現金だけの読み取りは、これまでどおり動きます）
-    if (JOURNAL_STORES.includes(state.storeId)) {
-      const jr = parseJournalFor(state.storeId, res.text || '');
-      // ★検算が通らなくても入れます。ここを null にすると箱ごと消えてしまい、
-      //   うまくいかなかったことすら分からなくなります（実際にそうなりました）
-      cashEdit.j = jr.v;
-      cashEdit.checks = jr.checks;
-      cashEdit.sure = jr.sure || {};
-      cashEdit.jok = jr.ok;
-      cashEdit.jcut = !!jr.cut;
-      cashEdit.jwhy = jr.ok ? ''
-        : (jr.why || (jr.missing.length ? jr.missing.join('、') + ' を読み取れませんでした' : '読み取れませんでした'));
+    /* ★★入れる直前に、まだ同じ日・同じ店舗かを見ます（上の説明のとおり）。
+         移っていたら、いま開いている日には**入れません。**
+         置き場に預けて、その日を開いたときに出します。 */
+    if (cashEdit.key !== 元のキー) {
+      cashYomiMachi[元のキー] = { res, dataUrl, ms: Date.now() - from, 店: 元の店 };
+      const 名 = getStore(元の店) ? getStore(元の店).name : 元の店;
+      setCashMsg(`${名}　${dateStr} の読み取りが終わりました。`
+        + 'その日を開くと出ます（いま開いている日には入れていません）', 'ok');
+      cashJobClear();
+      return;
     }
+    const got = cashYomiApply({ res, dataUrl, ms: Date.now() - from, 店: 元の店 });
 
     if (res.ocrError) {
       setCashMsg(`金額を読み取れませんでした。手で入れてください（${res.ocrError}）`, 'warn');

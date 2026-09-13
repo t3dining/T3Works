@@ -2985,6 +2985,29 @@ const NIPPOU_E_MARKS = {
   jinkenHead: '区分',
 };
 
+/**
+ * ⑤人件費で、人数を入れたら金額が自動で入る行
+ *
+ *   交通費 … 1人 300円（人数 × 300）
+ *
+ * ★人数を打った**そのとき**に金額へ入れます。あとから金額を手で直せます
+ *   （直したものは、次に人数を打ち直すまで残ります）。
+ * ★人数を空にしたときは、金額に触りません。打ったものを勝手に消さないためです。
+ * ★日報側が計算しているマス（式が入っている所）には入れません。
+ * ★単価が店舗で変わるようになったら、ここを店舗ごとに分けてください。
+ *   いまは6店舗とも同じ300円です。
+ */
+const JINKEN_AUTO = [
+  { hit: '交通費', yen: 300 },
+];
+
+/** その区分の1人あたりの金額（自動で入れない行は null） */
+function jinkenAutoYen(name) {
+  const p = String(name || '').replace(/[\s　]/g, '');
+  const 当 = JINKEN_AUTO.find((x) => p.indexOf(x.hit) >= 0);
+  return 当 ? 当.yen : null;
+}
+
 /** そこで打ち切る行（ここから下は日報が計算する所です） */
 function nippouEStop(name) {
   const p = String(name || '').replace(/[\s　]/g, '');
