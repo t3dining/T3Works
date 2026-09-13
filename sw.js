@@ -23,7 +23,7 @@
  *      一覧まるごとがコメントに刺さります（2026-09-13 に実際にそうなりました）。
  * ============================================================ */
 
-const VERSION = 'ae3359e4';
+const VERSION = 'a502914c';
 
 /* ★控えの名前に版の印を入れません。**2026-09-13 まで入れていました。**
  *
@@ -46,7 +46,7 @@ const CACHE = 't3works';
 
 /* いまの版が使うファイルの一覧（`?v=` 付き）。公開用を作る.py が入れます。
  * ★ここに無い控えだけを捨てます。**あるものは残します。** */
-const KEEP_LIST = ["css/style.css?v=ff0a159c", "drive/js/drive.js?v=b0b30727", "img/drive-icon-180.png?v=cf8bda78", "img/drive-icon-512.png?v=7c78116c", "img/drive-icon-64.png?v=7088d4ae", "img/manage-icon-180.png?v=ac18efea", "img/manage-icon-64.png?v=2b8a9145", "img/mine-icon-180.png?v=cbafcd5d", "img/mine-icon-512.png?v=2dbb903e", "img/mine-icon-64.png?v=ea09f133", "img/owner-icon-180.png?v=cbb1087e", "img/owner-icon-512.png?v=7972b6a3", "img/owner-icon-64.png?v=ce05c3fc", "img/shift-icon-180.png?v=ab0bd671", "img/shift-icon-64.png?v=0254ff8c", "img/t3dining-mark.png?v=c9163364", "img/works-icon-180.png?v=a0ee5b78", "img/works-icon-512.png?v=dddd764f", "img/works-icon-64.png?v=0f9cbed2", "js/app.js?v=289b4adf", "js/config.js?v=a502a81d", "js/shift-sheet.js?v=2b29c50a", "js/storage.js?v=6533b295", "js/sync.js?v=1723e6cc", "js/update.js?v=c530219e", "manage/css/admin.css?v=27e01b9d", "manage/js/admin.js?v=b01d018c", "shift/css/submit.css?v=23cadf83", "shift/js/submit.js?v=5cbc0931", "story/css/story.css?v=55f08ac0", "story/js/story.js?v=72d03613"];
+const KEEP_LIST = ["css/style.css?v=ff0a159c", "drive/js/drive.js?v=b0b30727", "img/drive-icon-180.png?v=cf8bda78", "img/drive-icon-512.png?v=7c78116c", "img/drive-icon-64.png?v=7088d4ae", "img/manage-icon-180.png?v=ac18efea", "img/manage-icon-64.png?v=2b8a9145", "img/mine-icon-180.png?v=cbafcd5d", "img/mine-icon-512.png?v=2dbb903e", "img/mine-icon-64.png?v=ea09f133", "img/owner-icon-180.png?v=cbb1087e", "img/owner-icon-512.png?v=7972b6a3", "img/owner-icon-64.png?v=ce05c3fc", "img/shift-icon-180.png?v=ab0bd671", "img/shift-icon-64.png?v=0254ff8c", "img/t3dining-mark.png?v=c9163364", "img/works-icon-180.png?v=a0ee5b78", "img/works-icon-512.png?v=dddd764f", "img/works-icon-64.png?v=0f9cbed2", "js/app.js?v=289b4adf", "js/config.js?v=a502a81d", "js/shift-sheet.js?v=2b29c50a", "js/storage.js?v=6533b295", "js/sync.js?v=1723e6cc", "js/update.js?v=c530219e", "manage/css/admin.css?v=27e01b9d", "manage/js/admin.js?v=b01d018c", "shift/css/submit.css?v=23cadf83", "shift/js/submit.js?v=64c52df6", "story/css/story.css?v=55f08ac0", "story/js/story.js?v=72d03613"];
 
 /**
  * この控えを捨てるか

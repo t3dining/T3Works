@@ -491,9 +491,15 @@ function renderPeriod() {
     : (!!period && phase === 'open');
   // ★「決まったシフト」の欄に何を出すかを、ここで1つに決めます。
   //   押して選んだ過去があればそれ。無ければ、いまの半月が確定ずみならそれ。
-  //   どちらも無ければ**一番新しい過去**を出します。
-  //   募集を始めたとたんにシフトが見えなくなるのを防ぐためです
-  //   （2026-09-13、ko-dai の指示）。絵にして保存するのも、ここで決めた方です
+  //
+  //   ★**どちらも無いときは、何も出しません**（2026-09-13、ko-dai の指示）。
+  //     はじめは「一番新しい過去」を出していました。募集が始まったとたんに
+  //     シフトが見えなくなるのを防ぐためでしたが、**希望を入れる欄と
+  //     前回のシフト表が同時に出て、指で送る量が増えました。**
+  //       確定してから次の募集まで … いまの半月（確定ずみ）が出ます
+  //       募集が始まったら       … 希望を入れる画面だけ。前回は**ボタンの中**
+  //     「1つ前のシフト」を押したときだけ出す、が ko-dai さんの言う「格納」です。
+  //   絵にして保存するのも、ここで決めた方です
   const いまの = built && Object.keys(built).length && period
     ? { y: period.y, m: period.m, half: period.half, built, 前か: false } : null;
   const 選んだ = pastPick ? past.find((v) => v.key === pastPick) : null;
@@ -504,8 +510,8 @@ function renderPeriod() {
   //   （2026-09-13、実際に「表示されない」と言われました）。
   //   見本の「確定後」を押したときだけ、作り物の方を出します
   shown = me.demo
-    ? (過去の(選んだ) || (demoView === 'built' && いまの ? いまの : 過去の(past[0])))
-    : (過去の(選んだ) || いまの || 過去の(past[0]));
+    ? (過去の(選んだ) || (demoView === 'built' && いまの ? いまの : null))
+    : (過去の(選んだ) || いまの);
   const hasBuilt = !!shown;
   renderPastBar();
   el('entry').classList.toggle('is-hidden', !canSend);
@@ -644,10 +650,13 @@ function pastBtn(name, key, on) {
   b.className = 'past-list__btn' + (on ? ' is-on' : '');
   b.textContent = name;
   b.addEventListener('click', () => {
-    pastPick = key;
+    // ★いま出ているものをもう一度押したら、しまいます。
+    //   募集中は「（いま）」のボタンが無いので、ここでしまえないと戻れません
+    const しまう = key !== null && pastPick === key;
+    pastPick = しまう ? null : key;
     renderPeriod();
     // 押したものが下に出ます。見えるところまで運びます
-    el('builtBox').scrollIntoView({ block: 'start', behavior: 'smooth' });
+    if (!しまう) el('builtBox').scrollIntoView({ block: 'start', behavior: 'smooth' });
   });
   return b;
 }
@@ -1226,10 +1235,15 @@ async function boot() {
   el('signOut').addEventListener('click', signOut);
   el('builtSave').addEventListener('click', saveBuiltImage);
   // 過去のシフトを見るボタン
+  // ★押すと出て、**もう一度押すとしまえます。**出しっぱなしにできないと、
+  //   希望を入れるのに指で送り戻すことになります（しまうためのボタンが
+  //   ほかにありません）
   el('pastPrevBtn').addEventListener('click', () => {
-    pastPick = past.length ? past[0].key : null;
+    if (!past.length) return;
+    const 出ている = pastPick === past[0].key;
+    pastPick = 出ている ? null : past[0].key;
     renderPeriod();
-    el('builtBox').scrollIntoView({ block: 'start', behavior: 'smooth' });
+    if (!出ている) el('builtBox').scrollIntoView({ block: 'start', behavior: 'smooth' });
   });
   el('pastListBtn').addEventListener('click', () => {
     pastOpen = !pastOpen;
