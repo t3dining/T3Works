@@ -2868,17 +2868,58 @@ function parseOiden(text) {
   const 支i = 見出し('支払方法');
   const 支払 = [];
   if (支i >= 0) {
-    let 名 = '';
-    let 最後 = null;
-    const 閉じる = () => { if (名 && 最後 !== null) 支払.push({ 名, 金: 最後 }); 名 = ''; 最後 = null; };
+    // 支払方法の欄の行を、いったん全部ならべます
+    const 行 = [];
     for (let j = 支i + 1; j < lines.length; j++) {
       const p = cashPlain(lines[j]);
       if (OIDEN_PAY_END.some((x) => p.includes(x))) break;
-      if (oidenPayName(lines[j])) { 閉じる(); 名 = p; continue; }
-      const m = seisanMoneyOf(lines[j]);
-      if (m !== null && 名) 最後 = m;
+      行.push({ p, 名: oidenPayName(lines[j]), 金: seisanMoneyOf(lines[j]), 件: /件/.test(p) });
     }
-    閉じる();
+    let 最後の名 = -1;
+    行.forEach((x, n) => { if (x.名) 最後の名 = n; });
+    const 最初の金 = 行.findIndex((x) => x.金 !== null);
+
+    /* ★★名前が先に全部ならぶ形があります（2026年8月29日の紙の、2通り目の読み取り）。
+
+           支払方法
+           現金 / 10% 標準 / クレジットカード支払 / 10% 標準 / QR支払   ← 名前が先
+           4件 / ◯◯◯,◯◯◯円 / ◯◯◯,◯◯◯円
+           3件 / ◯◯,◯◯◯円 / ◯◯,◯◯◯円
+           件  / ◯◯,◯◯◯円 / 10% 標準 / ◯◯,◯◯◯円               ← 件数の数が落ちています
+
+       ★見分け方は「**名前が全部、最初の金額より先に出ている**」かどうかです。
+         ふつうの形なら、1つ目の名前のすぐ下に1つ目の金額が来ます。
+       ★「◯件」の行で区切って、金額のかたまりを作り、名前と順に結びます。
+         件数の**数**は見ません（落ちている行があります）。「件」の字だけを区切りに使います。
+       ★かたまりの数と名前の数が合わなければ**何も読みません。**
+         合わないときに順で結ぶのは危ういので、読まないのが決まりです。
+       ★取りちがえても「支払方法の合計 ＝ 総売上」で止まります。 */
+    const 積み上がり = 最後の名 >= 0 && 最初の金 >= 0 && 最後の名 < 最初の金;
+    if (積み上がり) {
+      const 名たち = 行.filter((x) => x.名).map((x) => x.p);
+      const 組 = [];
+      let いま = null;
+      行.slice(最後の名 + 1).forEach((x) => {
+        if (x.件 && x.金 === null) { いま = []; 組.push(いま); return; }
+        if (x.金 !== null && いま) いま.push(x.金);
+      });
+      if (組.length === 名たち.length) {
+        名たち.forEach((n, k) => {
+          const g = 組[k];
+          // ★かたまりの**最後**がその支払方法の合計です（税率ごとの内わけが先に並びます）
+          if (g && g.length) 支払.push({ 名: n, 金: g[g.length - 1] });
+        });
+      }
+    } else {
+      let 名 = '';
+      let 最後 = null;
+      const 閉じる = () => { if (名 && 最後 !== null) 支払.push({ 名, 金: 最後 }); 名 = ''; 最後 = null; };
+      行.forEach((x) => {
+        if (x.名) { 閉じる(); 名 = x.p; return; }
+        if (x.金 !== null && 名) 最後 = x.金;
+      });
+      閉じる();
+    }
   }
   /* ★`credit` に入れます（`creditAll` ではありません）。
        おいでんテラスは**バグる・popo と同じ道**を通ります（`nippouValues`）。
