@@ -38,11 +38,18 @@ function 設定の呼び名(n) {
  *   **どれなのか誰にも分かりませんでした。**
  *   ★1か所に置きます。`flush()` と `ask()` の両方から使います。
  */
+function この失敗のたぐい(e) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return '電波なし';
+  if (e && e.name === 'AbortError') return '返事なし';
+  return 'つながらない';
+}
+
 function この失敗はなにか(e, 上限ms) {
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+  const たぐい = この失敗のたぐい(e);
+  if (たぐい === '電波なし') {
     return '電波が届いていません。つながれば自動で送られます（入力は消えません）';
   }
-  if (e && e.name === 'AbortError') {
+  if (たぐい === '返事なし') {
     // ★`**` のような飾りは書きません。画面は textContent で出すので、そのまま文字になります
     return `サーバーが${Math.round(上限ms / 1000)}秒たっても返事をしません。`
       + '混み合っているだけで、電波の問題ではありません。少し待つと自動で送り直します';
@@ -52,6 +59,15 @@ function この失敗はなにか(e, 上限ms) {
 
 const Sync = {
   _outboxKey: APP.storageKey + ':outbox',
+  /* ★赤になった記録。**この端末のぶんだけ**です。
+       2026-09-14、ko-dai さんに「赤が出たら文を教えてください」と頼みましたが、
+       ★**赤は次の同期が通った瞬間に消えます。**同じ晩に測ったところ、11回のうち
+       10回は1.4〜3.2秒で、**52秒が1回**でした。つまり跳ねるのは**ときどき**で、
+       **その瞬間に画面を見ていないと捕まりません。**人に見張らせる形がまちがいでした。
+       ★だから端末に残します。あとから設定画面で読めます。 */
+  _logKey: APP.storageKey + ':syncLog',
+  /** 残す件数。多くしても読みません。古いものから落とします */
+  logMax: 20,
   // ★「どこまで同期したか」の印は Store（記録と同じ場所）に置きます。
   //   記録とバラバラの場所にあると、片方だけ端末から消えたときに
   //   「記録は無いのに印は進んだまま」になり、サーバーが何も返さなくなります。
@@ -150,6 +166,43 @@ const Sync = {
     localStorage.setItem(this._outboxKey, JSON.stringify(list));
   },
 
+  /* -------- 赤になった記録 -------- */
+  /** 新しい順に返します */
+  log() {
+    try {
+      const v = JSON.parse(localStorage.getItem(this._logKey) || '[]');
+      return Array.isArray(v) ? v.slice().reverse() : [];
+    } catch (e) {
+      return [];
+    }
+  },
+  /**
+   * 1件つけます
+   *
+   * ★`たぐい` は短い見出し（電波なし／返事なし／つながらない／サーバーが断った）。
+   *   `ms` は、あきらめるまでに何秒待ったか。**35秒なら時間切れ**と分かります。
+   * ★ここが落ちても同期は止めません。記録は本体ではありません
+   */
+  _noteFail(たぐい, 文, ms) {
+    try {
+      const list = this.log().reverse();
+      const 前 = list[list.length - 1];
+      // ★同じ理由が続けて出たときは、件数を足すだけにします。
+      //   15秒おきに送り直すので、そのままだと同じ行で20件が埋まります
+      if (前 && 前.k === たぐい && Date.now() - new Date(前.at).getTime() < 10 * 60 * 1000) {
+        前.n = (前.n || 1) + 1;
+        前.at = new Date().toISOString();
+        if (ms) 前.ms = Math.max(前.ms || 0, ms);
+      } else {
+        list.push({ at: new Date().toISOString(), k: たぐい, t: 文, ms: ms || 0, n: 1 });
+      }
+      localStorage.setItem(this._logKey, JSON.stringify(list.slice(-this.logMax)));
+    } catch (e) { /* 記録できなくても、同期は続けます */ }
+  },
+  clearLog() {
+    try { localStorage.removeItem(this._logKey); } catch (e) {}
+  },
+
   /**
    * 変更を送信箱に入れる
    *
@@ -203,6 +256,8 @@ const Sync = {
 
     const sending = this.outbox();
     const ops = this._withSummaries(sending);
+    // ★あきらめるまでに何秒待ったか。記録に入れます（35秒なら時間切れと分かります）
+    const この回の始まり = Date.now();
 
     try {
       // 返事が返ってこないまま止まらないよう、時間を切ります。
@@ -236,6 +291,13 @@ const Sync = {
 
       if (!json.ok) {
         this.lastError = json.error || '同期に失敗しました';
+        /* ★ここも残します。とくに `busy`（混み合っています）は、
+             ★**順番待ちがあふれた**という意味で、いちばん知りたい1件です。
+             通信できなかったときだけ数えていると、これが丸ごと落ちます */
+        this._noteFail(
+          json.code === 'busy' ? '順番待ち' : `サーバーが断った（${json.code || '理由なし'}）`,
+          this.lastError, Date.now() - この回の始まり
+        );
         // ロック中はPINを消さない（正しいPINを持っている人まで締め出さないため）
         if (json.code === 'bad_pin' || json.code === 'no_pin') this.clearPin();
         // 管理用PINが要る操作が現場アプリの送信箱に紛れ込んだ場合、
@@ -281,6 +343,7 @@ const Sync = {
            すぐ下の `ask()` は、ずっとこの切り分けをしていました。
            ★**同じことを2か所に書いたのではなく、片方に書き忘れていた形です。** */
       this.lastError = この失敗はなにか(e, this.hangMs);
+      this._noteFail(この失敗のたぐい(e), this.lastError, Date.now() - この回の始まり);
     } finally {
       this.running = false;
       this.runningSince = 0;
@@ -557,6 +620,33 @@ const Sync = {
       + `<span class="sync-legend__desc">${desc}</span>`
       + '</span></li>'
     ).join('');
+  },
+
+  /**
+   * 赤になった記録を、読める形にします
+   *
+   * ★`legendHtml()` と同じで、**ここ1か所**です。ワークス・マイン・マネージ・配達記録が
+   *   同じものを出します。画面ごとに書き写すと、片方だけ古くなります。
+   */
+  logHtml() {
+    const list = this.log();
+    if (!list.length) {
+      return '<li class="sync-log__none">まだ1件もありません。'
+        + '同期が赤くなると、ここに日時と理由が残ります</li>';
+    }
+    return list.map((r) => {
+      const d = new Date(r.at);
+      const 日 = `${d.getMonth() + 1}/${d.getDate()} `
+        + `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      // ★待った秒数。35秒なら「時間切れ」、0秒に近ければ「はじめから届いていない」
+      const 秒 = r.ms >= 1000 ? `${Math.round(r.ms / 1000)}秒` : '';
+      const かず = r.n > 1 ? `<span class="sync-log__n">${r.n}回</span>` : '';
+      return '<li class="sync-log__row">'
+        + `<span class="sync-log__when">${日}</span>`
+        + `<span class="sync-log__kind">${r.k || ''}</span>`
+        + `<span class="sync-log__ms">${秒}</span>${かず}`
+        + '</li>';
+    }).join('');
   },
 
   /** 画面に出す状態 */

@@ -62,6 +62,8 @@ const el = {
   reportDate: $('reportDate'), reportSummary: $('reportSummary'), reportList: $('reportList'),
   syncChip: $('syncChip'), syncInfo: $('syncInfo'), syncField: $('syncField'),
   syncLegend: $('syncLegend'),
+  syncLog: $('syncLog'),
+  syncLogClear: $('syncLogClear'),
   pinModal: $('pinModal'), pinInput: $('pinInput'), pinError: $('pinError'),
   codeInput: $('codeInput'), codeField: $('codeField'), codeHint: $('codeHint'),
   pinMessage: $('pinMessage'),
@@ -11285,6 +11287,10 @@ function openModal() {
   renderSyncStatus();
   // ヘッダーのしるしが何を表しているかの一覧（実物と同じ絵を並べます）
   el.syncLegend.innerHTML = Sync.legendHtml();
+  /* ★赤くなった記録。**開いたときに書きます。**
+       赤は次の同期が通った瞬間に消えるので、その場で見張らせるのではなく、
+       あとから読める形にしてあります（2026-09-14） */
+  if (el.syncLog) el.syncLog.innerHTML = Sync.logHtml();
   // 版の番号。困ったときに「この番号を教えて」と聞くためのものです
   const v = Updater.current();
   el.appVersionText.innerHTML = v
@@ -11678,6 +11684,14 @@ function bindEvents() {
 
   /* 共有同期 */
   el.syncChip.addEventListener('click', () => Sync.flush());
+  if (el.syncLogClear) {
+    el.syncLogClear.addEventListener('click', () => {
+      // ★消してよいか聞きます。あとから読むためのものなので、うっかり消すと戻せません
+      if (!confirm('赤くなった記録を消します。よろしいですか。')) return;
+      Sync.clearLog();
+      el.syncLog.innerHTML = Sync.logHtml();
+    });
+  }
   $('syncNow').addEventListener('click', () => Sync.flush());
   $('pinChange').addEventListener('click', () => { closeModal(); openPinModal(); });
   $('pinOk').addEventListener('click', submitPin);

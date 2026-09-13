@@ -65,6 +65,7 @@ const el = {};
   'confirmDialog', 'confirmItem', 'confirmMessage', 'confirmOk',
   'pinModal', 'pinInput', 'pinReveal', 'pinError', 'pinOk',
   'settingsBtn', 'modal', 'syncInfo', 'syncNow', 'pinChange', 'syncLegend',
+  'syncLog', 'syncLogClear',
   'appVersionText', 'forceUpdate',
 ].forEach((id) => { el[id] = document.getElementById(id); });
 
@@ -3152,6 +3153,8 @@ function openSettings() {
         ? `未保存 ${n}件。まもなく送られます。${at}`
         : `全店舗と同期できています。${at}`;
   el.syncLegend.innerHTML = Sync.legendHtml();
+  // ★赤くなった記録（ワークスと同じもの。Sync.logHtml() 1か所です）
+  if (el.syncLog) el.syncLog.innerHTML = Sync.logHtml();
 
   // 版の番号。困ったときに「この番号を教えて」と聞くためのものです
   const v = Updater.current();
@@ -3342,6 +3345,13 @@ function bindEvents() {
   });
 
   el.syncChip.addEventListener('click', () => Sync.flush());
+  if (el.syncLogClear) {
+    el.syncLogClear.addEventListener('click', () => {
+      if (!confirm('赤くなった記録を消します。よろしいですか。')) return;
+      Sync.clearLog();
+      el.syncLog.innerHTML = Sync.logHtml();
+    });
+  }
   el.pinOk.addEventListener('click', submitPin);
 
   /* この端末の設定 */

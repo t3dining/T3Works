@@ -13,8 +13,8 @@
 <link rel="icon" type="image/png" sizes="512x512" href="img/works-icon-512.png?v=dddd764f">
 <link rel="icon" type="image/png" sizes="64x64" href="img/works-icon-64.png?v=0f9cbed2">
 <title>T3 Works｜T3Dining株式会社</title>
-<link rel="stylesheet" href="css/style.css?v=ff0a159c">
-<meta name="app-version" content="0f3b7036">
+<link rel="stylesheet" href="css/style.css?v=00b36838">
+<meta name="app-version" content="607f2236">
 </head>
 <body>
 
@@ -1449,6 +1449,12 @@
       <!-- ヘッダーの丸いしるしの意味。中身は Sync.legendHtml() が入れます -->
       <p class="sync-legend__head">ヘッダーのしるしの見かた</p>
       <ul class="sync-legend" id="syncLegend"></ul>
+      <!-- ★赤になった記録。中身は Sync.logHtml() が入れます。
+           跳ねるのは「ときどき」なので、その瞬間に画面を見ていないと捕まりません。
+           端末に最後の20件だけ残して、あとから読めるようにしたものです -->
+      <p class="sync-log__head">赤くなった記録（この端末）
+        <button type="button" class="sync-log__clear" id="syncLogClear">消す</button></p>
+      <ul class="sync-log" id="syncLog"></ul>
     </div>
 
     <!-- ここに T3 Works Manage の案内は置きません。
@@ -1508,11 +1514,11 @@
 
 <script src="js/config.js?v=ef40f4b7"></script>
 <script src="js/storage.js?v=6533b295"></script>
-<script src="js/sync.js?v=1723e6cc"></script>
+<script src="js/sync.js?v=6a721edc"></script>
 <script src="js/update.js?v=c530219e"></script>
 <!-- 会議資料の中身。スプレッドシートから取り込んだ数字と議事メモです -->
 <!-- シフト表を絵に描くところ。提出ページ（shift/）でも同じものを使います -->
 <script src="js/shift-sheet.js?v=2b29c50a"></script>
-<script src="js/app.js?v=8b18f6d9"></script>
+<script src="js/app.js?v=d007bd94"></script>
 </body>
 </html>

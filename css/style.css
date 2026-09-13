@@ -755,6 +755,50 @@ body:has(.day-tabs.is-hidden) { padding-bottom: 16px; }
 }
 :root[data-theme="dark"] .sync-legend .sync-chip--pending { color: #e5a94f; }
 
+/* ---- 赤になった記録（設定の中） ----
+   ★同期は「ときどき」跳ねます。跳ねた瞬間に画面を見ていないと捕まらないので、
+     端末に残して、あとから読めるようにしたものです（2026-09-14）。
+     日時・理由・待った秒数の3つだけ。読む人が1行で判断できる幅にしています */
+.sync-log__head {
+  margin: 14px 0 0; padding-top: 12px;
+  border-top: 1px solid var(--line-2);
+  font-size: 12px; font-weight: 700; color: var(--text-sub);
+  display: flex; align-items: baseline; gap: 8px;
+}
+.sync-log__clear {
+  margin-left: auto; border: 0; background: none; padding: 0;
+  font: inherit; font-size: 11.5px; font-weight: 600; color: var(--accent);
+  text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
+}
+.sync-log {
+  list-style: none; margin: 8px 0 0; padding: 0;
+  display: flex; flex-direction: column; gap: 1px;
+  max-height: 216px; overflow-y: auto; -webkit-overflow-scrolling: touch;
+}
+.sync-log__row {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 6px 8px; border-radius: 7px;
+  background: color-mix(in srgb, var(--ng) 7%, transparent);
+  font-size: 12px; line-height: 1.4;
+}
+.sync-log__when {
+  flex: 0 0 auto; font-variant-numeric: tabular-nums;
+  font-weight: 700; color: var(--text-sub);
+}
+.sync-log__kind { flex: 1 1 auto; min-width: 0; font-weight: 700; color: color-mix(in srgb, var(--ng) 85%, var(--text)); }
+.sync-log__ms {
+  flex: 0 0 auto; font-variant-numeric: tabular-nums; color: var(--text-sub);
+}
+.sync-log__n {
+  flex: 0 0 auto; font-size: 10.5px; font-weight: 800;
+  border-radius: 999px; padding: 1px 7px;
+  background: color-mix(in srgb, var(--ng) 16%, transparent);
+  color: color-mix(in srgb, var(--ng) 85%, var(--text));
+}
+.sync-log__none {
+  padding: 8px 2px; font-size: 12px; color: var(--text-weak); line-height: 1.6;
+}
+
 .field.is-hidden, .modal__note.is-hidden { display: none; }
 .pin-error { margin: 8px 0 0; font-size: 12.5px; color: var(--ng); min-height: 1em; }
 .pin-row { display: flex; gap: 8px; align-items: stretch; }
