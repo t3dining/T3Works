@@ -84,6 +84,10 @@ let sentAt = null;
 let closed = { dows: [], ex: {} };
 /** 確定したシフト。確定するまでは null（途中は見せません） */
 let built = null;
+/** 前の半月の確定したシフト。募集中だけ入ります（→ applyOpen） */
+let prevBuilt = null;
+/** いま「決まったシフト」の欄に出しているもの。{ y, m, half, built, 前か } */
+let shown = null;
 
 /* -------- 店舗の切り替えを速くするための控え --------
  *
@@ -194,6 +198,10 @@ function applyOpen(res) {
   };
 
   built = res.built && typeof res.built === 'object' ? res.built : null;
+  // ★募集中に渡される「前の確定ずみ」。募集が始まったとたんに、決まっている
+  //   シフトが見えなくなるのを防ぐためのものです（2026-09-13、ko-dai の指示）
+  prevBuilt = res.prevBuilt && res.prevBuilt.built
+    && typeof res.prevBuilt.built === 'object' ? res.prevBuilt : null;
 
   const wish = res.wish || null;
   picked = wish && wish.days && typeof wish.days === 'object' ? wish.days : {};
@@ -434,14 +442,27 @@ function renderPeriod() {
   const canSend = me.demo
     ? demoView === 'entry'
     : (!!period && phase === 'open');
-  const hasBuilt = me.demo
-    ? demoView === 'built'
-    : !!(built && Object.keys(built).length);
+  // ★「決まったシフト」の欄に何を出すかを、ここで1つに決めます。
+  //   いまの半月が確定ずみならそれ。まだなら**前の半月の確定ずみ**を出します。
+  //   募集を始めたとたんにシフトが見えなくなるのを防ぐためです
+  //   （2026-09-13、ko-dai の指示）。絵にして保存するのも、ここで決めた方です
+  const いまの = built && Object.keys(built).length
+    ? { y: period.y, m: period.m, half: period.half, built, 前か: false } : null;
+  const 前の = prevBuilt
+    ? { y: prevBuilt.y, m: prevBuilt.m, half: prevBuilt.half, built: prevBuilt.built, 前か: true }
+    : null;
+  shown = me.demo
+    ? (demoView === 'built' && built && Object.keys(built).length
+      ? { y: period.y, m: period.m, half: period.half, built, 前か: false } : null)
+    : (いまの || 前の);
+  const hasBuilt = !!shown;
   el('entry').classList.toggle('is-hidden', !canSend);
   el('closedBox').classList.toggle('is-hidden', canSend || hasBuilt);
   el('builtBox').classList.toggle('is-hidden', !hasBuilt);
-  // 確定したシフトが出ているときは、出した控えは畳みます（同じ話が二度出るため）
-  el('doneBox').classList.toggle('is-hidden', !sentAt || hasBuilt);
+  // 確定したシフトが出ているときは、出した控えは畳みます（同じ話が二度出るため）。
+  // ★ただし**前の半月**を出しているときは畳みません。話が別だからです
+  //   （下に出ているのは前回のシフト、控えは今回出した希望）
+  el('doneBox').classList.toggle('is-hidden', !sentAt || (hasBuilt && !shown.前か));
 
   if (!period) {
     el('periodMain').textContent = '—';
@@ -521,12 +542,16 @@ function renderPeriod() {
  *  組んでいる途中のものを見せると、変わるたびに混乱するためです。
  */
 function renderBuilt() {
-  if (!built || !period) return;
-  el('builtTitle').textContent =
-    `${shiftRangeLabel(period.y, period.m, period.half)} のシフト`;
+  if (!shown) return;
+  const built = shown.built;
+  // ★前の半月を出しているときは、そう分かるように書きます。
+  //   「9/1〜9/15 のシフト」とだけ出すと、募集中の半月と取りちがえます
+  el('builtTitle').textContent = shown.前か
+    ? `前回のシフト（${shiftRangeLabel(shown.y, shown.m, shown.half)}）`
+    : `${shiftRangeLabel(shown.y, shown.m, shown.half)} のシフト`;
   el('builtList').innerHTML = '';
 
-  shiftDays(period.y, period.m, period.half).forEach((dateStr) => {
+  shiftDays(shown.y, shown.m, shown.half).forEach((dateStr) => {
     const [, m, d] = dateStr.split('-').map(Number);
     const dow = new Date(dateStr.replace(/-/g, '/')).getDay();
     const day = built[dateStr];
@@ -600,7 +625,10 @@ function renderBuilt() {
  *    ここでやるのは、届いた built を、その形（モデル）に組み直すことだけです。
  */
 function builtSheetModel() {
-  const days = shiftDays(period.y, period.m, period.half);
+  // ★出しているもの（shown）から作ります。前の半月を出しているときは、
+  //   その半月の絵になります（画面と、保存する絵がずれないように）
+  const built = shown.built;
+  const days = shiftDays(shown.y, shown.m, shown.half);
   const blocks = [];
   const per = shiftPrintCols(days.length);
 
@@ -654,7 +682,7 @@ function builtSheetModel() {
   return {
     // ★店舗の名前は焼き込みません。前は「バグる」と書いてあったので、
     //   ほかの店舗の人にも「バグる シフト表」と出るところでした
-    title: `${shiftRangeLabel(period.y, period.m, period.half)} `
+    title: `${shiftRangeLabel(shown.y, shown.m, shown.half)} `
       + `${(getStore(me.store) || {}).name || ''} シフト表`,
     slots: shiftSlotsOf(me.store),
     blocks,
@@ -748,7 +776,7 @@ function setRange(dateStr, from, to) {
 
 /** 絵にして、共有か保存に渡します */
 async function saveBuiltImage() {
-  if (!built || !period) return;
+  if (!shown) return;
   const btn = el('builtSave');
   const before = btn.textContent;
   btn.disabled = true;
@@ -758,7 +786,7 @@ async function saveBuiltImage() {
     drawShiftSheet(canvas, builtSheetModel());
     const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.95));
     if (!blob) throw new Error('絵が作れませんでした');
-    const name = `シフト_${shiftRangeLabel(period.y, period.m, period.half).replace(/[/〜]/g, '-')}.jpg`;
+    const name = `シフト_${shiftRangeLabel(shown.y, shown.m, shown.half).replace(/[/〜]/g, '-')}.jpg`;
     const file = new File([blob], name, { type: 'image/jpeg' });
     try {
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
