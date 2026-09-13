@@ -2029,10 +2029,16 @@ function renderGridFill() {
 function nippouPartButton(親, part, 文) {
   if (!親) return;
   let b = 親.querySelector(`.nippou-go[data-part="${part}"]`);
-  const 出す = part === 'delivery'
+  /* ★★ボタンは**いつも出します。**入れたものが無いときは、押せない見た目にします。
+
+       それまでは、入れたものが無いとボタンごと消していました。
+       そのせいで「仕入れを書くボタンが消えている」と言われました
+       （ko-dai さん・2026-09-13）。**消えたのか、まだ出ていないのかが
+       見分けられません。**押せないボタンが見えている方が、
+       「ここに入れれば書ける」と分かります。 */
+  const 中身 = part === 'delivery'
     ? Object.keys(nippouPartData('delivery').values).length > 0
     : cashGridSend(part).length > 0;
-  if (!出す) { if (b) b.remove(); return; }
   if (!b) {
     b = document.createElement('button');
     b.type = 'button';
@@ -2047,7 +2053,13 @@ function nippouPartButton(親, part, 文) {
   // ★書いている最中は、ボタンの字を書きもどしません
   if (b.dataset.busy) b.dataset.label = 字;
   else b.textContent = 字;
-  b.classList.toggle('btn--danger', !!test);
+  b.classList.toggle('btn--danger', !!test && 中身);
+  // ★入れたものが無いときは押せません（見えてはいます）
+  if (!b.dataset.busy) {
+    b.disabled = !中身;
+    b.style.opacity = 中身 ? '' : '0.45';
+    b.title = 中身 ? '' : '上に入れてから押してください';
+  }
   return b;
 }
 
