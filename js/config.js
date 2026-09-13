@@ -2813,11 +2813,29 @@ const OIDEN_PAY_END = ['現金以外おつり', '不支払額', '支払額', '�
 
 /** その行は支払方法の名前か（金額でも件数でも税率でもない行） */
 function oidenPayName(line) {
+  return !!oidenPayNameOf(line);
+}
+
+/**
+ * その行の支払方法の名前（名前でなければ空）
+ *
+ * ★**名前と件数が同じ行に出ることがあります。**
+ *     ポイント(ホットペッパーグルメ) 1件
+ *   「件が入っている行は名前ではない」としていたため、この行を名前と認めず、
+ *   **1つ前（QR支払）の金額として、ポイントの金額を拾って**いました。
+ *   支払方法の合計が総売上に足りなくなり、その日が読めませんでした
+ *   （2026年8月14日の紙。ko-dai さん・2026-09-13）。
+ * ★そこで、うしろの「◯件…」を落としてから見ます。
+ */
+function oidenPayNameOf(line) {
   const p = cashPlain(line);
-  if (!p) return false;
-  if (/[円個人件枚]/.test(p)) return false;
-  if (/%|標準|軽減/.test(p)) return false;
-  return /支払|現金|カード|マネー|商品券|掛|ポイント|ホットペッパー/.test(p);
+  if (!p) return '';
+  const 名 = p.replace(/\d+\s*件.*$/, '').trim();
+  if (!名) return '';
+  if (/[円個人枚]/.test(名)) return '';
+  if (/%|標準|軽減/.test(名)) return '';
+  if (!/支払|現金|カード|マネー|商品券|掛|ポイント|ホットペッパー/.test(名)) return '';
+  return 名;
 }
 
 /**
@@ -2963,7 +2981,8 @@ function parseOiden(text) {
     for (let j = 支i + 1; j < lines.length; j++) {
       const p = cashPlain(lines[j]);
       if (OIDEN_PAY_END.some((x) => p.includes(x))) break;
-      行.push({ p, 名: oidenPayName(lines[j]), 金: seisanMoneyOf(lines[j]), 件: /件/.test(p) });
+      const 名 = oidenPayNameOf(lines[j]);
+      行.push({ p: 名 || p, 名: !!名, 金: 名 ? null : seisanMoneyOf(lines[j]), 件: /件/.test(p) });
     }
     let 最後の名 = -1;
     行.forEach((x, n) => { if (x.名) 最後の名 = n; });
