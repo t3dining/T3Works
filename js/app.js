@@ -2135,6 +2135,11 @@ function nippouCalc() {
     const 引く = NIPPOU_MINUS[r.key] || [];
     if (!引く.length) return;
     if (j[r.key] === null || j[r.key] === undefined) return;
+    /* ★0円の欄を落とすのを、ここでも見ます。
+         ここが抜けていたため、**画面には「書きません」と出るのに、
+         式として 0 が書かれて**いました（2026-09-13に気づきました）。
+         画面と実際の動きが食いちがうのが、一番たちが悪い形です。 */
+    if (nippouZeroSkip(r.key, j[r.key])) return;
     calc[NIPPOU_LABELS[r.key]] = {
       base: j[r.key],                                   // ジャーナルから読めた数
       minus: 引く.map((k) => NIPPOU_LABELS[k]),          // 引く行の「名前」
@@ -2328,12 +2333,17 @@ const NIPPOU_PARTS = {
  *
  *  ★画面には 0 と出します（読めたことは分かるように）。
  *    でも日報のマスには**何も入れません**（ko-dai さんの決め・2026-09-11）。
- *  ★客数は人数なので、0でも書きます。0人なら何かおかしいので、
- *    空欄にして気づけなくするより、0 と入っていた方が分かります。
  *  ★書かないので、**日報に前から入っている数は消えません。**
- *    そこだけ、これまでと変わります。
+ *
+ *  ★ただし次の3つは、0でも書きます（ko-dai さんの決め・2026-09-13）。
+ *      現金売上 … その日の現金が0なら、0と入っていた方がはっきりします
+ *      純売上   … 0なら売上の無かった日です。空欄だと「入れ忘れ」に見えます
+ *      当日客数 … 0人なら何かおかしいので、空欄にして気づけなくするより 0 と入れます
+ *    おいでんテラスには**売上が1円も無い日**があり、その日は
+ *    この3つが0で並びます。空欄だと、休んだ日か入れ忘れた日か分かりません。
+ *  ★クレジット・電子マネーは、これまでどおり0なら書きません。
  * ---------------------------------------------------------- */
-const NIPPOU_ZERO_OK = ['guests'];      // 0でも書く欄
+const NIPPOU_ZERO_OK = ['cash', 'net', 'guests'];      // 0でも書く欄
 
 function nippouZeroSkip(キー, 値) {
   return 値 === 0 && NIPPOU_ZERO_OK.indexOf(キー) < 0;
@@ -2348,10 +2358,12 @@ function nippouZeroSkip(キー, 値) {
  *   ★出口でもう一度落とせば、どの道から来ても同じになります。
  */
 function nippouZeroDrop(values) {
-  const 客数名 = NIPPOU_LABELS.guests;
+  // ★0でも書く欄の「日報での名前」。NIPPOU_ZERO_OK から作ります。
+  //   ここに名前を並べ直すと、片方だけ直したときに食いちがいます
+  const 残す = NIPPOU_ZERO_OK.map((k) => NIPPOU_LABELS[k]);
   const out = {};
   Object.keys(values || {}).forEach((名) => {
-    if (values[名] === 0 && 名 !== 客数名) return;
+    if (values[名] === 0 && 残す.indexOf(名) < 0) return;
     out[名] = values[名];
   });
   return out;
