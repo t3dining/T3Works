@@ -10560,7 +10560,12 @@ function shiftFileName(ext) {
 async function handOut(file, name) {
   try {
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], title: name });
+      // ★`title` は渡しません。**LINEがそれを文として一緒に送ります**
+      //   （「バグるシフト_2026_9-16-9-30.jpg」が画像の前に流れていました。
+      //     2026-09-13、ko-dai の指摘）。画像だけを送りたいので外します。
+      //   ★ファイルの名前は消えません。`new File(…, name)` で持っているので、
+      //     「ファイルに保存」したときの名前は今までどおりです。
+      await navigator.share({ files: [file] });
       return;
     }
   } catch (e) {
