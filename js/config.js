@@ -2752,16 +2752,18 @@ const JOURNAL_STORES = ['sumimaro', 'chacoru', 'baguru', 'popo', 'kojare', 'oide
 /**
  * ポイント（ホットペッパーグルメ）を日報に書く店舗
  *
- * ★バグるとおいでんテラスだけです（ko-dai さん・2026-09-13）。
- *   炭まろ・ちゃこる・popo は、紙にポイントの行が出ても**日報に書きません。**
+ * ★おいでんテラスだけです（ko-dai さん・2026-09-13）。
+ *   炭まろ・ちゃこる・バグる・popo は、紙にポイントの行が出ても**日報に書きません。**
  *   画面の表にも出しません。
+ *   （はじめバグるも書く形にしましたが、そのあと「4店舗は同じ扱いで」と
+ *     直していただきました。日計レポートの4店舗は、そろって書かない側です。）
  * ★★読むのはやめません。「支払方法の合計 ＝ 売上」の検算に要るためです。
  *   読まないと、ポイントのあった日に合計が合わなくなって、
  *   **その日が丸ごと読めなくなります。**
  * ★こじゃれは紙が「ホットペッパー」と名前で出すので、こちらは通りません
  *   （`SEISAN_TO_NIPPOU` の `recruit` で別に書いています）。
  */
-const JOURNAL_POINT_STORES = ['baguru', 'oiden'];
+const JOURNAL_POINT_STORES = ['oiden'];
 function journalPointOk(storeId) {
   return JOURNAL_POINT_STORES.indexOf(storeId) >= 0;
 }
