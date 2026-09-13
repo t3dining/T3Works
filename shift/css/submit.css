@@ -519,3 +519,36 @@ body.is-help { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { .switch-wait__spin { animation-duration: 2.4s; } }
 /* 待っているあいだは押せません（二重に押すと、返事が入れかわります） */
 .day__slots.is-waiting .slot { opacity: .55; pointer-events: none; }
+
+/* ============================================================
+ *  過去のシフトを見るボタン
+ *
+ *  ★募集を始めると、出す半月が新しい方に変わります。新しい方はまだ
+ *    組んでいないので、決まっているシフトが画面から消えていました
+ *    （2026-09-13、ko-dai の指摘）。**上の方に置きます。**
+ *    下に置くと、希望を入れる欄をぜんぶ通り過ぎないと見つかりません。
+ * ============================================================ */
+.past-bar { margin: 0 0 12px; }
+.past-bar.is-hidden { display: none; }
+.past-bar__acts { display: flex; gap: 8px; }
+/* ★指で押すものなので、細くしません。2つ並べて画面の幅を分け合います */
+.past-bar__acts .btn { flex: 1 1 0; }
+.past-bar__acts .btn.is-on {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+.past-list {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px; margin-top: 8px;
+}
+.past-list.is-hidden { display: none; }
+.past-list__btn {
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface); color: var(--text);
+  font: inherit; font-size: 13.5px; font-weight: 700;
+  padding: 11px 8px; cursor: pointer; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.past-list__btn.is-on {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+.past-list__none { grid-column: 1 / -1; margin: 0; font-size: 12.5px; color: var(--text-sub); }

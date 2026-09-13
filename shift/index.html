@@ -45,8 +45,8 @@
 <link rel="apple-touch-icon" href="../img/shift-icon-180.png?v=ab0bd671">
 <link rel="icon" href="../img/shift-icon-64.png?v=0254ff8c">
 
-<link rel="stylesheet" href="css/submit.css?v=400a586d">
-<meta name="app-version" content="cad552ac">
+<link rel="stylesheet" href="css/submit.css?v=423d80d0">
+<meta name="app-version" content="874c5ee2">
 </head>
 <body>
 
@@ -113,6 +113,20 @@
       </div>
       <p class="period__due is-hidden" id="periodDue"></p>
       <p class="period__state" id="periodState"></p>
+    </div>
+
+    <!-- ===== 決まったシフトを見るボタン（ページの上の方に置きます） =====
+         ★募集を始めると、出す半月が新しい方に変わります。新しい方はまだ
+           組んでいないので、決まっているシフトが画面から消えていました
+           （2026-09-13、ko-dai の指摘）。
+         ★中身は js が入れます。過去が1つも無い店舗では、この箱ごと出しません -->
+    <div class="past-bar is-hidden" id="pastBar">
+      <div class="past-bar__acts">
+        <button type="button" class="btn" id="pastPrevBtn">1つ前のシフトを見る</button>
+        <button type="button" class="btn" id="pastListBtn">過去のシフト</button>
+      </div>
+      <!-- 期間のボタンを並べます。押すと、その期間のシフト表が下に出ます -->
+      <div class="past-list is-hidden" id="pastList"></div>
     </div>
 
     <!-- 募集していないときは、ここだけ出します -->
@@ -226,6 +240,6 @@
 <script src="../js/config.js?v=d97f9bcd"></script>
 <!-- シフト表を絵に描くところ。ワークスの「JPEGで保存」と同じものです -->
 <script src="../js/shift-sheet.js?v=2b29c50a"></script>
-<script src="js/submit.js?v=6f687038"></script>
+<script src="js/submit.js?v=7552efbb"></script>
 </body>
 </html>

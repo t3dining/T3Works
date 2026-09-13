@@ -84,8 +84,12 @@ let sentAt = null;
 let closed = { dows: [], ex: {} };
 /** 確定したシフト。確定するまでは null（途中は見せません） */
 let built = null;
-/** 前の半月の確定したシフト。募集中だけ入ります（→ applyOpen） */
-let prevBuilt = null;
+/** 過去の確定したシフト（新しい順・最大6つ。→ applyOpen） */
+let past = [];
+/** 過去のどれを見ているか（key）。null なら「いまの半月」 */
+let pastPick = null;
+/** 「過去のシフト」の一覧を開いているか */
+let pastOpen = false;
 /** いま「決まったシフト」の欄に出しているもの。{ y, m, half, built, 前か } */
 let shown = null;
 
@@ -198,10 +202,13 @@ function applyOpen(res) {
   };
 
   built = res.built && typeof res.built === 'object' ? res.built : null;
-  // ★募集中に渡される「前の確定ずみ」。募集が始まったとたんに、決まっている
+  // ★過去の確定ずみ（新しい順）。募集が始まったとたんに、決まっている
   //   シフトが見えなくなるのを防ぐためのものです（2026-09-13、ko-dai の指示）
-  prevBuilt = res.prevBuilt && res.prevBuilt.built
-    && typeof res.prevBuilt.built === 'object' ? res.prevBuilt : null;
+  past = Array.isArray(res.past)
+    ? res.past.filter((v) => v && v.built && typeof v.built === 'object') : [];
+  // 店舗を切り替えたときに、前の店舗の選びが残らないようにします
+  pastPick = null;
+  pastOpen = false;
 
   const wish = res.wish || null;
   picked = wish && wish.days && typeof wish.days === 'object' ? wish.days : {};
@@ -443,19 +450,19 @@ function renderPeriod() {
     ? demoView === 'entry'
     : (!!period && phase === 'open');
   // ★「決まったシフト」の欄に何を出すかを、ここで1つに決めます。
-  //   いまの半月が確定ずみならそれ。まだなら**前の半月の確定ずみ**を出します。
+  //   押して選んだ過去があればそれ。無ければ、いまの半月が確定ずみならそれ。
+  //   どちらも無ければ**一番新しい過去**を出します。
   //   募集を始めたとたんにシフトが見えなくなるのを防ぐためです
   //   （2026-09-13、ko-dai の指示）。絵にして保存するのも、ここで決めた方です
-  const いまの = built && Object.keys(built).length
+  const いまの = built && Object.keys(built).length && period
     ? { y: period.y, m: period.m, half: period.half, built, 前か: false } : null;
-  const 前の = prevBuilt
-    ? { y: prevBuilt.y, m: prevBuilt.m, half: prevBuilt.half, built: prevBuilt.built, 前か: true }
-    : null;
+  const 選んだ = pastPick ? past.find((v) => v.key === pastPick) : null;
+  const 過去の = (v) => (v ? { y: v.y, m: v.m, half: v.half, built: v.built, 前か: true } : null);
   shown = me.demo
-    ? (demoView === 'built' && built && Object.keys(built).length
-      ? { y: period.y, m: period.m, half: period.half, built, 前か: false } : null)
-    : (いまの || 前の);
+    ? (demoView === 'built' && いまの ? いまの : null)
+    : (過去の(選んだ) || いまの || 過去の(past[0]));
   const hasBuilt = !!shown;
+  renderPastBar();
   el('entry').classList.toggle('is-hidden', !canSend);
   el('closedBox').classList.toggle('is-hidden', canSend || hasBuilt);
   el('builtBox').classList.toggle('is-hidden', !hasBuilt);
@@ -468,7 +475,12 @@ function renderPeriod() {
     el('periodMain').textContent = '—';
     el('periodSub').textContent = '';
     el('periodState').textContent = '';
-    el('closedNote').textContent = '次のシフトの募集がはじまると、ここに出ます。しばらくお待ちください。';
+    el('closedNote').textContent = hasBuilt
+      ? '次のシフトの募集がはじまると、ここに出ます。下は前のシフトです。'
+      : '次のシフトの募集がはじまると、ここに出ます。しばらくお待ちください。';
+    // ★募集していなくても、過去のシフトは出します。ここで戻ると
+    //   「箱は出ているのに中身が空」になります（2026-09-13）
+    renderBuilt();
     return;
   }
 
@@ -536,6 +548,63 @@ function renderPeriod() {
   renderBuilt();
 }
 
+/**
+ * 「1つ前のシフトを見る」と「過去のシフト」
+ *
+ * ★ページの**上の方**に置きます。下に置くと、希望を入れる欄をぜんぶ
+ *   通り過ぎないと見つかりません（2026-09-13、ko-dai の指示）。
+ * ★過去が1つも無い店舗では、箱ごと出しません。押しても何も起きない
+ *   ボタンがあると「壊れているのか」と迷います。
+ * ★見本（テスト用）のときは出しません。見本は作り物のシフトを出す画面で、
+ *   本物の過去と混ぜると、どちらを見ているのか分からなくなります。
+ */
+function renderPastBar() {
+  const bar = el('pastBar');
+  if (me.demo || !past.length) { bar.classList.add('is-hidden'); return; }
+  bar.classList.remove('is-hidden');
+
+  // 「1つ前」…いま出しているものが一番新しい過去なら、押しても変わらないので光らせます
+  const 前 = past[0];
+  const 前を見ている = shown && shown.前か && shown.y === 前.y
+    && shown.m === 前.m && shown.half === 前.half;
+  // ★期間は入れません。2行に折り返して、隣のボタンと高さがそろわなくなります。
+  //   どの期間かは、押したあとの見出しと、一覧のボタンで分かります
+  el('pastPrevBtn').textContent = '1つ前のシフト';
+  el('pastPrevBtn').classList.toggle('is-on', !!前を見ている);
+
+  el('pastListBtn').textContent = pastOpen ? '一覧を閉じる' : `過去のシフト（${past.length}）`;
+  el('pastListBtn').classList.toggle('is-on', pastOpen);
+
+  const box = el('pastList');
+  box.classList.toggle('is-hidden', !pastOpen);
+  if (!pastOpen) return;
+  box.innerHTML = '';
+
+  // いまの半月が確定ずみなら、そこへ戻るボタンも並べます
+  if (built && Object.keys(built).length && period) {
+    box.appendChild(pastBtn(`${shiftRangeLabel(period.y, period.m, period.half)}（いま）`,
+      null, !pastPick));
+  }
+  past.forEach((v) => {
+    box.appendChild(pastBtn(shiftRangeLabel(v.y, v.m, v.half), v.key, pastPick === v.key));
+  });
+}
+
+/** 一覧の中の、期間1つぶんのボタン */
+function pastBtn(name, key, on) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'past-list__btn' + (on ? ' is-on' : '');
+  b.textContent = name;
+  b.addEventListener('click', () => {
+    pastPick = key;
+    renderPeriod();
+    // 押したものが下に出ます。見えるところまで運びます
+    el('builtBox').scrollIntoView({ block: 'start', behavior: 'smooth' });
+  });
+  return b;
+}
+
 /* -------- 決まったシフトを見る --------
  *
  *  お店が「シフトを確定する」を押すまでは出ません。
@@ -544,10 +613,11 @@ function renderPeriod() {
 function renderBuilt() {
   if (!shown) return;
   const built = shown.built;
-  // ★前の半月を出しているときは、そう分かるように書きます。
-  //   「9/1〜9/15 のシフト」とだけ出すと、募集中の半月と取りちがえます
+  // ★過去のものを出しているときは、そう分かるように書きます。
+  //   「9/1〜9/15 のシフト」とだけ出すと、募集中の半月と取りちがえます。
+  //   「前回の」とは書きません。3つ前を選んでいることもあるためです
   el('builtTitle').textContent = shown.前か
-    ? `前回のシフト（${shiftRangeLabel(shown.y, shown.m, shown.half)}）`
+    ? `過去のシフト（${shiftRangeLabel(shown.y, shown.m, shown.half)}）`
     : `${shiftRangeLabel(shown.y, shown.m, shown.half)} のシフト`;
   el('builtList').innerHTML = '';
 
@@ -1108,6 +1178,16 @@ async function boot() {
   el('send').addEventListener('click', send);
   el('signOut').addEventListener('click', signOut);
   el('builtSave').addEventListener('click', saveBuiltImage);
+  // 過去のシフトを見るボタン
+  el('pastPrevBtn').addEventListener('click', () => {
+    pastPick = past.length ? past[0].key : null;
+    renderPeriod();
+    el('builtBox').scrollIntoView({ block: 'start', behavior: 'smooth' });
+  });
+  el('pastListBtn').addEventListener('click', () => {
+    pastOpen = !pastOpen;
+    renderPastBar();
+  });
   el('helpBtn').addEventListener('click', openHelp);
   el('helpClose').addEventListener('click', closeHelp);
   el('helpClose2').addEventListener('click', closeHelp);
