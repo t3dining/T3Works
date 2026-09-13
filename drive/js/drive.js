@@ -36,6 +36,7 @@ const el = {
   drvLegs: $('drvLegs'), drvAddLeg: $('drvAddLeg'), drvHint: $('drvHint'), drvWarn: $('drvWarn'),
   driveFormTitle: $('driveFormTitle'), driveSave: $('driveSave'),
   modal: $('modal'), syncChip: $('syncChip'), syncInfo: $('syncInfo'), syncLegend: $('syncLegend'),
+  syncWarn: $('syncWarn'),
   pinModal: $('pinModal'), pinInput: $('pinInput'), pinError: $('pinError'),
   appVersionText: $('appVersionText'),
   confirmDialog: $('confirmDialog'), confirmItem: $('confirmItem'),
@@ -673,6 +674,53 @@ function renderSyncStatus() {
   } else {
     el.syncInfo.textContent = 'この端末の中だけで動いています。';
   }
+
+  renderSyncWarn();
+}
+
+/**
+ * 画面の上に出す帯
+ *
+ * ヘッダーの赤い丸は「何かおかしい」しか言いません。理由の文は title
+ * （指では出ません）と設定の奥にしかなく、タブレットでは読めませんでした。
+ * 赤の理由は3つあって、やることが全部ちがいます。ここに出して、
+ * 見た人がそのまま伝えられるようにします。
+ *
+ * 出す順番は、直さないと records が欠ける方から先に出します。
+ *   1. サーバーが受け取れなかった  … 送れたように見えて中身が入っていません
+ *   2. まだ送れていない記録がある  … 橙。壊れてはいません
+ *   3. 送れなかった理由            … 赤。電波か、混み合いか、不調か
+ */
+function renderSyncWarn() {
+  if (!el.syncWarn) return;
+  if (!Sync.enabled() || !Sync.pin()) {
+    el.syncWarn.className = 'sync-warn is-hidden';
+    return;
+  }
+  const 未送信 = Sync.outbox().length;
+
+  if (Sync.serverWarn) {
+    el.syncWarn.className = 'sync-warn';
+    el.syncWarn.textContent = Sync.serverWarn;
+    return;
+  }
+  if (Sync.lastError) {
+    el.syncWarn.className = 'sync-warn';
+    // ★理由の文（js/sync.js）に足すのは、この画面でしか言えないことだけです。
+    //   「入力は消えません」はあちらが言うので、ここでは重ねません
+    el.syncWarn.textContent = Sync.lastError
+      + (未送信 ? `　未送信 ${未送信}件。` : '　')
+      + 'ヘッダーのしるしを押すと、いま送り直します';
+    return;
+  }
+  if (未送信) {
+    el.syncWarn.className = 'sync-warn is-waiting';
+    el.syncWarn.textContent = `まだ送れていない記録が ${未送信}件 あります。`
+      + '電波の届くところでアプリを開いたままにしてください。'
+      + '送れるまで、ほかの人の画面には出ません';
+    return;
+  }
+  el.syncWarn.className = 'sync-warn is-hidden';
 }
 
 function openPinModal(message) {

@@ -13,7 +13,7 @@
 <link rel="icon" type="image/png" sizes="64x64" href="../img/drive-icon-64.png?v=7088d4ae">
 <title>配達記録｜バグる</title>
 <link rel="stylesheet" href="../css/style.css?v=ff0a159c">
-<meta name="app-version" content="d5296b57">
+<meta name="app-version" content="b750a879">
 </head>
 <body class="no-daytabs app-drive" data-assets="../">
 
@@ -47,6 +47,17 @@
 <main class="page drive-page">
 
  <div class="drive-col">
+
+  <!-- 同期が止まっているときだけ出ます。
+       ヘッダーの赤い丸だけでは「何が起きたか」が分かりません。丸の説明は
+       title（指では出ません）と設定の奥にしかなく、タブレットでは読めませんでした。
+       赤の理由は3つあって、やることが全部ちがいます（js/sync.js）。
+         電波が届いていません       … 待つだけ
+         サーバーが返事をしません   … 混み合っているだけ。電波の問題ではありません
+         サーバーにつながりません   … 設定かサーバーの不調
+       店内は電波が弱いので、どれなのかがここで読めないと手の打ちようがありません -->
+  <p class="sync-warn is-hidden" id="syncWarn"></p>
+
   <!-- ===== その月のまとめ（この画面の主役） ===== -->
   <section class="drive-hero">
     <div class="drive-hero__nav">
@@ -254,7 +265,7 @@
 <script src="../js/storage.js?v=6533b295"></script>
 <script src="../js/sync.js?v=1723e6cc"></script>
 <script src="../js/update.js?v=c530219e"></script>
-<script src="js/drive.js?v=df79a93b"></script>
+<script src="js/drive.js?v=b0b30727"></script>
 
 </body>
 </html>
