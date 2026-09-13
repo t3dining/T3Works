@@ -3035,6 +3035,12 @@ async function cashReadPhoto(dataUrl, dateStr, file) {
     cashEdit.ms = Date.now() - from;
     cashEdit.size = Math.round(dataUrl.length * 3 / 4 / 1024);
     cashEdit.gas = res.v || '（分かりません）';
+    /* ★どの読み取りで読んだか（'vision' か 'drive'）。
+         落ちた先が見えないと、「効かなかった」のか「試すこと自体が失敗した」のかを
+         切り分けられません（2026-09-13、それで1日つぶしました）。
+       ★`cashEdit.how` は**別のもの**です（現金が読めたかどうか）。
+         同じ名前にしかけたので、ここは ocrHow にしています。 */
+    cashEdit.ocrHow = res.ocrHow || '';
 
     cashEdit.pending = dataUrl;
     // ★読み取った文字はそのまま持っておきます。金額が違って入ったときに、
@@ -3135,6 +3141,9 @@ function openOcrText() {
     cashEdit.saveMs ? `記録 ${(cashEdit.saveMs / 1000).toFixed(1)}秒` : '',
     cashEdit.size ? `写真 ${cashEdit.size}KB` : '',
     cashEdit.gas ? `サーバー ${cashEdit.gas}` : '',
+    // ★どの読み取りで読んだか。「直したのに効いていない」を見分けるためです
+    cashEdit.ocrHow === 'vision' ? '読み取り Vision' : '',
+    cashEdit.ocrHow === 'drive' ? '★読み取り ドライブ（Visionが使われていません）' : '',
   ].filter(Boolean).join('　');
   el.ocrText.textContent = (how ? `（${how}）\n\n` : '')
     + (cashEdit.text || '（何も読み取れませんでした）');
