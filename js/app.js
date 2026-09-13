@@ -736,7 +736,10 @@ async function cashResume() {
     } else if (job.kind === 'part') {
       /* ★仕入・人件費・デリバリーの書き込みが途中で切れたとき。
            見に行って確かめるところは済んでいるので、書くところからやり直します。 */
-      const 名 = (NIPPOU_PARTS[job.part] || {}).name || '日報';
+      // ★job.part は1つのこともあれば、まとめて書いたときの並びのこともあります
+      const 名 = (Array.isArray(job.part)
+        ? job.part.map((x) => (NIPPOU_PARTS[x] || {}).name).filter(Boolean).join('・')
+        : (NIPPOU_PARTS[job.part] || {}).name) || '日報';
       setNippouMsg(`前の書き込みが途中でした。続きからやり直します…（${名}）`);
       await cashWakeOn();
       try {
@@ -2450,12 +2453,27 @@ function nippouBtnDone(btn) {
   btn.disabled = false;
 }
 
+/**
+ * 日報へ書きます
+ *
+ *   part … 'journal' などの区分1つ、または ['journal','delivery',…] の並び
+ *
+ * ★並びを渡すと、**1回の送信でまとめて書きます。**
+ *   1つずつ送ると、日報を見に行くのも書くのも回数分かかります。
+ *   ko-dai さんの「ジャーナルを書くと仕入れや人件費も一緒に」（2026-09-13）は
+ *   これで叶えています。**各区分のボタンはそのまま残します。**
+ */
 async function nippouWritePart(part, btn) {
-  const 決 = NIPPOU_PARTS[part];
+  const 組 = Array.isArray(part) ? part.filter((x) => NIPPOU_PARTS[x]) : [part];
+  if (!組.length) return;
+  const 決 = 組.length === 1 ? NIPPOU_PARTS[組[0]] : {
+    name: 組.map((x) => NIPPOU_PARTS[x].name).join('・'),
+    記録も: 組.some((x) => NIPPOU_PARTS[x].記録も),
+  };
   if (!決) return;
-  if (part === 'journal' && !cashEdit.jok) return;
+  if (組.indexOf('journal') >= 0 && !cashEdit.jok) return;
 
-  const だめ = nippouPartBad(part);
+  const だめ = [].concat(...組.map((x) => nippouPartBad(x)));
   if (だめ.length) {
     setNippouMsg(`${だめ.join('、')} の計算式が計算できません。`
       + '直すか、空にしてから書いてください（数字と ＋−×÷ かっこ だけが使えます）', 'warn');
@@ -2480,7 +2498,18 @@ async function nippouWritePart(part, btn) {
     return;
   }
 
-  const { values, calc, extra } = nippouPartData(part);
+  /* ★組の分を**1つにまとめて**送ります。
+       1つずつ送ると、日報を見に行くのも書くのも回数分かかります
+       （4回で20秒以上）。まとめれば1回で済みます。 */
+  const values = {};
+  const calc = {};
+  let extra = [];
+  組.forEach((x) => {
+    const d = nippouPartData(x);
+    Object.assign(values, d.values);
+    Object.assign(calc, d.calc);
+    extra = extra.concat(d.extra);
+  });
   if (!Object.keys(values).length && !Object.keys(calc).length && !extra.length) {
     setNippouMsg(`${決.name}に、入れたものがありません`, 'warn');
     return;
@@ -2498,7 +2527,7 @@ async function nippouWritePart(part, btn) {
        日報は**本物の記録**で、まちがって上書きすると元に戻せません。
        読み取りの直しが将来ほどけても、ここで止まります。 */
   const 書く先 = `${state.storeId}/${dateStr}`;
-  if (part === 'journal' && cashEdit.key !== 書く先) {
+  if (組.indexOf('journal') >= 0 && cashEdit.key !== 書く先) {
     setNippouMsg('★いま出ている数字は、この日の読み取りではありません。'
       + 'この日をもう一度開いてから、書いてください', 'warn');
     return;
@@ -2550,7 +2579,7 @@ async function nippouWritePart(part, btn) {
          これまで控えていたのはジャーナルだけで、
          仕入・人件費・デリバリーは途中で切れたら消えていました。 */
     cashJobSave({
-      kind: 'part', part, store: state.storeId, date: dateStr,
+      kind: 'part', part: 組.length === 1 ? 組[0] : 組, store: state.storeId, date: dateStr,
       values, extra, calc, test, folder, at: new Date().toISOString(),
     });
     setNippouMsg(`日報に書いています…（${決.name}）`);
@@ -2627,8 +2656,17 @@ function renderNippouWhere() {
 }
 
 /** 「日報に書く」＝ジャーナルの5つ（前からのボタン） */
+/**
+ * ジャーナルのボタン ＝ **その日に入れたものを全部**書きます
+ *
+ * ★ジャーナルの5つだけでなく、出前館・ウーバー・ロケットナウ、仕入明細、人件費も
+ *   一緒に書きます（ko-dai さん・2026-09-13）。**1回の送信でまとめて**送るので、
+ *   4回押すより速く終わります。
+ * ★入れていない区分は、中身が空なので自然と混ざりません。
+ * ★各区分のボタンは残してあります。あとから1つだけ直したいときに使います。
+ */
 async function writeNippou() {
-  return nippouWritePart('journal', el.cashToNippou);
+  return nippouWritePart(['journal', 'delivery', 'shiire', 'jinken'], el.cashToNippou);
 }
 
 /**
