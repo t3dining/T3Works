@@ -2399,8 +2399,12 @@ function renderNippouFolders() {
  *  テスト用の日報を「どの店舗で使うか」を選ぶ欄
  *
  *  ★入れ物は manage/index.html ではなく、ここで作って差し込みます。
- *  ★1店舗も選ばなければ、全店舗がテスト用になります（前からの動きと同じ）。
- *    1つでも選べば、その店舗だけがテスト用で、ほかは本番の日報に書きます。
+ *  ★★1店舗も選ばなければ、**どこにも書きません**（2026-09-11 に変えました）。
+ *    それまでは「選ばなければ全店舗がテスト用」でした。**これが事故になりました。**
+ *    こじゃれ用に入れたURLがバグるにも効いていて、バグるの数字が
+ *    テスト用の日報に入っていました。アプリは「書けました」と出します。
+ *    ★どちらに倒しても危ないので、倒さずに**選ぶまで書かせません。**
+ *  ★出すのは日報に書く5店舗だけです。おいでんテラスは日報に書かないので出しません。
  */
 function renderNippouTestStores() {
   if (!el.nippouTest) return;
@@ -2420,7 +2424,7 @@ function renderNippouTestStores() {
   const h = document.createElement('p');
   h.className = 'field__label';
   h.style.marginBottom = '6px';
-  h.textContent = 'どの店舗をテスト用にしますか（何も選ばなければ全店舗）';
+  h.textContent = 'どの店舗をテスト用にしますか（選んだ店舗だけがテスト用になります）';
   box.appendChild(h);
 
   const wrap = document.createElement('div');
@@ -2428,7 +2432,13 @@ function renderNippouTestStores() {
   wrap.style.flexWrap = 'wrap';
   wrap.style.gap = '8px 14px';
 
-  STORES.forEach((s) => {
+  /* ★日報に書く店舗だけを出します。おいでんテラスを出すと、
+       選べるのに何も起きない欄になり、選んだ人が取りちがえます。
+     ★すでに選ばれている店舗は、一覧に無くても出します。
+       消すと、その選択が次の保存で黙って落ちるためです。 */
+  const 出す店舗 = STORES.filter(
+    (s) => 日報に書く店舗().indexOf(s.id) >= 0 || 選ばれ.indexOf(s.id) >= 0);
+  出す店舗.forEach((s) => {
     const lab = document.createElement('label');
     lab.style.display = 'inline-flex';
     lab.style.alignItems = 'center';
@@ -2454,14 +2464,35 @@ function renderNippouTestStores() {
   box.appendChild(note);
 }
 
+/**
+ * 日報に書く店舗（js/config.js の JOURNAL_STORES）
+ *
+ * ★マネージは js/config.js を読んでいるので、そのまま使えます。
+ * ★`window.JOURNAL_STORES` では取れません。config.js の宣言は `const` で、
+ *   `const` は window に乗らないためです（STORES と同じで、名前で直に読みます）。
+ * ★それでも取れなかったときのために、空の一覧を返して落ちないようにします。
+ */
+function 日報に書く店舗() {
+  if (typeof JOURNAL_STORES === 'undefined') return [];
+  return Array.isArray(JOURNAL_STORES) ? JOURNAL_STORES : [];
+}
+
 /** いまの設定を、そのまま読める文にします */
 function nippouTestStoresNote() {
   const url = NippouTest.get();
   if (!url) return 'いまは全店舗が、本番の日報に書きます。';
   const 選ばれ = NippouTestStores.all();
-  if (!選ばれ.length) return '★いまは【全店舗】がテスト用の日報に書きます。';
+  /* ★1つも選んでいないときは、**どこにも書けません**（上の説明のとおり）。
+       ここが「全店舗がテスト用」のままになっていました。画面が古い動きを
+       説明していると、読んだ人はそのとおりだと思って書いてしまいます。 */
+  if (!選ばれ.length) {
+    return '★★いまは【どこにも書けません】。テスト用のURLが入っているのに、'
+      + '店舗が1つも選ばれていないためです。テスト用にする店舗を選ぶか、'
+      + '上のURLを空にしてください。';
+  }
+  const 書く = STORES.filter((s) => 日報に書く店舗().indexOf(s.id) >= 0);
   const 名 = 選ばれ.map((id) => (STORES.find((s) => s.id === id) || {}).name || id);
-  const ほか = STORES.filter((s) => 選ばれ.indexOf(s.id) < 0).map((s) => s.name);
+  const ほか = 書く.filter((s) => 選ばれ.indexOf(s.id) < 0).map((s) => s.name);
   return `★テスト用に書くのは【${名.join('・')}】だけです。`
     + (ほか.length ? `${ほか.join('・')} は本番の日報に書きます。` : '');
 }
