@@ -202,10 +202,9 @@ function applyOpen(res) {
   };
 
   built = res.built && typeof res.built === 'object' ? res.built : null;
-  // ★過去の確定ずみ（新しい順）。募集が始まったとたんに、決まっている
+  // ★過去の確定ずみ。募集が始まったとたんに、決まっている
   //   シフトが見えなくなるのを防ぐためのものです（2026-09-13、ko-dai の指示）
-  past = Array.isArray(res.past)
-    ? res.past.filter((v) => v && v.built && typeof v.built === 'object') : [];
+  past = pastReady(res.past, period);
   // 店舗を切り替えたときに、前の店舗の選びが残らないようにします
   pastPick = null;
   pastOpen = false;
@@ -238,6 +237,45 @@ function applyOpen(res) {
   // ★`all` が入っていない返事（GASを貼り直す前）でも動くように、
   //   そのときだけ裏で取りに行きます。**貼り直しの前後どちらでも動きます**
   先に取っておく();
+}
+
+/**
+ * 過去の確定ずみを、出せる形にそろえる
+ *
+ * ★新しい期間の募集が始まると、前の期間は自動で「確定ずみ」に変わります
+ *   （組む画面の `shiftSetPhase(other…, SHIFT_BUILT)`）。ですから、ここに
+ *   **何もしなくても入ってきます**。このなかで2つだけ手を入れます。
+ *
+ *  ① **人が1人も入っていない期間は落とします。**
+ *     組まないまま次の募集を始めると、前の期間は中身が空のまま
+ *     「確定ずみ」になります。そのまま並べると「1つ前のシフト」を押しても
+ *     **まっ白な表**が出て、本当に決まっている前々回が下に押しやられます。
+ *  ② **いま出している期間より前のものを、先に並べます**（新しい順）。
+ *     あとのもの（募集をやり直したときに起きます）は、そのうしろに
+ *     古い順で付けます。こうしないと「1つ前」が**先の期間**を指すことがあります。
+ */
+function pastReady(list, now) {
+  if (!Array.isArray(list)) return [];
+  const 枠 = shiftSlotsOf(me.store).map((s) => s.id);
+  // ★「テスト」の人は画面に出さない決まりなので、ここでも数えません。
+  //   数えると、テストの人しか入っていない期間がまっ白な表になります
+  const 人がいる = (built) => Object.keys(built).some((d) => {
+    const v = built[d] || {};
+    return 枠.some((id) => Array.isArray(v[id])
+      && v[id].some((e) => e && !isShiftTester(e.n)));
+  });
+  const 番号 = (v) => (Number(v.y) * 1000) + (Number(v.m) * 10) + Number(v.half);
+  const いま = now ? 番号(now) : Infinity;   // 募集が無ければ、全部「前」あつかい
+
+  const 前 = [], 後 = [];
+  list.forEach((v) => {
+    if (!v || !v.built || typeof v.built !== 'object') return;
+    if (!人がいる(v.built)) return;
+    (番号(v) < いま ? 前 : 後).push(v);
+  });
+  前.sort((a, b) => 番号(b) - 番号(a));   // 新しい順。前[0] が「1つ前」
+  後.sort((a, b) => 番号(a) - 番号(b));   // 古い順
+  return 前.concat(後);
 }
 
 /** 番号を入れ直す（端末を人に渡すときなど） */
@@ -558,12 +596,12 @@ function renderPeriod() {
 /**
  * 「1つ前のシフトを見る」と「過去のシフト」
  *
- * ★ページの**上の方**に置きます。下に置くと、希望を入れる欄をぜんぶ
+ * ★ページの**上の方**に置きます。下に置くと、希望を入れる欄を全部
  *   通り過ぎないと見つかりません（2026-09-13、ko-dai の指示）。
  * ★過去が1つも無い店舗では、箱ごと出しません。押しても何も起きない
  *   ボタンがあると「壊れているのか」と迷います。
- * ★見本（テスト用）のときは出しません。見本は作り物のシフトを出す画面で、
- *   本物の過去と混ぜると、どちらを見ているのか分からなくなります。
+ * ★見本（テスト用）でも出します。はじめは外していましたが、**ko-dai さんが
+ *   確かめに使うのは見本の番号**なので、外すと本人が見られません。
  */
 function renderPastBar() {
   const bar = el('pastBar');
@@ -599,7 +637,7 @@ function renderPastBar() {
   });
 }
 
-/** 一覧の中の、期間1つぶんのボタン */
+/** 一覧の中の、期間1つ分のボタン */
 function pastBtn(name, key, on) {
   const b = document.createElement('button');
   b.type = 'button';
