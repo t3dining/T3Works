@@ -3031,7 +3031,9 @@ const cashYomiMachi = {};
  */
 function cashYomiApply(積) {
   const res = 積.res;
-  const got = parseJournalCash(res.text || '');
+  // ★様式ごとに読みます。おいでんテラスの紙には「現金以外おつり」があり、
+  //   ふつうの読み方だと、そこを現金の行と取りちがえます
+  const got = parseCashFor(積.店, res.text || '');
   cashEdit.ms = 積.ms;
   cashEdit.size = Math.round(積.dataUrl.length * 3 / 4 / 1024);
   cashEdit.gas = res.v || '（分かりません）';
@@ -3109,7 +3111,7 @@ async function cashReadPhoto(dataUrl, dateStr, file) {
     //   cash … 現金の金額が読めたか　j … 日報の5つが検算を通ったか
     //   n    … 日報に書ける数がいくつ取れたか（同点のときの決め手）
     const 読めた具合 = (text) => {
-      const c = parseJournalCash(text || '');
+      const c = parseCashFor(元の店, text || '');
       const out = { cash: c.how === 'ng' ? 0 : 1, j: 0, n: 0 };
       // ★★`state.storeId` ではなく `元の店` です。読んでいる間に店舗を移られると、
       //   紙の様式を取りちがえます（日計レポートを精算レポートとして読む、など）

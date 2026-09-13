@@ -2745,15 +2745,195 @@ function nippouTestFor(storeId) {
  *    読み取り全文をもらえれば足せます。おいでんテラスも未確認です。 */
 const JOURNAL_STORES = ['sumimaro', 'chacoru', 'baguru', 'popo', 'kojare'];
 
+/* ------------------------------------------------------------
+ *  おいでんテラス（精算）の読み取り
+ *
+ *  ★3つ目の様式です。炭まろ4店舗（日計レポート）ともこじゃれ（精算レポート）とも
+ *    違うレジです。2026年9月13日に1枚目をもらって作りました。
+ *
+ *  紙はこう出ます（Cloud Vision の読み取り）。
+ *
+ *      売上
+ *      売上
+ *      ◯◯,◯◯◯円        ← 総売上（税込）
+ *      ◯◯個
+ *      ◯◯,◯◯◯円        ← 純売上（税抜）
+ *      ◯◯人             ← 客数
+ *      消費税総額
+ *      ◯,◯◯◯円
+ *      売上内訳
+ *      10% 標準
+ *      ◯◯,◯◯◯円
+ *      消費税内訳
+ *      10% 標準
+ *      ◯,◯◯◯円
+ *      支払方法
+ *      クレジットカード支払
+ *      10% 標準
+ *      2件
+ *      ◯◯,◯◯◯円        ← 税率ごとの金額
+ *      ◯◯,◯◯◯円        ← その支払方法の合計
+ *      現金以外おつり      ← ここから下は支払方法ではありません
+ *
+ *  ★**位置で読みません。**見出しを手がかりにして、そのすぐ下を読みます。
+ *    1枚しか見ていないので、並びが変わっても効くようにしています。
+ *
+ *  ★検算が3つ取れます。**通らなければ使いません。**
+ *      純売上 ＋ 消費税 ＝ 総売上
+ *      支払方法の合計   ＝ 総売上
+ *      消費税内訳の合計 ＝ 消費税総額
+ * ---------------------------------------------------------- */
+
+/** 支払方法の欄は、この見出しが出たら終わりです */
+const OIDEN_PAY_END = ['現金以外おつり', '不支払額', '支払額', '割引割増', '個別割増',
+  'サービス料', '会計修正', '会計回数', '入出金', '伝票削除', 'レジ点検', '金種', '担当者'];
+
+/** その行は支払方法の名前か（金額でも件数でも税率でもない行） */
+function oidenPayName(line) {
+  const p = cashPlain(line);
+  if (!p) return false;
+  if (/[円個人件枚]/.test(p)) return false;
+  if (/%|標準|軽減/.test(p)) return false;
+  return /支払|現金|カード|マネー|商品券|掛/.test(p);
+}
+
+/**
+ * おいでんテラスの紙を読みます
+ *
+ * ★返す形は parseSeisan・parseJournal と同じです（呼ぶ側が同じに扱えるように）。
+ */
+function parseOiden(text) {
+  const lines = String(text || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const v = {};
+  const 見出し = (語, から) => {
+    for (let i = (から || 0); i < lines.length; i++) {
+      if (cashPlain(lines[i]).includes(語)) return i;
+    }
+    return -1;
+  };
+  /** その見出しのすぐ下から、次の見出しまでの金額を全部 */
+  const 下の金 = (i, 止め) => {
+    const out = [];
+    for (let j = i + 1; j < lines.length; j++) {
+      const p = cashPlain(lines[j]);
+      if (止め.some((x) => p.includes(x))) break;
+      const m = seisanMoneyOf(lines[j]);
+      if (m !== null) out.push(m);
+    }
+    return out;
+  };
+
+  // ① 消費税総額
+  const 税i = 見出し('消費税総額');
+  if (税i >= 0) {
+    const 金 = 下の金(税i, ['売上内訳', '消費税内訳', '支払方法']);
+    if (金.length) v.tax = 金[0];
+  }
+
+  // ② 売上内訳の合計 ＝ 純売上（税抜）
+  const 内i = 見出し('売上内訳');
+  if (内i >= 0) {
+    const 金 = 下の金(内i, ['消費税内訳', '支払方法']);
+    if (金.length) v.net = 金.reduce((a, x) => a + x, 0);
+  }
+
+  // ③ 消費税内訳の合計（②と同じ節の名前なので、消費税内訳を先に探してから）
+  let 税内 = null;
+  const 税内i = 見出し('消費税内訳');
+  if (税内i >= 0) {
+    const 金 = 下の金(税内i, ['支払方法', '現金以外']);
+    if (金.length) 税内 = 金.reduce((a, x) => a + x, 0);
+  }
+
+  // ④ 総売上。「売上」の節の、最初の金額です
+  const 売i = 見出し('売上');
+  if (売i >= 0) {
+    const 金 = 下の金(売i, ['消費税総額', '売上内訳']);
+    if (金.length) v.gross = 金[0];
+  }
+
+  // ⑤ 客数（◯人）
+  for (let i = 0; i < lines.length; i++) {
+    const c = /(\d[\d,]*)\s*人/.exec(cashPlain(lines[i]));
+    if (c) { v.guests = Number(c[1].replace(/,/g, '')); break; }
+  }
+
+  /* ⑥ 支払方法。名前が出たら、**次の名前までの最後の金額**をその方法の合計にします。
+       税率ごとの内わけと合計が並ぶので、最後が合計です。
+       内わけが1つだけの日は、同じ数が2つ並びます（どちらでも同じ）。 */
+  const 支i = 見出し('支払方法');
+  const 支払 = [];
+  if (支i >= 0) {
+    let 名 = '';
+    let 最後 = null;
+    const 閉じる = () => { if (名 && 最後 !== null) 支払.push({ 名, 金: 最後 }); 名 = ''; 最後 = null; };
+    for (let j = 支i + 1; j < lines.length; j++) {
+      const p = cashPlain(lines[j]);
+      if (OIDEN_PAY_END.some((x) => p.includes(x))) break;
+      if (oidenPayName(lines[j])) { 閉じる(); 名 = p; continue; }
+      const m = seisanMoneyOf(lines[j]);
+      if (m !== null && 名) 最後 = m;
+    }
+    閉じる();
+  }
+  支払.forEach((x) => {
+    if (/現金/.test(x.名)) v.cash = x.金;
+    else if (/カード|クレジット/.test(x.名)) v.creditAll = x.金;
+    else if (/マネー|電子/.test(x.名)) v.emoney = x.金;
+    else if (/商品券/.test(x.名)) v.voucher1 = x.金;
+    else if (/掛/.test(x.名)) v.kake = x.金;
+  });
+  /* ★現金の欄が出ない日は、現金の会計が無かった日です。
+       ただし**支払方法の合計が総売上と合ったときだけ**0にします。
+       合わないなら、読めていない支払方法があるということなので、
+       0にすると**現金があった日を0円で記録**してしまいます。 */
+  const 支払合計 = 支払.reduce((a, x) => a + x.金, 0);
+  const 現金なし = 支払.length > 0 && !支払.some((x) => /現金/.test(x.名));
+  if (現金なし && v.gross !== undefined && 支払合計 === v.gross) v.cash = 0;
+
+  /* ---- 検算 ---- */
+  const checks = [];
+  const has = (k) => v[k] !== undefined && v[k] !== null;
+  const add = (name, left, right, covers) => {
+    checks.push({ name, left, right, ok: left === right, covers });
+  };
+  if (has('net') && has('tax') && has('gross')) {
+    add('純売上 ＋ 消費税 ＝ 総売上', v.net + v.tax, v.gross, ['net', 'tax', 'gross']);
+  }
+  if (支払.length && has('gross')) {
+    add('支払方法の合計 ＝ 総売上', 支払合計, v.gross,
+      ['gross', 'cash', 'creditAll', 'emoney', 'voucher1', 'kake']);
+  }
+  if (税内 !== null && has('tax')) {
+    add('消費税内訳の合計 ＝ 消費税総額', 税内, v.tax, ['tax']);
+  }
+
+  /* ★通った検算に守られている数だけを「確か」にします。
+       こじゃれ・4店舗と同じ考え方です。 */
+  const sure = {};
+  checks.filter((c) => c.ok).forEach((c) => {
+    (c.covers || []).forEach((k) => { if (has(k)) sure[k] = true; });
+  });
+  // 客数はどの検算にも出てきません。読めたらそのまま使います
+  if (has('guests')) sure.guests = true;
+
+  const missing = [];
+  ['gross', 'net', 'tax', 'guests'].forEach((k) => { if (!has(k)) missing.push(k); });
+  const ok = checks.length > 0 && checks.every((c) => c.ok) && !missing.length;
+  return {
+    v, checks, fixed: [], sure, cut: false, ok, missing,
+    why: ok ? '' : (checks.some((c) => !c.ok) ? '' : '読み取れませんでした'),
+  };
+}
+
 /**
  * 店舗ごとの紙の様式
  *
  *   nikkei … 日計レポート（炭まろ・ちゃこる・バグる・popo）
  *   seisan … 精算レポート（こじゃれ）
- *
- * ★おいでんテラスは未確認なので、まだ入れていません。
+ *   oiden  … 精算（おいでんテラス。2026-09-13 に足しました）
  */
-const JOURNAL_FORMAT = { kojare: 'seisan' };
+const JOURNAL_FORMAT = { kojare: 'seisan', oiden: 'oiden' };
 function journalFormatOf(storeId) { return JOURNAL_FORMAT[storeId] || 'nikkei'; }
 
 /**
@@ -2762,7 +2942,29 @@ function journalFormatOf(storeId) { return JOURNAL_FORMAT[storeId] || 'nikkei'; 
  * ★呼ぶ側（js/app.js）は、どちらの紙かを知らなくて済みます。
  */
 function parseJournalFor(storeId, text) {
-  return journalFormatOf(storeId) === 'seisan' ? parseSeisan(text) : parseJournal(text);
+  const 様 = journalFormatOf(storeId);
+  if (様 === 'seisan') return parseSeisan(text);
+  if (様 === 'oiden') return parseOiden(text);
+  return parseJournal(text);
+}
+
+/**
+ * 現金売上の金額を、紙の様式に合わせて読みます
+ *
+ * ★おいでんテラスの紙には「現金以外おつり」という行があります。
+ *   ふつうの読み方（`parseJournalCash`）は「現金」の2文字を手がかりにするので、
+ *   **そこを現金の行と取りちがえます。**様式ごとに分けます。
+ * ★おいでんテラスは、**検算に守られているときだけ**数を返します。
+ *   守られていなければ「読めず」にして、手で入れてもらいます。
+ *   0円として記録すると、**現金のあった日が0円で残ります。**
+ */
+function parseCashFor(storeId, text) {
+  if (journalFormatOf(storeId) !== 'oiden') return parseJournalCash(text);
+  const r = parseOiden(text);
+  if (!r.sure.cash || r.v.cash === undefined || r.v.cash === null) {
+    return { yen: null, how: 'ng' };
+  }
+  return { yen: r.v.cash, how: r.v.cash === 0 ? 'none' : 'read' };
 }
 
 /**
