@@ -1577,6 +1577,8 @@ function renderCash() {
 const CASH_NIPPOU_ROWS = [
   { key: 'cash', name: '現金売上' },
   { key: 'credit', name: 'クレジット' },
+  // ★4店舗の紙の「ポイント」＝ホットペッパーグルメ。日報はリクルートポイントの行
+  { key: 'point', name: 'リクルートポイント' },
   { key: 'emoney', name: '電子マネー' },
   { key: 'net', name: '純売上' },
   { key: 'guests', name: '当日客数', plain: true },
