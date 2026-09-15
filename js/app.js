@@ -7764,10 +7764,11 @@ function renderSyncWarn() {
     return;
   }
 
-  const bad = !!Sync.lastError || stale || never;
+  // ★静かに送り直している最中は出しません（Sync.shownError）。ヘッダーの丸と同じ条件です
+  const bad = !!Sync.shownError() || stale || never;
   el.syncWarn.className = 'sync-warn' + (bad ? '' : ' is-hidden');
   if (!bad) return;
-  el.syncWarn.textContent = (Sync.lastError || 'しばらく同期できていません')
+  el.syncWarn.textContent = (Sync.shownError() || 'しばらく同期できていません')
     + '　ほかの人が提出しても、この画面には出ていないかもしれません。'
     + 'ヘッダーのしるしを押すと、いま同期します。';
 }
@@ -11236,8 +11237,9 @@ function renderSyncStatus() {
     // 最終同期の時刻も出しておく。届かないときの切り分けに使えます
     const t = Sync.lastSyncAt;
     const at = t ? `（最終同期 ${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')}）` : '';
-    el.syncInfo.textContent = Sync.lastError
-      ? `${Sync.lastError}（未送信 ${n}件。つながり次第、自動で送られます）`
+    // ★静かに送り直している最中は空になります（Sync.shownError）。赤と同じ条件で出します
+    el.syncInfo.textContent = Sync.shownError()
+      ? `${Sync.shownError()}（未送信 ${n}件。つながり次第、自動で送られます）`
       : n
         ? `未送信 ${n}件。まもなく送信されます。${at}`
         : `全店舗と同期できています。${at}`;

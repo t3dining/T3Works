@@ -666,8 +666,9 @@ function renderSyncStatus() {
     const n = Sync.outbox().length;
     const t = Sync.lastSyncAt;
     const at = t ? `（最終同期 ${t.getHours()}:${pad2(t.getMinutes())}）` : '';
-    el.syncInfo.textContent = Sync.lastError
-      ? `${Sync.lastError}（未送信 ${n}件。つながり次第、自動で送られます）`
+    // ★静かに送り直している最中は空になります（Sync.shownError）。赤と同じ条件で出します
+    el.syncInfo.textContent = Sync.shownError()
+      ? `${Sync.shownError()}（未送信 ${n}件。つながり次第、自動で送られます）`
       : n
         ? `未送信 ${n}件。まもなく送信されます。${at}`
         : `みんなの端末と同期できています。${at}`;
@@ -704,11 +705,12 @@ function renderSyncWarn() {
     el.syncWarn.textContent = Sync.serverWarn;
     return;
   }
-  if (Sync.lastError) {
+  // ★静かに送り直している最中は出しません（Sync.shownError）。ヘッダーの丸と同じ条件です
+  if (Sync.shownError()) {
     el.syncWarn.className = 'sync-warn';
     // ★理由の文（js/sync.js）に足すのは、この画面でしか言えないことだけです。
     //   「入力は消えません」はあちらが言うので、ここでは重ねません
-    el.syncWarn.textContent = Sync.lastError
+    el.syncWarn.textContent = Sync.shownError()
       + (未送信 ? `　未送信 ${未送信}件。` : '　')
       + 'ヘッダーのしるしを押すと、いま送り直します';
     return;

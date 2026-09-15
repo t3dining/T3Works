@@ -3098,9 +3098,10 @@ function renderSyncWarn() {
   if (!el.syncWarn) return;
   const n = Sync.outbox ? Sync.outbox().length : 0;
 
-  if (Sync.lastError) {
+  // ★静かに送り直している最中は出しません（Sync.shownError）。ヘッダーの丸と同じ条件です
+  if (Sync.shownError()) {
     el.syncWarn.className = 'sync-warn';
-    el.syncWarn.textContent = `${Sync.lastError}`
+    el.syncWarn.textContent = `${Sync.shownError()}`
       + (n ? `（未保存 ${n}件）` : '')
       + '　直した内容は、まだ現場の端末に届いていません。'
       + 'ヘッダーのしるしを押すと、いま送ります。';
@@ -3147,8 +3148,8 @@ function openSettings() {
   const at = t ? `（最後に保存 ${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')}）` : '';
   el.syncInfo.textContent = !Sync.enabled()
     ? '（この端末では共有していません）'
-    : Sync.lastError
-      ? `${Sync.lastError}（未保存 ${n}件。つながり次第、自動で送られます）`
+    : Sync.shownError()
+      ? `${Sync.shownError()}（未保存 ${n}件。つながり次第、自動で送られます）`
       : n
         ? `未保存 ${n}件。まもなく送られます。${at}`
         : `全店舗と同期できています。${at}`;

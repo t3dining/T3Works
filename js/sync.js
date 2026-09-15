@@ -38,9 +38,17 @@ function 設定の呼び名(n) {
  *   **どれなのか誰にも分かりませんでした。**
  *   ★1か所に置きます。`flush()` と `ask()` の両方から使います。
  */
+/* ★4つに分けます（2026-09-15 まで3つでした）。
+     「渡す口」… Google がスクリプトの結果を渡す段（script.googleusercontent.com）で止まり、
+     JSON でない返事（404 のページなど）を返したとき。★**スクリプトは終わっています。**
+     Apps Script の「実行数」で裏を取りました：端末が23回続けて赤だった 9/14 20:25〜20:41 の
+     実行は**全部 2〜4秒で完了**。落ちているのはその後の「渡す段」で、こちらのコードの外です。
+     送り直せば通ることが多いので、赤にせず静かに送り直します（`flush()` の finally）。
+     2026-09-15 までこれは「つながらない」に混ざっていて、電波の話と見分けがつきませんでした */
 function この失敗のたぐい(e) {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return '電波なし';
   if (e && e.name === 'AbortError') return '返事なし';
+  if (e && e.name === '渡す口') return '渡す口';
   return 'つながらない';
 }
 
@@ -54,7 +62,30 @@ function この失敗はなにか(e, 上限ms) {
     return `サーバーが${Math.round(上限ms / 1000)}秒たっても返事をしません。`
       + '混み合っているだけで、電波の問題ではありません。少し待つと自動で送り直します';
   }
+  if (たぐい === '渡す口') {
+    return 'Google 側で結果を受け取れませんでした。電波の問題ではありません。'
+      + '自動で送り直します（入力は消えません）';
+  }
   return 'サーバーにつながりません。少し待つと自動で送り直します';
+}
+
+/**
+ * 返事を JSON として読む
+ *
+ * ★JSON でなければ「渡す口」の失敗にします。`res.json()` に任せると SyntaxError になり、
+ *   `この失敗のたぐい()` が「つながらない」と読みます（2026-09-15 までそうでした）。
+ *   HTTP の番号（404 など）も持たせて、記録に残します。
+ */
+async function 返事を読む(res) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    const err = new Error(`Google の返事が JSON ではありません（HTTP ${res.status}）`);
+    err.name = '渡す口';
+    err.status = res.status;
+    throw err;
+  }
 }
 
 const Sync = {
@@ -113,8 +144,31 @@ const Sync = {
    *   数を動かすときは、必ず `コード.gs` の `tryLock` と一緒に見ること。
    */
   hangMs: 35000,
+  /**
+   * 読むだけの同期（送るものが無いとき）の上限
+   *
+   * ★2026-09-15 から、読むだけの同期はサーバーで鍵を取りません（`gas/コード.gs`）。
+   *   だから25秒の順番待ちは無く、スクリプトは2〜4秒で終わります。それより長いのは
+   *   Google が結果を渡す段が止まっているときで、待つより送り直す方が早く通ります。
+   */
+  readHangMs: 20000,
   lastError: '',
   lastSyncAt: null,
+  /**
+   * 続けて失敗した回数と、静かに送り直している最中か
+   *
+   * ★赤にする前に、3秒→6秒→12秒で3回、静かに送り直します（`静かな間`）。
+   *   Google が結果を渡す段の失敗（渡す口）は、送り直せば通ることが多いからです。
+   *   ★スクリプトは1回目でもう終わっています。送り直しても二重にはなりません
+   *   （送るものは「この値にする」形で、足し算ではありません）。
+   * ★電波が無いとき、PIN・番号・権限で断られたときは、送り直しても同じなので静かにしません。
+   * ★4回目からは赤にして、今までどおり15秒おき（送信箱があるとき）に戻します。
+   */
+  _fails: 0,
+  _quiet: false,
+  静かな間: [3000, 6000, 12000],
+  /** 直前の失敗が、送り直せば通るたぐいか（finally が見ます） */
+  _送り直せる: false,
   // アプリを開いた最初の1回は、設定（項目・担当者・定休日）を丸ごと取り直す。
   // 受け取り位置がずれていても、必ず最新の内容から始められるようにするため。
   _settingsPulled: false,
@@ -185,7 +239,7 @@ const Sync = {
    *   `ms` は、あきらめるまでに何秒待ったか。**35秒なら時間切れ**と分かります。
    * ★ここが落ちても同期は止めません。記録は本体ではありません
    */
-  _noteFail(たぐい, 文, ms) {
+  _noteFail(たぐい, 文, ms, 番号) {
     /* ★閉じかけ・読み直しの最中は記録しません。
          2026-09-14 の1件目がこれでした。00:52 に新しい版を出し、00:59 に
          ko-dai さんが「更新する」を押したところ、**送りかけていた通信が
@@ -210,8 +264,10 @@ const Sync = {
         前.n = (前.n || 1) + 1;
         前.at = new Date().toISOString();
         if (ms) 前.ms = Math.max(前.ms || 0, ms);
+        if (番号) 前.s = 番号;
       } else {
-        list.push({ at: new Date().toISOString(), k: たぐい, t: 文, ms: ms || 0, n: 1 });
+        // ★`s` は HTTP の番号（渡す口のときだけ。404 なら Google の「ファイルを開くことができません」）
+        list.push({ at: new Date().toISOString(), k: たぐい, t: 文, ms: ms || 0, n: 1, s: 番号 || 0 });
       }
       localStorage.setItem(this._logKey, JSON.stringify(list.slice(-this.logMax)));
     } catch (e) { /* 記録できなくても、同期は続けます */ }
@@ -275,12 +331,15 @@ const Sync = {
     const ops = this._withSummaries(sending);
     // ★あきらめるまでに何秒待ったか。記録に入れます（35秒なら時間切れと分かります）
     const この回の始まり = Date.now();
+    // ★書くときは鍵待ち（25秒）があるので長く、読むだけなら短く（readHangMs を見てください）
+    const 上限 = ops.length ? this.hangMs : this.readHangMs;
+    this._送り直せる = false;
 
     try {
       // 返事が返ってこないまま止まらないよう、時間を切ります。
       // iPhone はアプリを裏に回した拍子に、通信が返ってこないことがあります
       const stop = new AbortController();
-      const timer = setTimeout(() => stop.abort(), this.hangMs);
+      const timer = setTimeout(() => stop.abort(), 上限);
       const body = JSON.stringify({
         pin: this.pin(),
         code: this.code(),
@@ -304,7 +363,7 @@ const Sync = {
         body,
       });
       clearTimeout(timer);
-      const json = await res.json();
+      const json = await 返事を読む(res);
 
       if (!json.ok) {
         this.lastError = json.error || '同期に失敗しました';
@@ -315,6 +374,8 @@ const Sync = {
           json.code === 'busy' ? '順番待ち' : `サーバーが断った（${json.code || '理由なし'}）`,
           this.lastError, Date.now() - この回の始まり
         );
+        // ★混み合い・サーバーの中の失敗は送り直せば通ります。PIN・番号・権限は送り直しても同じです
+        this._送り直せる = ['busy', 'error'].includes(json.code);
         // ロック中はPINを消さない（正しいPINを持っている人まで締め出さないため）
         if (json.code === 'bad_pin' || json.code === 'no_pin') this.clearPin();
         // 管理用PINが要る操作が現場アプリの送信箱に紛れ込んだ場合、
@@ -339,7 +400,13 @@ const Sync = {
 
       // ほかの端末の変更が届いたなら、しばらく速く取りに行きます。
       // ★間隔を取り直さないと、次に取りに行くのが60秒後のままになります
-      if ((json.records || []).length) {
+      // ★自分がいま送った分の返り（同じキー）では速くしません。
+      //   2026-09-15 まで、自分で入れたチェックが自分の端末を40秒間3秒おきにしていました
+      //   （端末を見分ける印が無いので、自分の行もそのまま返ってきます）。
+      //   サーバーが直近10秒の行を何度か返すようになった（`readCursor_` の余白）ので、なおさら要ります
+      const 自分の = new Set(sending.map((op) => op.k).filter(Boolean));
+      const よそから = (json.records || []).some((r) => !自分の.has(r.k));
+      if (よそから) {
         this._busyUntil = Date.now() + this.busyMs;
         this._loop();
       }
@@ -359,18 +426,46 @@ const Sync = {
            ko-dai さんも現場も、そう読むしかなかった状態です。
            すぐ下の `ask()` は、ずっとこの切り分けをしていました。
            ★**同じことを2か所に書いたのではなく、片方に書き忘れていた形です。** */
-      this.lastError = この失敗はなにか(e, this.hangMs);
-      this._noteFail(この失敗のたぐい(e), this.lastError, Date.now() - この回の始まり);
+      const たぐい = この失敗のたぐい(e);
+      this.lastError = この失敗はなにか(e, 上限);
+      this._noteFail(たぐい, this.lastError, Date.now() - この回の始まり, e && e.status);
+      // ★電波が無いときだけは、送り直しても同じなので静かにしません（online で自動で送ります）
+      this._送り直せる = たぐい !== '電波なし';
     } finally {
       this.running = false;
       this.runningSince = 0;
+      if (!this.lastError) {
+        this._fails = 0;
+        this._quiet = false;
+        // ★送っているあいだに増えた分は、すぐ続けて送ります。
+        //   前は成功していても15秒待っていたので、連続でチェックを入れると
+        //   最後の何件かが15秒遅れて届いていました。
+        if (this.outbox().length) this.scheduleFlush(700);
+      } else if (this._送り直せる && this._fails < this.静かな間.length) {
+        /* ★静かな送り直し（`_fails` のコメントを見てください）。
+             読むだけの同期でも送り直します。送り直さないと、次に取りに行く60秒後まで
+             赤（いまは「送り直しています」）が残るためです */
+        this._fails += 1;
+        this._quiet = true;
+        this.scheduleFlush(this.静かな間[this._fails - 1]);
+      } else {
+        // ★ここから赤。送れなかったときだけ、間を空けて送り直します（今までどおり）
+        this._fails += 1;
+        this._quiet = false;
+        if (this.outbox().length) this.scheduleFlush(15000);
+      }
       this._notify();
-      // ★送っているあいだに増えた分は、すぐ続けて送ります。
-      //   前は成功していても15秒待っていたので、連続でチェックを入れると
-      //   最後の何件かが15秒遅れて届いていました。
-      //   送れなかったとき（エラー）だけ、間を空けて送り直します。
-      if (this.outbox().length) this.scheduleFlush(this.lastError ? 15000 : 700);
     }
+  },
+
+  /**
+   * 画面に出す失敗の文
+   *
+   * ★静かに送り直している最中は空です。ヘッダーの丸・設定の文・帯は、
+   *   `lastError` ではなく**こちら**を見ます（`lastError` は記録と送り直しの判断に使います）。
+   */
+  shownError() {
+    return this._quiet ? '' : this.lastError;
   },
 
   /**
@@ -490,11 +585,11 @@ const Sync = {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ pin: this.pin(), code: this.code(), action, ...extra }),
       });
-      return await res.json();
+      return await 返事を読む(res);
     } catch (e) {
       // ★切り分けは この失敗はなにか() 1か所です。
       //   ここに書き写すと、片方だけ直った状態が必ずできます
-      return { ok: false, error: この失敗はなにか(e, this.askMs) };
+      return { ok: false, error: この失敗はなにか(e, this.askMs), kind: この失敗のたぐい(e) };
     } finally {
       clearTimeout(timer);
     }
@@ -623,11 +718,11 @@ const Sync = {
   legendHtml() {
     const rows = [
       ['ok', '同期できています', '入力した内容が、みんなの端末に届いています'],
-      ['busy', '送っています', '少し待つと ✓ に変わります'],
+      ['busy', '送っています', '少し待つと ✓ に変わります。通らなかったときに静かに送り直している最中も、このしるしです'],
       ['pending', 'まだ送れていない分があります', 'つながり次第、自動で送られます。入力した内容が消えることはありません'],
-      ['error', '送れていません', '理由は帯に出ます。「電波が届いていません」なら待つだけ、'
-        + '「サーバーが返事をしません」なら混み合っているだけで、電波の問題ではありません。'
-        + '入力した内容は、どちらでも消えません'],
+      ['error', '送れていません', '3回送り直しても通らなかったときです。理由は帯に出ます。'
+        + '「電波が届いていません」なら待つだけ。「サーバーが返事をしません」「Google 側で結果を受け取れませんでした」なら'
+        + '混み合っているだけで、電波の問題ではありません。入力した内容は、どれでも消えません'],
     ];
     return rows.map(([kind, name, desc]) =>
       '<li class="sync-legend__row">'
@@ -660,7 +755,7 @@ const Sync = {
       const かず = r.n > 1 ? `<span class="sync-log__n">${r.n}回</span>` : '';
       return '<li class="sync-log__row">'
         + `<span class="sync-log__when">${日}</span>`
-        + `<span class="sync-log__kind">${r.k || ''}</span>`
+        + `<span class="sync-log__kind">${r.k || ''}${r.s ? ` ${r.s}` : ''}</span>`
         + `<span class="sync-log__ms">${秒}</span>${かず}`
         + '</li>';
     }).join('');
@@ -672,6 +767,10 @@ const Sync = {
     if (!this.pin()) return { kind: 'error', text: 'PIN未入力' };
     if (this.running) return { kind: 'busy', text: '同期中…' };
     const n = this.outbox().length;
+    // ★静かに送り直している最中は赤にしません（`_fails` のコメントを見てください）
+    if (this.lastError && this._quiet) {
+      return { kind: 'busy', text: n ? `送り直しています（未送信 ${n}件）` : '送り直しています…' };
+    }
     if (this.lastError) return { kind: 'error', text: n ? `未送信 ${n}件` : '同期エラー' };
     if (n) return { kind: 'pending', text: `未送信 ${n}件` };
     return { kind: 'ok', text: '同期済み' };
