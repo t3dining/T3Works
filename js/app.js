@@ -1877,6 +1877,15 @@ function renderNippouGate() {
     : 書ける ? '手で直した数で書けます' : '★日報には入れません';
 
   const say = [];
+  // ★記録の現金売上と、表の現金売上（紙の数）が食いちがうとき（journal現金を記録へ写す の説明）
+  const 表の現金 = journal行の数(state.storeId).find((x) => x.row.key === 'cash');
+  const 記録の現金 = el.cashSales ? cashYen(el.cashSales.value) : null;
+  if (表の現金 && 表の現金.紙 !== null && 記録の現金 !== null && 表の現金.紙 !== 記録の現金) {
+    say.push(`★記録の現金売上（${cashText(記録の現金)}円）と、表の現金売上（${cashText(表の現金.紙)}円）がちがいます。`
+      + (el.cashSales.readOnly
+        ? '「記録し直す」を押して、紙の数にそろえてください'
+        : '紙を見て、どちらかを直してください'));
+  }
   if (手) {
     const 名 = journal行の数(state.storeId).filter((x) => x.手入力).map((x) => x.row.name);
     say.push(`★手で直した数：${名.join('・')}`);
@@ -3171,6 +3180,7 @@ function journal行を作る(row) {
  */
 function journal手を入れた(key, input) {
   if (!cashEdit.手) cashEdit.手 = {};
+  const 前の手 = cashEdit.手[key];
   const 文字 = String(input.value || '').replace(/[円¥￥\s]/g, '');
   if (文字 === '') {
     delete cashEdit.手[key];
@@ -3187,6 +3197,57 @@ function journal手を入れた(key, input) {
       input.style.borderColor = '#d8d8d8';
     }
   }
+  if (key === 'cash') journal現金を記録へ写す(前の手);
+  cashHandSave();
+  renderNippouTable();
+  renderNippouGate();
+}
+
+/**
+ * 表の「現金売上」（紙の数）と、下の記録の「現金売上」の欄を、同じ数にそろえます
+ *
+ * ★★この2つは**同じ数（紙に出ている現金）**です。ところが別々の欄で、
+ *   片方を直してももう片方には写りませんでした（マニュアル部署が気づきました・2026-09-16）。
+ *
+ *     ・表で現金を直した日 … 日報には直した数、記録（月の一覧・「本日 ◯◯円」）には読み取った数
+ *     ・現金が読めなかった日 … 表で打っても記録の欄が空のままで、**日報に書けない**
+ *                             （日報に書く前に記録するので「現金売上を入れてください」で止まる）
+ *     ・記録の欄で直した日 … 日報には読み取った数のまま
+ *
+ * ★どちらで直しても、もう片方に写します。**あとから直した方が勝ちます。**
+ * ★記録ずみ（欄が固まっている）の日は、記録の欄を勝手に変えません。
+ *   食いちがったら表の下に知らせます（renderNippouGate）。「記録し直す」で直してもらいます。
+ * ★読み取りだけで2つが食いちがう紙は、本物116枚で0枚でした。知らせが出るのは、
+ *   人がどちらかを直したときだけです。
+ */
+function journal現金を記録へ写す(前の手) {
+  if (!el.cashSales || el.cashSales.readOnly) return;
+  const x = journal行の数(state.storeId).find((r) => r.row.key === 'cash');
+  if (!x) return;
+  if (x.手入力) {
+    el.cashSales.value = cashText(x.紙);
+    return;
+  }
+  // ★手で直した数を消したとき。記録の欄が、その消した数のままなら、読み取った数に戻します。
+  //   人が記録の欄で別の数に直していたら、そちらは触りません
+  if (前の手 === undefined || cashYen(el.cashSales.value) !== 前の手) return;
+  const 元 = cashEdit.how === 'none' ? 0 : cashEdit.ocr;
+  el.cashSales.value = (元 === null || 元 === undefined) ? '' : cashText(元);
+}
+
+/** 記録の「現金売上」の欄で直したら、表の現金売上（日報に書く数）にも写します（上の説明） */
+function journal記録の現金を表へ写す() {
+  if (!JOURNAL_STORES.includes(state.storeId)) return;
+  if (!el.cashSales || el.cashSales.readOnly) return;
+  // ★写真を撮る前は写しません。表がまだ無く、あとで読んだ数を「手で直した数」で隠してしまうためです
+  if (!(cashEdit.j || cashEdit.pending || cashEdit.photo)) return;
+  const x = journal行の数(state.storeId).find((r) => r.row.key === 'cash');
+  if (!x) return;
+  if (!cashEdit.手) cashEdit.手 = {};
+  const n = cashYen(el.cashSales.value);
+  if (n === null || n < 0) delete cashEdit.手.cash;
+  else if (x.確か && x.読んだ === n) delete cashEdit.手.cash;   // 読み取りと同じなら「手で直した」にしません
+  else cashEdit.手.cash = n;
   cashHandSave();
   renderNippouTable();
   renderNippouGate();
@@ -11929,6 +11990,8 @@ function bindEvents() {
   el.cashWeekThis.addEventListener('click', () => moveCashWeek(0));
   el.cashRedo.addEventListener('click', redoCash);
   bindHalfWidthInput(el.cashSales, 'number');
+  // ★記録の現金売上を直したら、表の現金売上（日報に書く数）にもそろえます
+  el.cashSales.addEventListener('input', journal記録の現金を表へ写す);
   el.shotModal.querySelectorAll('[data-shot-close]').forEach((n) =>
     n.addEventListener('click', () => el.shotModal.classList.add('is-hidden')));
   el.cashOcrLink.addEventListener('click', openOcrText);
