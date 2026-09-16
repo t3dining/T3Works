@@ -1958,7 +1958,6 @@ function journal客単価税抜(lines) {
  *   残すと足し算の検算が落ちて、せっかく戻した客数まで捨ててしまいます。
  */
 function journal客数を客単価から(lines, v) {
-  if (v.guests !== null && v.guests !== undefined) return null;
   if (!v.gross || !v.net || !v.per || v.per <= 0) return null;
   const per2 = journal客単価税抜(lines);
   if (!per2 || per2 <= 0) return null;
@@ -1988,41 +1987,55 @@ function parseJournal(text) {
     if (積) Object.keys(積).forEach((k) => { v[k] = 積[k]; });
   }
   const fixed = picked.fixed;
-  /* ★それでも客数が読めないときは、客単価から逆に計算します（上の説明） */
-  let 逆算の客数 = null;
-  if (v.guests === null || v.guests === undefined) {
-    逆算の客数 = journal客数を客単価から(lines, v);
-    if (逆算の客数) {
-      v.guests = 逆算の客数;
-      v.men = null; v.women = null; v.nosel = null;   // ★崩れているので消します
-      fixed.push('当日客数');
-    }
-  }
   const has = (k) => v[k] !== null && v[k] !== undefined;
   const sumPay = () => JOURNAL_PAY.reduce((a, k) => a + (v[k] || 0), 0);
 
   /* ---- 検算。★1つ1つの数に「守ってくれる式」を結びつけ、
      その式が通った数だけを使います ---- */
-  const checks = journalCheck(v, 件数);
-  /* ★逆算で戻したときは、その根拠（2つのわり算が揃ったこと）を検算として残します。
-       ★これが無いと、客数を守っているのが「売上÷客数＝客単価」だけになります。
-         それは逆算で作った数なので、**必ず通ってしまいます。**
-         2つのわり算が揃ったことの方が、本当の根拠です。 */
-  if (逆算の客数) {
-    const per2 = journal客単価税抜(lines);
-    checks.push({
-      name: '売上÷客単価（税込）と 純売上÷客単価（税抜）が同じ客数になるか',
-      left: Math.round(v.gross / v.per), right: per2 ? Math.round(v.net / per2) : -1,
-      ok: !!per2 && Math.round(v.gross / v.per) === Math.round(v.net / per2),
-      covers: ['guests'],
+  let 逆算の客数 = null;
+  const 数える = () => {
+    const cs = journalCheck(v, 件数);
+    /* ★逆算で戻したときは、その根拠（2つのわり算が揃ったこと）を検算として残します。
+         ★これが無いと、客数を守っているのが「売上÷客数＝客単価」だけになります。
+           それは逆算で作った数なので、**必ず通ってしまいます。**
+           2つのわり算が揃ったことの方が、本当の根拠です。 */
+    if (逆算の客数) {
+      const per2 = journal客単価税抜(lines);
+      cs.push({
+        name: '売上÷客単価（税込）と 純売上÷客単価（税抜）が同じ客数になるか',
+        left: Math.round(v.gross / v.per), right: per2 ? Math.round(v.net / per2) : -1,
+        ok: !!per2 && Math.round(v.gross / v.per) === Math.round(v.net / per2),
+        covers: ['guests'],
+      });
+    }
+    const su = {};
+    Object.keys(v).forEach((k) => {
+      if (!has(k)) return;
+      const mine = cs.filter((c) => c.covers.indexOf(k) >= 0);
+      su[k] = mine.length > 0 && mine.every((c) => c.ok);
     });
+    return { cs, su };
+  };
+
+  let { cs: checks, su: sure } = 数える();
+
+  /* ★★客数が**使えないとき**は、客単価から逆に計算します。
+       ★はじめ「客数が読めなかったとき」だけにしていましたが、それでは足りませんでした。
+         2026年8月11日は 63客 を「3」、8月13日は 107客 を「07」と読んでいて、
+         **読めてはいる（けれど間違っている）**ので、逆算が動きませんでした。
+       ★検算を通った客数は、**絶対に上書きしません。**
+         上書きするのは「読めなかった」か「読めたが検算に落ちた」ときだけです。 */
+  if (!sure.guests) {
+    逆算の客数 = journal客数を客単価から(lines, v);
+    if (逆算の客数) {
+      v.guests = 逆算の客数;
+      v.men = null; v.women = null; v.nosel = null;   // ★崩れているので消します
+      if (fixed.indexOf('当日客数') < 0) fixed.push('当日客数');
+      const 二 = 数える();
+      checks = 二.cs;
+      sure = 二.su;
+    }
   }
-  const sure = {};
-  Object.keys(v).forEach((k) => {
-    if (!has(k)) return;
-    const mine = checks.filter((c) => c.covers.indexOf(k) >= 0);
-    sure[k] = mine.length > 0 && mine.every((c) => c.ok);
-  });
 
   const bad = checks.filter((c) => !c.ok);
   const needed = ['cash', 'credit', 'emoney', 'net', 'guests'];
