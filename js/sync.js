@@ -76,6 +76,12 @@ function この失敗はなにか(e, 上限ms) {
  *   `この失敗のたぐい()` が「つながらない」と読みます（2026-09-15 までそうでした）。
  *   HTTP の番号（404 など）も持たせて、記録に残します。
  */
+/** 端末の日付を 'YYYY-MM-DD' にします（静かに通った回数を日ごとに数えるため） */
+function 日付の文字(d) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 async function 返事を読む(res) {
   const text = await res.text();
   try {
@@ -99,6 +105,9 @@ const Sync = {
   _logKey: APP.storageKey + ':syncLog',
   /** 残す件数。多くしても読みません。古いものから落とします */
   logMax: 20,
+  /* ★静かに送り直して通った回数（日ごと）。赤くなった記録には載せません。
+       「赤が減ったか」と「Google の渡す口がどれだけ落ちているか」を別々に読むためのものです */
+  _quietKey: APP.storageKey + ':syncQuiet',
   // ★「どこまで同期したか」の印は Store（記録と同じ場所）に置きます。
   //   記録とバラバラの場所にあると、片方だけ端末から消えたときに
   //   「記録は無いのに印は進んだまま」になり、サーバーが何も返さなくなります。
@@ -163,12 +172,22 @@ const Sync = {
    *   （送るものは「この値にする」形で、足し算ではありません）。
    * ★電波が無いとき、PIN・番号・権限で断られたときは、送り直しても同じなので静かにしません。
    * ★4回目からは赤にして、今までどおり15秒おき（送信箱があるとき）に戻します。
+   * ★赤くなった記録に書くのも、赤になったときだけです（`_保留` を見てください）。
    */
   _fails: 0,
   _quiet: false,
   静かな間: [3000, 6000, 12000],
   /** 直前の失敗が、送り直せば通るたぐいか（finally が見ます） */
   _送り直せる: false,
+  /**
+   * まだ記録に書いていない失敗（静かに送り直している最中の分）
+   *
+   * ★失敗はまずここにためます。**赤くなった記録に書くのは、赤になったときだけ**です。
+   *   静かに送り直して通れば、日ごとの回数（`_quietKey`）に足すだけで、記録には残しません。
+   *   2026-09-16 の朝、静かに通った1件が「赤くなった記録」に並んでいて、
+   *   **赤くなった回数が減ったのかを読めなくなっていました。**
+   */
+  _保留: [],
   // アプリを開いた最初の1回は、設定（項目・担当者・定休日）を丸ごと取り直す。
   // 受け取り位置がずれていても、必ず最新の内容から始められるようにするため。
   _settingsPulled: false,
@@ -233,7 +252,7 @@ const Sync = {
     }
   },
   /**
-   * 1件つけます
+   * 1件ためます（記録に書くのは赤になったときです。`_保留` を見てください）
    *
    * ★`たぐい` は短い見出し（電波なし／返事なし／つながらない／サーバーが断った）。
    *   `ms` は、あきらめるまでに何秒待ったか。**35秒なら時間切れ**と分かります。
@@ -255,25 +274,67 @@ const Sync = {
          「たまたま裏だった」と「閉じた」を取りちがえて、**見張りごと黙ります。**
          印（`_とじかけ`）を自分で立てて、**表に戻したら自分で下ろします。** */
     if (this._とじかけ) return;
+    // ★`s` は HTTP の番号（渡す口のときだけ。404 なら Google の「ファイルを開くことができません」）
+    this._保留.push({ at: new Date().toISOString(), k: たぐい, t: 文, ms: ms || 0, n: 1, s: 番号 || 0 });
+  },
+  /** ためていた失敗を、赤くなった記録に書きます（赤になったとき。`flush()` の finally） */
+  _記録に残す(失敗たち) {
+    if (!失敗たち.length) return;
     try {
       const list = this.log().reverse();
-      const 前 = list[list.length - 1];
-      // ★同じ理由が続けて出たときは、件数を足すだけにします。
-      //   15秒おきに送り直すので、そのままだと同じ行で20件が埋まります
-      if (前 && 前.k === たぐい && Date.now() - new Date(前.at).getTime() < 10 * 60 * 1000) {
-        前.n = (前.n || 1) + 1;
-        前.at = new Date().toISOString();
-        if (ms) 前.ms = Math.max(前.ms || 0, ms);
-        if (番号) 前.s = 番号;
-      } else {
-        // ★`s` は HTTP の番号（渡す口のときだけ。404 なら Google の「ファイルを開くことができません」）
-        list.push({ at: new Date().toISOString(), k: たぐい, t: 文, ms: ms || 0, n: 1, s: 番号 || 0 });
-      }
+      失敗たち.forEach((f) => {
+        const 前 = list[list.length - 1];
+        // ★同じ理由が続けて出たときは、件数を足すだけにします。
+        //   15秒おきに送り直すので、そのままだと同じ行で20件が埋まります
+        if (前 && 前.k === f.k && new Date(f.at).getTime() - new Date(前.at).getTime() < 10 * 60 * 1000) {
+          前.n = (前.n || 1) + (f.n || 1);
+          前.at = f.at;
+          if (f.ms) 前.ms = Math.max(前.ms || 0, f.ms);
+          if (f.s) 前.s = f.s;
+        } else {
+          list.push(f);
+        }
+      });
       localStorage.setItem(this._logKey, JSON.stringify(list.slice(-this.logMax)));
     } catch (e) { /* 記録できなくても、同期は続けます */ }
   },
+  /**
+   * ためていた失敗を「静かに送り直して通った分」に数えます（通ったとき。`flush()` の finally）
+   *
+   * ★日ごとの回数だけです。何が落ちたかは残しません（残すと赤くなった記録と同じ雑音になります）。
+   *   7日より古い日は落とします。
+   */
+  _静かに通った(失敗たち) {
+    if (!失敗たち.length) return;
+    try {
+      const v = this._静かな回数();
+      const 日 = 日付の文字(new Date());
+      v[日] = (v[日] || 0) + 失敗たち.reduce((a, f) => a + (f.n || 1), 0);
+      Object.keys(v).sort().slice(0, -7).forEach((k) => { delete v[k]; });
+      localStorage.setItem(this._quietKey, JSON.stringify(v));
+    } catch (e) { /* 数えられなくても、同期は続けます */ }
+  },
+  /** 日ごとの「静かに通った」回数。{ 'YYYY-MM-DD': 回数 } */
+  _静かな回数() {
+    try {
+      const v = JSON.parse(localStorage.getItem(this._quietKey) || '{}');
+      return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+    } catch (e) {
+      return {};
+    }
+  },
+  /** 画面に出す分。今日と昨日の回数 */
+  静かに通った回数() {
+    const v = this._静かな回数();
+    const 今日 = 日付の文字(new Date());
+    const 昨日 = 日付の文字(new Date(Date.now() - 24 * 60 * 60 * 1000));
+    return { 今日: v[今日] || 0, 昨日: v[昨日] || 0 };
+  },
+  /** 「消す」。赤くなった記録と、静かに通った回数の両方を消します */
   clearLog() {
     try { localStorage.removeItem(this._logKey); } catch (e) {}
+    try { localStorage.removeItem(this._quietKey); } catch (e) {}
+    this._保留 = [];
   },
 
   /**
@@ -435,6 +496,9 @@ const Sync = {
       this.running = false;
       this.runningSince = 0;
       if (!this.lastError) {
+        // ★静かに送り直して通りました。記録には残さず、日ごとの回数にだけ足します
+        this._静かに通った(this._保留);
+        this._保留 = [];
         this._fails = 0;
         this._quiet = false;
         // ★送っているあいだに増えた分は、すぐ続けて送ります。
@@ -452,6 +516,9 @@ const Sync = {
         // ★ここから赤。送れなかったときだけ、間を空けて送り直します（今までどおり）
         this._fails += 1;
         this._quiet = false;
+        // ★赤になったので、ためていた失敗をここで初めて記録に書きます（静かに送り直した分も一緒に）
+        this._記録に残す(this._保留);
+        this._保留 = [];
         if (this.outbox().length) this.scheduleFlush(15000);
       }
       this._notify();
@@ -742,11 +809,19 @@ const Sync = {
    */
   logHtml() {
     const list = this.log();
+    /* ★1行目は「静かに送り直して通った分」の回数です。記録には残しません。
+         ここを分けないと、静かに通った分まで赤い行に見えて、
+         **赤が減ったのかが読めません**（2026-09-16 の朝がそうでした） */
+    const 静か = this.静かに通った回数();
+    const 頭 = '<li class="sync-log__quiet">'
+      + `静かに送り直して通った分：<b>今日 ${静か.今日}回</b>・昨日 ${静か.昨日}回`
+      + '<span class="sync-log__quiet-note">画面は赤くなっていません。'
+      + '下に残るのは、3回送り直しても通らなかった分だけです</span></li>';
     if (!list.length) {
-      return '<li class="sync-log__none">まだ1件もありません。'
+      return 頭 + '<li class="sync-log__none">まだ1件もありません。'
         + '同期が赤くなると、ここに日時と理由が残ります</li>';
     }
-    return list.map((r) => {
+    return 頭 + list.map((r) => {
       const d = new Date(r.at);
       const 日 = `${d.getMonth() + 1}/${d.getDate()} `
         + `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;

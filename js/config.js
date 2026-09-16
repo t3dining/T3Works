@@ -1745,8 +1745,22 @@ function journalPick(cands) {
  * ★★**男性 ＋ 女性 ＋ 選択なし ＝ 客数** にならなければ使いません。
  *   順で結ぶのは危ういので、紙の中の足し算で確かめてから入れます。
  * ★名前の数と値の数がそろわないときも使いません。
+ *
+ * ★2026年8月2日の紙（9月16日に届きました）は、**女性の数だけが読み違えられて**いました
+ *   （十の位が落ちて、2けたが1けたになっていました）。足し算は合いませんが、
+ *   **客数そのものは正しく読めています。**そこで、足し算が合わないときは
+ *   **わり算2つ**で確かめます。
+ *
+ *       売上   ÷ 客数 ＝ 客単価（税込）
+ *       純売上 ÷ 客数 ＝ 客単価（税抜）
+ *
+ *   ★2つとも合うことを求めます。片方だけでは、ずれた並びが通ることがあります。
+ *   ★割る相手（売上・純売上）は、**別の検算で守られている数**です。
+ *     読めた数どうしを見くらべているのではありません。
+ *   ★このときは**客数と客単価だけ**を返します。男性・女性・選択なしは、
+ *     どれかが読み違えられていると分かっているので、**入れません。**
  */
-function journal客数の積み上がり(lines) {
+function journal客数の積み上がり(lines, もと) {
   const 名 = [
     /* ★組数は日報に要りませんが、客数の上に並ぶ紙があります（2026-09-14 バグる）。
          並びに数えないと、値が1つずれて客数が読めません */
@@ -1756,7 +1770,7 @@ function journal客数の積み上がり(lines) {
     { key: 'women', み: (p) => /女性/.test(p) },
     { key: 'nosel', み: (p) => /選択なし/.test(p) },
     { key: 'per', み: (p) => /客単価/.test(p) && !/税抜/.test(p) },
-    { key: '', み: (p) => /客単価/.test(p) && /税抜/.test(p) },
+    { key: 'per2', み: (p) => /客単価/.test(p) && /税抜/.test(p) },
   ];
   // 「取引別」は組数の小見出しで、値を持ちません。並びに数えず、飛ばします
   const 飛ばす = (p) => /^取引別$/.test(p);
@@ -1782,11 +1796,24 @@ function journal客数の積み上がり(lines) {
     if (値.length !== 並び.length) continue;
     const out = {};
     並び.forEach((x, n) => { if (x.当.key) out[x.当.key] = 値[n]; });
-    // ★足し算で確かめます。合わなければ使いません
+    // ★足し算で確かめます
     if (out.guests === undefined) continue;
+    const per2 = out.per2;
+    delete out.per2;                       // 税抜の客単価は、確かめにだけ使います
     const 足す = (out.men || 0) + (out.women || 0) + (out.nosel || 0);
-    if (足す !== out.guests) continue;
-    return out;
+    if (足す === out.guests) return out;
+
+    /* ★足し算が合いませんでした。どれかが読み違えられています。
+         客数そのものが正しいかは、**わり算2つ**で確かめます。
+         2つとも合ったときだけ、**客数と客単価だけ**を返します。 */
+    const 近い = (a, b) => a !== null && a !== undefined
+      && b !== null && b !== undefined && Math.abs(Math.round(a) - b) <= 2;
+    const v = もと || {};
+    if (!out.guests || out.guests < 0) continue;
+    if (!v.gross || !v.net) continue;
+    if (!近い(v.gross / out.guests, out.per)) continue;
+    if (!近い(v.net / out.guests, per2)) continue;
+    return { guests: out.guests, per: out.per };
   }
   return null;
 }
@@ -1803,7 +1830,7 @@ function parseJournal(text) {
   /* ★客数が読めなかったときだけ、「名前が先に並ぶ形」を試します。
        ふつうに読めている紙には触りません（127枚の試験を動かさないため）。 */
   if (v.guests === null || v.guests === undefined) {
-    const 積 = journal客数の積み上がり(lines);
+    const 積 = journal客数の積み上がり(lines, v);
     if (積) Object.keys(積).forEach((k) => { v[k] = 積[k]; });
   }
   const fixed = picked.fixed;

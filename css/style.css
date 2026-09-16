@@ -798,6 +798,14 @@ body:has(.day-tabs.is-hidden) { padding-bottom: 16px; }
 .sync-log__none {
   padding: 8px 2px; font-size: 12px; color: var(--text-weak); line-height: 1.6;
 }
+/* ★1行目：静かに送り直して通った分の回数。赤い行ではありません（2026-09-16） */
+.sync-log__quiet {
+  padding: 6px 8px; border-radius: 7px;
+  background: color-mix(in srgb, var(--ok) 8%, transparent);
+  font-size: 12px; line-height: 1.5; color: var(--text-sub);
+}
+.sync-log__quiet b { color: var(--text); }
+.sync-log__quiet-note { display: block; font-size: 11px; color: var(--text-weak); }
 
 .field.is-hidden, .modal__note.is-hidden { display: none; }
 .pin-error { margin: 8px 0 0; font-size: 12.5px; color: var(--ng); min-height: 1em; }
