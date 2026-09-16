@@ -192,7 +192,11 @@
 }
 .help-important p { margin: 0; font-size: 14px; line-height: 1.8; font-weight: 700; }
 
-.help-sec p { font-size: 14.5px; line-height: 1.9; margin: 0 0 12px; }
+/* ★画面の絵（.help-shot__body）の中の p には効かせません。
+     効くと `.confirm__message` や `.pin-error` より強くなり、絵の字だけ実物より大きくなります
+     ★`:where()` で包むのは、強さ（詳細度）を前と同じにするためです。包まないと、
+       あとに書いた `margin: 0` の決まりに勝ってしまい、絵の外の余白が5か所変わります */
+.help-sec p:not(:where(.help-shot__body p)) { font-size: 14.5px; line-height: 1.9; margin: 0 0 12px; }
 .help-sec h3 {
   margin: 24px 0 10px; font-size: 16px; font-weight: 800;
   padding-left: 11px; border-left: 4px solid var(--accent);
@@ -207,7 +211,7 @@
   .help-q, .help-lead, .help-first { box-shadow: none; break-inside: avoid; }
 }
 </style>
-<meta name="app-version" content="b181f3f0">
+<meta name="app-version" content="9416dd66">
 </head>
 <body>
 
@@ -272,11 +276,14 @@
       それに、ホーム画面から開くと<b>画面が広く使えて、文字も大きく見えます。</b>
     </div>
 
-    <h3>合言葉（PIN）を入れる</h3>
+    <h3>合言葉（PIN）と、あなたの番号を入れる</h3>
     <p>
-      はじめて開くと、合言葉を聞かれます。<b>教えてもらった数字</b>を入れてください。
+      はじめて開くと、この画面が出ます。<b>上の欄が合言葉、下の欄が「あなたの番号」</b>です。
     </p>
 
+    <!-- ★絵は index.html の #pinModal と、js/app.js の openPinModal() の実物どおりです。
+         はじめて開いたとき（合言葉がまだ無いとき）は、合言葉と番号が**同じ画面**に出て、
+         「番号はあとで」は出ません -->
     <div class="help-shot">
       <div class="help-shot__body">
         <div class="modal__panel modal__panel--confirm" style="box-shadow:none;border:1px solid var(--line);">
@@ -286,12 +293,19 @@
             <input type="password" class="field__input" id="pinInput" value="0000" readonly>
             <button type="button" class="pin-reveal">表示</button>
           </div>
+          <div class="field">
+            <label class="field__label">あなたの番号（6桁）</label>
+            <input type="text" class="field__input" placeholder="000000" readonly>
+            <p class="field__hint">
+              マネージで作った、あなただけの番号です。分からないときは、こうだいに聞いてください。
+            </p>
+          </div>
           <div class="modal__actions modal__actions--confirm" style="margin-top:12px;">
             <button type="button" class="btn btn--primary">開く</button>
           </div>
         </div>
       </div>
-      <p class="help-shot__cap">この画面が出たら、数字を入れて「開く」を押します。</p>
+      <p class="help-shot__cap">合言葉を入れて「開く」を押します。番号をもう渡されていれば、下の欄にも入れます。</p>
     </div>
 
     <p>
@@ -310,33 +324,18 @@
       <b>10分ほど待ってから</b>、もう一度ためしてください。
     </div>
 
-    <h3>あなたの番号を入れる</h3>
+    <h3>あなたの番号とは</h3>
     <p>
-      合言葉のあと、もう1つ<b>「あなたの番号」</b>を聞かれます。
       6桁の数字で、<b>1人に1つ</b>です。こうだいから渡されます。
     </p>
-
-    <div class="help-shot">
-      <div class="help-shot__body">
-        <div class="modal__panel modal__panel--confirm" style="box-shadow:none;border:1px solid var(--line);">
-          <h2 class="modal__title">あなたの番号を入れてください</h2>
-          <p class="confirm__message">誰が入力したかが分かるようにするための、あなただけの番号です。<br>一度入れれば、この端末では次回から不要です。</p>
-          <div class="field">
-            <label class="field__label">あなたの番号（6桁）</label>
-            <input type="text" class="field__input" style="text-align:center;letter-spacing:.2em;font-size:18px;" value="000000" readonly>
-          </div>
-          <div class="modal__actions modal__actions--confirm" style="margin-top:12px;">
-            <button type="button" class="btn btn--primary">開く</button>
-          </div>
-        </div>
-      </div>
-      <p class="help-shot__cap">この画面が出たら、渡された6桁を入れて「開く」を押します。</p>
-    </div>
-
     <p>
       入れると、<b>画面の上に自分の名前が出ます。</b>
       「〇〇さんのアカウント」と出ていれば、正しく入っています。
     </p>
+    <div class="help-note">
+      <b>名前が出ないときは、</b>番号が違っているかもしれません。
+      下の「あとから番号を入れる」の手順で、もう一度入れてください。
+    </div>
     <p>
       <b>なぜ要るのか。</b>誰が入力したかが分かるようにするためです。
       合言葉だけだと、6店舗の誰が入れたのか分かりません。
@@ -348,6 +347,88 @@
         番号で「あなた」が決まります。人に教えると、その人があなたとして入力できてしまいます。
         合言葉はみんな同じですが、<b>番号は1人ずつ違います。</b>
       </p>
+    </div>
+
+    <h3>あとから番号を入れる</h3>
+    <p>
+      番号をまだ渡されていないあいだは、<b>合言葉だけで使えます。</b>
+      番号の欄は空のまま「開く」を押してください。
+    </p>
+    <p>番号を渡されたら、次の手順で入れます。</p>
+    <ol class="help-steps">
+      <li>画面の上の<b>「⚙ 設定」</b>を押します</li>
+      <li><b>「PINを入れ直す」</b>を押します。合言葉はもう入っているので、<b>番号だけ</b>を聞かれます</li>
+      <li>渡された6桁を入れて、<b>「開く」</b>を押します</li>
+    </ol>
+
+    <!-- ★合言葉が入っている端末で開くと、合言葉の欄は隠れて番号だけになります（openPinModal の pin済み） -->
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <div class="modal__panel modal__panel--confirm" style="box-shadow:none;border:1px solid var(--line);">
+          <h2 class="modal__title">あなたの番号を入れてください</h2>
+          <p class="confirm__message">誰が入力したかが分かるようにするための、あなただけの番号です。<br>一度入れれば、この端末では次回から不要です。</p>
+          <div class="field">
+            <label class="field__label">あなたの番号（6桁）</label>
+            <input type="text" class="field__input" placeholder="000000" readonly>
+            <p class="field__hint">
+              マネージで作った、あなただけの番号です。分からないときは、こうだいに聞いてください。
+            </p>
+          </div>
+          <div class="modal__actions modal__actions--confirm" style="margin-top:12px;">
+            <button type="button" class="btn btn--primary">開く</button>
+            <button type="button" class="btn">番号はあとで</button>
+          </div>
+        </div>
+      </div>
+      <p class="help-shot__cap">番号だけを聞く画面です。まだ入れないときは「番号はあとで」を押すと閉じます。</p>
+    </div>
+
+    <h3>ある日、番号を聞かれるようになったら</h3>
+    <p>
+      全員に番号が行きわたったら、こうだいが<b>「番号が無いと使えない」形に切り替えます。</b>
+    </p>
+    <p>
+      切り替わると、番号を入れていない人には、アプリを開いたときか使っている途中に
+      <b>番号の画面が出ます。</b>
+    </p>
+
+    <!-- ★切り替えのあと（サーバーが need_staff_code を返したとき）の形です。
+         「番号はあとで」は隠れ、背景を押しても閉じません。赤い字はサーバーの返した言葉です（gas/コード.gs） -->
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <div class="modal__panel modal__panel--confirm" style="box-shadow:none;border:1px solid var(--line);">
+          <h2 class="modal__title">あなたの番号を入れてください</h2>
+          <p class="confirm__message">誰が入力したかが分かるようにするための、あなただけの番号です。<br>一度入れれば、この端末では次回から不要です。</p>
+          <div class="field">
+            <label class="field__label">あなたの番号（6桁）</label>
+            <input type="text" class="field__input" placeholder="000000" readonly>
+            <p class="field__hint">
+              マネージで作った、あなただけの番号です。分からないときは、こうだいに聞いてください。
+            </p>
+          </div>
+          <p class="pin-error">あなたの番号を入れてください</p>
+          <div class="modal__actions modal__actions--confirm" style="margin-top:12px;">
+            <button type="button" class="btn btn--primary">開く</button>
+          </div>
+        </div>
+      </div>
+      <p class="help-shot__cap">このときは「番号はあとで」がありません。<b>番号を入れるまで閉じられません。</b></p>
+    </div>
+
+    <div class="help-important">
+      <span class="help-important__label">入力したものは消えていません</span>
+      <p>
+        番号を入れるまでは、入力したものが他の人に届きません。
+        でも、消えてはいません。<b>番号を入れると、そのまま送られます。</b>
+      </p>
+    </div>
+
+    <div class="help-note">
+      <b>「この番号は使えません」と出たときは、</b>番号が違うか、登録されていません。
+      こうだいに聞いてください。<br>
+      <b>番号の画面が出ないまま、画面の上の印が赤くなるときは、</b>アプリが古いままです。
+      「新しい版があります」と出ていれば押してください。出ていなければ、アプリを一度閉じて開き直します
+      （8番の「困ったとき」にも書いてあります）。
     </div>
 
     <h3>数字が3つ出てきます。混ざらないように</h3>
@@ -370,7 +451,7 @@
         </tr>
         <tr>
           <td style="padding:9px 10px;border-bottom:1px solid var(--line-2);"><b>あなたの番号</b></td>
-          <td style="padding:9px 10px;border-bottom:1px solid var(--line-2);">合言葉のあと。このアプリ</td>
+          <td style="padding:9px 10px;border-bottom:1px solid var(--line-2);">このアプリ（合言葉の下の欄）</td>
           <td style="padding:9px 10px;border-bottom:1px solid var(--line-2);"><b>1人ずつ違う</b></td>
         </tr>
         <tr>
@@ -810,9 +891,15 @@
     </p>
     <ol class="help-steps">
       <li>日付・払った人・お店を選びます</li>
-      <li>渡した相手と、人数と金額を入れます</li>
+      <li>人数と金額を入れます。<b>「渡した相手」の欄が出ていれば</b>、相手も選びます</li>
       <li>記録すると、店舗ごとにまとまって出ます</li>
     </ol>
+    <!-- ★「渡した相手」が要るのは js/config.js の CATCH_WHO_FROM の日から。
+         月の名前をここに書かないこと（設定を動かしたとき、ここだけ古く残ります） -->
+    <div class="help-note">
+      <b>前の月の分を入れるときは、</b>「渡した相手」の欄が出ないことがあります。
+      画面に「◯月までの分は、渡した相手を入れずに記録できます」と出ていれば、そのままで大丈夫です。
+    </div>
     <div class="help-note">
       1日に何回か渡したときは、<b>1行にまとまって出ます。</b>
       中身を見たいときは「明細」を押してください。1件ずつ直せます。
