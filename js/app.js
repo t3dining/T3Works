@@ -3357,7 +3357,15 @@ function cashジャーナル合わせ(店, いま, 組み) {
     if (!ある(a, k)) { v[k] = b.v[k]; sure[k] = true; 合わせた.push(k); return; }
     if (a.v[k] !== b.v[k]) sure[k] = false;     // ★食いちがい。どちらも使いません
   });
-  const 要る = ['cash', 'credit', 'emoney', 'net', 'guests'];
+  /* ★そろったかどうかの決まりは、**様式ごとにちがいます。**
+       ここに書き写していたせいで、こじゃれとおいでんテラスが壊れていました
+       （バグるの欄の名前 `credit` のままで、こじゃれの欄は `cardId`）。
+       決まりは `journalまとめ`（js/config.js）1か所だけにあります。
+     ★おいでんテラスの決まりは「検算が**全部**通ること」です。
+       そこで**いまの文字の検算だけ**で見ます。組み直しで落ちた検算まで混ぜると、
+       いまの文字だけなら通っていた紙が、合わせたせいで止まります。
+       合わせは**足すだけ**にして、減らしません。 */
+  const 判 = journalまとめ(journalFormatOf(店), v, sure, a.checks || []);
   /* ★「計算で埋めた」も合わせます。**片方でだけ埋めた数が、埋めた印を失うと
        画面では『読み取れた数』に見えます。**読んだのか計算したのかは、
        ko-dai さんが数を信じるかどうかの判断材料なので、落としません。
@@ -3369,9 +3377,8 @@ function cashジャーナル合わせ(店, いま, 組み) {
     jr: Object.assign({}, a, {
       v, sure, fixed: 埋めた,
       checks: (a.checks || []).concat(b.checks || []),
-      ok: 要る.every((k) => sure[k]),
-      missing: 要る.filter((k) => !sure[k])
-        .map((k) => (JOURNAL_FIELDS.find((f) => f.key === k) || {}).name),
+      ok: 判.ok,
+      missing: 判.missing,
     }),
     合わせた,
   };

@@ -2038,19 +2038,52 @@ function parseJournal(text) {
   }
 
   const bad = checks.filter((c) => !c.ok);
-  const needed = ['cash', 'credit', 'emoney', 'net', 'guests'];
+  const 判 = journalまとめ('nikkei', v, sure, checks);
 
   // 写真の下が切れていると、支払の行がそろわず、合計が売上に届きません
   const cut = has('gross') && sumPay() < v.gross && !has('received');
 
   return {
     v, checks, fixed, sure, cut,
-    ok: needed.every((k) => sure[k]),
-    missing: needed.filter((k) => !sure[k])
-      .map((k) => (JOURNAL_FIELDS.find((f) => f.key === k) || {}).name),
+    ok: 判.ok,
+    missing: 判.missing,
     why: cut
       ? '紙の下の方が写っていないようです。おつりの行まで入るように撮り直してください'
       : bad.length ? bad.map((c) => c.name).join('、') + ' が合いません' : '',
+  };
+}
+
+/**
+ * 読み取った数が「日報に書けるだけそろっているか」を見ます
+ *
+ * ★★**様式ごとに決まりがちがいます。**だからここ1か所にまとめます。
+ *
+ *     nikkei … 現金・クレジット・電子マネー・純売上・客数 が検算に守られていること
+ *     seisan … それに 売掛金・Uberクレジット を足したもの
+ *     oiden  … **検算が1つ以上あって全部通り**、総売上・純売上・消費税・客数が読めていること
+ *
+ * ★2026-09-16、この決まりを `js/app.js` の合わせのところに**書き写して**しまい、
+ *   バグるの欄の名前（`credit`）のまま置いていました。こじゃれの欄は `cardId` なので
+ *   `sure['credit']` が永久に undefined になり、**こじゃれとおいでんテラスでは
+ *   「日報に書く」のボタンが一度も出ません**でした。読めた数は正しいのに、です。
+ *   同じ決まりを2か所に書くと、片方だけ直し忘れます。**ここだけを直してください。**
+ */
+function journalまとめ(様, v, sure, checks) {
+  const has = (k) => v[k] !== null && v[k] !== undefined;
+  if (様 === 'oiden') {
+    const 足りない = ['gross', 'net', 'tax', 'guests'].filter((k) => !has(k));
+    const ct = checks || [];
+    return { ok: ct.length > 0 && ct.every((c) => c.ok) && !足りない.length, missing: 足りない };
+  }
+  const 要る = 様 === 'seisan'
+    ? ['cash', 'cardId', 'emoney', 'net', 'guests', 'kake', 'uberCard']
+    : ['cash', 'credit', 'emoney', 'net', 'guests'];
+  const 名 = (k) => (様 === 'seisan'
+    ? (SEISAN_NAMES[k] || k)
+    : ((JOURNAL_FIELDS.find((f) => f.key === k) || {}).name || k));
+  return {
+    ok: 要る.every((k) => sure[k]),
+    missing: 要る.filter((k) => !sure[k]).map(名),
   };
 }
 
@@ -2542,8 +2575,28 @@ function parseSeisan(text) {
        見出しは「[ク以下明細]」のように大破しますが、**「明細」の2文字は残ります。**
        それも無ければ、支払内訳の最後の金額より下を見ます。 */
   let 明細から = -1;
+  /* ★★見出しから「明細」の2文字ごと落ちた紙があります（2026年8月8日・こじゃれ）。
+
+         [クレジット]          ← 本当は [クレジット明細]
+         Uberクレジット
+         1点 / ◯,◯◯◯円
+         クレジット・iD・QUICPay
+         9点 / ◯◯◯,◯◯◯円
+         [その他支払明細]      ← 「明細」はここで初めて出てきます
+
+       「明細」の字だけで探すと**その他支払明細まで飛び越し**、
+       クレジット明細の行を丸ごと読み落とします。実際、日報のクレジットと
+       ウーバークレジットが空欄になりました。
+     ★そこで、**かぎかっこで始まる見出しの行**も見ます。
+       支払内訳の中の行はかぎかっこが付かない（ただの「クレジット」）ので、
+       取りちがえません。 */
+  const 明細の見出し = (line) => {
+    const p = cashPlain(line);
+    if (/明細/.test(p)) return true;
+    return /^[[［]/.test(p) && /クレジット|その他支払/.test(p);
+  };
   for (let i = 支払から + 1; i < lines.length; i++) {
-    if (/明細/.test(cashPlain(lines[i]))) { 明細から = i + 1; break; }
+    if (明細の見出し(lines[i])) { 明細から = i + 1; break; }
   }
   if (明細から < 0) {
     // 見出しが無いときは、支払内訳の金額を読み終えたところから
@@ -2801,7 +2854,22 @@ function parseSeisan(text) {
     const 税 = [];
     for (let i = 0; i < 支払から; i++) {
       if (!cashPlain(lines[i]).includes(しるし)) continue;
-      const この欄 = [];
+      /* ★対象額が**見出しの行に載る**紙があります（2026年8月7日・こじゃれ）。
+
+             (内税10%対象 ◯◯◯,◯◯◯円)   ← 対象額が見出しと同じ行
+             )
+             32点
+             ◯◯,◯◯◯円)                 ← 税額
+
+         下の行だけを数えると金額が1つしか無く、「対象額しか出ていない紙」と
+         見なして読み飛ばしていました。内税が8%分だけになり、
+         「総売上 − 内税 − 外税 ＝ 純売上」が合わずに止まりました。
+       ★★場所から組み直した文字は、**いつもこの形になります**（1行にまとめるため）。
+         そのため組み直した文字では、内税が**一度も読めていませんでした**。
+         こじゃれ9日分を見たところ、9日とも内税が空でした（2026-09-16）。
+       ★見出しの行の金額を数に入れるだけです。「最後の金額が税額」は変えません。
+         対象額しか無い紙では、やはり1つのままなので読みません。 */
+      const この欄 = その行の金(lines[i]).slice();
       for (let j = i + 1; j < Math.min(i + 8, 支払から); j++) {
         const p = cashPlain(lines[j]);
         if (/内税|外税|組数|客数|単価|明細|支払/.test(p)) break;
@@ -2945,12 +3013,12 @@ function parseSeisan(text) {
     sure[k] = 埋めた元[k].every((もと) => sure[もと] === true);
   });
 
-  const 要る = ['cash', 'cardId', 'emoney', 'net', 'guests', 'kake', 'uberCard'];
+  const 判 = journalまとめ('seisan', v, sure, checks);
   const bad = checks.filter((c) => !c.ok);
   return {
     v, checks, fixed, sure, cut: false,
-    ok: 要る.every((k) => sure[k]),
-    missing: 要る.filter((k) => !sure[k]).map((k) => SEISAN_NAMES[k] || k),
+    ok: 判.ok,
+    missing: 判.missing,
     why: bad.length ? bad.map((c) => c.name).join('、') + ' が合いません' : '',
   };
 }
@@ -3432,9 +3500,9 @@ function parseOiden(text) {
   // 客数はどの検算にも出てきません。読めたらそのまま使います
   if (has('guests')) sure.guests = true;
 
-  const missing = [];
-  ['gross', 'net', 'tax', 'guests'].forEach((k) => { if (!has(k)) missing.push(k); });
-  const ok = checks.length > 0 && checks.every((c) => c.ok) && !missing.length;
+  const 判 = journalまとめ('oiden', v, sure, checks);
+  const missing = 判.missing;
+  const ok = 判.ok;
   return {
     v, checks, fixed: [], sure, cut: false, ok, missing,
     why: ok ? '' : (checks.some((c) => !c.ok) ? '' : '読み取れませんでした'),
