@@ -3619,7 +3619,7 @@ function openOcrText() {
     cashEdit.ocrHow === 'vision' ? '読み取り Vision' : '',
     cashEdit.ocrHow === 'drive' ? '★読み取り ドライブ（Visionが使われていません）' : '',
     cashEdit.ocrMs ? `サーバーの中 ${(cashEdit.ocrMs / 1000).toFixed(1)}秒` : '',
-    cashEdit.枚 ? `今月 ${cashEdit.枚}枚め（1か月1000枚まで）` : '',
+    cashEdit.枚 ? `今月 ${cashEdit.枚}枚目（1か月1000枚まで）` : '',
     cashEdit.どちら ? '★現金は組み直した方から' : '',
     (cashEdit.合わせた || []).length
       ? `★組み直した方から取った欄：${cashEdit.合わせた.map((k) => (JOURNAL_FIELDS.find((f) => f.key === k) || {}).name || k).join('・')}`
