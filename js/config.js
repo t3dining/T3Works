@@ -1489,7 +1489,7 @@ function journalPaySeq(lines) {
  *
  * ★そこで件数を使います。**0件なら0円、1件以上なら0円ではない。**
  *   上の紙では、商品券(釣無し)が0件なのに金額が入っていて、すぐ分かります。
- *   これは選び分けにも効きます（検算がいちばん通る組み合わせが選ばれるため）。
+ *   これは選び分けにも効きます（検算が一番通る組み合わせが選ばれるため）。
  */
 function journalPayCounts(lines) {
   const mine = JOURNAL_FIELDS.filter((f) => JOURNAL_PAY.indexOf(f.key) >= 0);
