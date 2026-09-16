@@ -13,8 +13,8 @@
 <link rel="icon" type="image/png" sizes="512x512" href="../img/mine-icon-512.png?v=2dbb903e">
 <link rel="icon" type="image/png" sizes="64x64" href="../img/mine-icon-64.png?v=ea09f133">
 <title>T3 Works Mine｜T3Dining株式会社</title>
-<link rel="stylesheet" href="../css/style.css?v=9ad0fcc1">
-<meta name="app-version" content="74a12498">
+<link rel="stylesheet" href="../css/style.css?v=871a5653">
+<meta name="app-version" content="1004b389">
 </head>
 <body data-mode="mine" data-assets="../">
 
@@ -1439,6 +1439,21 @@
   <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <h2 class="modal__title" id="modalTitle">この端末の設定</h2>
 
+    <!-- ★使い方（help/index.html）。**アプリの画面ではなく別のページ**です。
+         画面（view）にすると render() の分岐すべてに1行ずつ足すことになり、
+         足し忘れた1か所が「別の画面と重なって出る」形で壊れます。
+         別ページなら、アプリの動きに1文字も触りません。印刷（PDF）にもそのまま使えます。
+         ★`ASSET_BASE` の要る img とちがい、ここは同じ階層からの相対でよいので
+         マイン（mine/）からも `../help/` で開けます（app.js が直します）。 -->
+    <a class="help-link" id="helpLink" href="help/">
+      <span class="help-link__icon" aria-hidden="true">📖</span>
+      <span class="help-link__text">
+        <span class="help-link__name">使い方を見る</span>
+        <span class="help-link__sub">困ったとき・同期の印の意味・各ページの手順</span>
+      </span>
+      <span class="help-link__arrow" aria-hidden="true">›</span>
+    </a>
+
     <div class="field" id="syncField">
       <span class="field__label">共有の状態</span>
       <p class="sync-info" id="syncInfo"></p>
@@ -1512,13 +1527,13 @@
   </div>
 </div>
 
-<script src="../js/config.js?v=e87e435c"></script>
+<script src="../js/config.js?v=277b21da"></script>
 <script src="../js/storage.js?v=f31370dc"></script>
 <script src="../js/sync.js?v=6140ce01"></script>
 <script src="../js/update.js?v=c530219e"></script>
 <!-- 会議資料の中身。スプレッドシートから取り込んだ数字と議事メモです -->
 <!-- シフト表を絵に描くところ。提出ページ（shift/）でも同じものを使います -->
 <script src="../js/shift-sheet.js?v=2b29c50a"></script>
-<script src="../js/app.js?v=fc6037e5"></script>
+<script src="../js/app.js?v=0405f290"></script>
 </body>
 </html>

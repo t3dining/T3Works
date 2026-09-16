@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>T3 Works の使い方</title>
+<link rel="icon" type="image/png" sizes="64x64" href="../img/works-icon-64.png?v=0f9cbed2">
+<link rel="stylesheet" href="../css/style.css?v=871a5653">
+<!-- ★このページは、アプリの画面（view）ではなく**別のページ**です。
+     画面を足すと `render()` の分岐すべてに1行ずつ足すことになり、
+     足し忘れた1か所が「別の画面と重なって出る」形で壊れます。
+     独立したページなら、アプリの動きに1文字も触りません。
+     印刷（PDF）にもそのまま使えます。 -->
+<style>
+/* ===================== 使い方ページ =====================
+   見た目は ../css/style.css（アプリ本体）に合わせています。
+   ここに書くのは、このページだけの並べ方です。 */
+.help-header {
+  position: sticky; top: 0; z-index: 30;
+  background: var(--header-bg); color: var(--header-fg);
+  padding-top: env(safe-area-inset-top);
+}
+.help-header__inner {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; max-width: 760px; margin: 0 auto;
+}
+.help-header__title { font-size: 15px; font-weight: 700; margin-right: auto; }
+.help-back {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px;
+  background: rgba(255,255,255,.1); color: #fff;
+  border: 1px solid rgba(255,255,255,.16); border-radius: 999px;
+  padding: 6px 13px; font: inherit; font-size: 12.5px;
+  text-decoration: none; cursor: pointer;
+}
+.help-back:active { background: rgba(255,255,255,.2); }
+
+.help-page { max-width: 760px; margin: 0 auto; padding: 16px 14px 60px; }
+
+.help-lead {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 14px 16px; margin-bottom: 18px;
+  font-size: 14px; line-height: 1.75;
+}
+
+/* ---- 目次 ---- */
+.help-toc {
+  list-style: none; margin: 0 0 24px; padding: 0;
+  display: flex; flex-direction: column; gap: 1px;
+}
+.help-toc__item a {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 11px 13px; border-radius: 9px;
+  background: var(--surface); border: 1px solid var(--line);
+  color: var(--text); text-decoration: none; font-size: 14.5px; font-weight: 700;
+}
+.help-toc__item a:active { background: var(--surface-2); }
+.help-toc__n {
+  flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--accent); color: #fff;
+  font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums;
+}
+.help-toc__sub { font-size: 12px; font-weight: 600; color: var(--text-weak); margin-left: auto; }
+
+/* ---- 章 ---- */
+.help-sec { margin: 0 0 28px; scroll-margin-top: 64px; }
+.help-sec__head {
+  display: flex; align-items: center; gap: 10px;
+  margin: 0 0 12px; padding-bottom: 9px;
+  border-bottom: 2px solid var(--accent);
+}
+.help-sec__n {
+  flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--accent); color: #fff;
+  font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums;
+}
+.help-sec__title { margin: 0; font-size: 18px; font-weight: 800; letter-spacing: .01em; }
+
+.help-q {
+  background: var(--surface); border: 1px solid var(--line);
+  border-left: 4px solid var(--ng);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 14px 16px; margin-bottom: 14px;
+}
+.help-q__title {
+  margin: 0 0 10px; font-size: 15.5px; font-weight: 800; line-height: 1.5;
+  color: color-mix(in srgb, var(--ng) 80%, var(--text));
+}
+.help-q p { margin: 0 0 9px; font-size: 14px; line-height: 1.8; }
+.help-q p:last-child { margin-bottom: 0; }
+
+/* 一番多い原因 */
+.help-first {
+  background: color-mix(in srgb, var(--ok) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--ok) 30%, var(--line));
+  border-radius: 10px; padding: 11px 13px; margin: 0 0 11px;
+}
+.help-first__label {
+  display: block; font-size: 11.5px; font-weight: 800; letter-spacing: .04em;
+  color: var(--ok); margin-bottom: 4px;
+}
+.help-first p { margin: 0; font-size: 14px; line-height: 1.75; font-weight: 700; }
+
+/* 手順 */
+.help-steps { margin: 0 0 9px; padding-left: 0; list-style: none; counter-reset: step; }
+.help-steps li {
+  position: relative; padding: 7px 0 7px 32px; font-size: 14px; line-height: 1.7;
+  counter-increment: step;
+}
+.help-steps li::before {
+  content: counter(step);
+  position: absolute; left: 0; top: 7px;
+  width: 22px; height: 22px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--line); color: var(--text-sub);
+  font-size: 11.5px; font-weight: 800;
+}
+
+/* 印の一覧 */
+.help-marks { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.help-marks__row { display: flex; align-items: flex-start; gap: 11px; }
+.help-marks__text { min-width: 0; }
+.help-marks__name { font-size: 14px; font-weight: 800; line-height: 1.4; }
+.help-marks__desc { font-size: 12.5px; color: var(--text-sub); line-height: 1.65; }
+
+.help-note {
+  font-size: 12.5px; color: var(--text-sub); line-height: 1.75;
+  background: var(--surface-2); border-radius: 8px; padding: 9px 11px; margin: 9px 0 0;
+}
+.help-note b { color: var(--text); }
+
+.help-todo {
+  background: var(--surface-2); border: 1px dashed var(--line);
+  border-radius: var(--radius); padding: 16px;
+  font-size: 13.5px; color: var(--text-sub); line-height: 1.7;
+}
+
+/* ---- 印刷（PDFにするとき） ---- */
+@media print {
+  .help-header, .help-toc, .help-back { display: none !important; }
+  body { background: #fff; font-size: 11pt; }
+  .help-page { max-width: none; padding: 0; }
+  .help-sec { break-inside: avoid; margin-bottom: 18pt; }
+  .help-q, .help-lead, .help-first { box-shadow: none; break-inside: avoid; }
+}
+</style>
+<meta name="app-version" content="1004b389">
+</head>
+<body>
+
+<header class="help-header">
+  <div class="help-header__inner">
+    <span class="help-header__title">T3 Works の使い方</span>
+    <a class="help-back" href="../">アプリに戻る</a>
+  </div>
+</header>
+
+<div class="help-page">
+
+  <p class="help-lead">
+    T3 Works は、6店舗の閉店作業・掃除・教育・シフトを、<b>みんなの端末で同じように見るため</b>のアプリです。
+    入力したものは、他の人の端末にも届きます。<br>
+    困ったときは <b>8 番</b>から読んでください。よくある3つのことを、そこに書いてあります。
+  </p>
+
+  <ul class="help-toc">
+    <li class="help-toc__item"><a href="#s1"><span class="help-toc__n">1</span>はじめに<span class="help-toc__sub">これから</span></a></li>
+    <li class="help-toc__item"><a href="#s2"><span class="help-toc__n">2</span>クローズ<span class="help-toc__sub">これから</span></a></li>
+    <li class="help-toc__item"><a href="#s3"><span class="help-toc__n">3</span>週間掃除<span class="help-toc__sub">これから</span></a></li>
+    <li class="help-toc__item"><a href="#s4"><span class="help-toc__n">4</span>教育<span class="help-toc__sub">これから</span></a></li>
+    <li class="help-toc__item"><a href="#s5"><span class="help-toc__n">5</span>シフト<span class="help-toc__sub">これから</span></a></li>
+    <li class="help-toc__item"><a href="#s6"><span class="help-toc__n">6</span>記録を見る<span class="help-toc__sub">これから</span></a></li>
+    <li class="help-toc__item"><a href="#s7"><span class="help-toc__n">7</span>お金まわり<span class="help-toc__sub">これから</span></a></li>
+    <li class="help-toc__item"><a href="#s8"><span class="help-toc__n">8</span>困ったとき<span class="help-toc__sub">書けています</span></a></li>
+  </ul>
+
+  <section class="help-sec" id="s1">
+    <div class="help-sec__head"><span class="help-sec__n">1</span><h2 class="help-sec__title">はじめに</h2></div>
+    <div class="help-todo">何のアプリか／ホーム画面への入れ方／最初に合言葉（PIN）を入れる。<br>これから書きます。</div>
+  </section>
+
+  <section class="help-sec" id="s2">
+    <div class="help-sec__head"><span class="help-sec__n">2</span><h2 class="help-sec__title">クローズ</h2></div>
+    <div class="help-todo">店舗を選ぶ／項目にチェック／担当者／申し送り／提出する。<br>これから書きます。</div>
+  </section>
+
+  <section class="help-sec" id="s3">
+    <div class="help-sec__head"><span class="help-sec__n">3</span><h2 class="help-sec__title">週間掃除</h2></div>
+    <div class="help-todo">2週間の見方／チェックのしかた／随時掃除。<br>これから書きます。</div>
+  </section>
+
+  <section class="help-sec" id="s4">
+    <div class="help-sec__head"><span class="help-sec__n">4</span><h2 class="help-sec__title">教育</h2></div>
+    <div class="help-todo">人を選ぶ／項目にチェック／終わった人。<br>これから書きます。</div>
+  </section>
+
+  <section class="help-sec" id="s5">
+    <div class="help-sec__head"><span class="help-sec__n">5</span><h2 class="help-sec__title">シフト</h2></div>
+    <div class="help-todo">希望を出す（提出ページ。1人に1つの番号を使います）／組む。<br>これから書きます。</div>
+  </section>
+
+  <section class="help-sec" id="s6">
+    <div class="help-sec__head"><span class="help-sec__n">6</span><h2 class="help-sec__title">記録を見る</h2></div>
+    <div class="help-todo">クローズの提出記録／週間掃除の達成状況／月間表。<br>これから書きます。</div>
+  </section>
+
+  <section class="help-sec" id="s7">
+    <div class="help-sec__head"><span class="help-sec__n">7</span><h2 class="help-sec__title">お金まわり</h2></div>
+    <div class="help-todo">現金支払い管理表／キャッチ集計／会議資料。<br>これから書きます。</div>
+  </section>
+
+  <!-- ============================================================
+       8. 困ったとき
+       ★現場から実際に出ている3つに答えます（2026-09-16、ko-dai さんから）。
+         ①他の人が入力したものが反映されない ②同期の印がずっと回っている
+         ③つながらない
+       ★秒数は js/sync.js の実物から取っています。書き写した数ではありません。
+         `_loop()` … 今日のクローズ 8秒／誰かが入力中 3秒／それ以外 60秒／裏 取りに行かない
+       ============================================================ -->
+  <section class="help-sec" id="s8">
+    <div class="help-sec__head"><span class="help-sec__n">8</span><h2 class="help-sec__title">困ったとき</h2></div>
+
+    <div class="help-q">
+      <p class="help-q__title">他の人が入れたものが、自分の画面に出てこない</p>
+
+      <div class="help-first">
+        <span class="help-first__label">一番多い原因</span>
+        <p>アプリを閉じている、または他のアプリを開いている間です。<br>
+        アプリが裏にいる間は、新しい内容を取りに行きません。</p>
+      </div>
+
+      <p><b>すぐ出したいとき。</b>アプリを開いて、ヘッダーの丸い印を押してください。その場で取りに行きます。</p>
+
+      <p><b>開いたままにしているとき</b>は、押さなくても自動で届きます。かかる時間は、開いている画面で変わります。</p>
+
+      <ol class="help-steps">
+        <li>今日のクローズを開いている … <b>8秒</b>おきに取りに行きます</li>
+        <li>他の誰かが今まさに入力している … <b>3秒</b>おきになります（届いてから40秒間）</li>
+        <li>それ以外の画面（別の日、提出記録など） … <b>60秒</b>おきです</li>
+      </ol>
+
+      <p class="help-note">
+        <b>なぜ毎秒にしないのか。</b>6店舗の端末が始終聞きに行くと、Google の1日に使える時間を
+        夕方までに使い切ってしまい、<b>誰も同期できなくなります。</b>
+        「誰かが今入力している」間だけ速くする、という配り方にしています。
+      </p>
+
+      <p class="help-note">
+        <b>それでも出てこないとき。</b>入れた人の端末で、まだ送れていないことがあります。
+        その人の画面のヘッダーが <b>↑（まだ送れていない分があります）</b>になっていないか、
+        見てもらってください。
+      </p>
+    </div>
+
+    <div class="help-q">
+      <p class="help-q__title">同期の印が、ずっと回っている</p>
+
+      <div class="help-first">
+        <span class="help-first__label">一番多い原因</span>
+        <p>送っている最中です。<b>1分から2分は、正常の範囲です。</b></p>
+      </div>
+
+      <p>印が回っているのは、次のどちらかです。どちらも<b>入力は端末に残っていて、消えません。</b></p>
+
+      <ol class="help-steps">
+        <li><b>送っています</b> … 返事を待っています。返事が来ないときは、最大35秒待ってあきらめます</li>
+        <li><b>静かに送り直しています</b> … 1回通らなかったので、3秒・6秒・12秒と間を空けて、黙って送り直しています</li>
+      </ol>
+
+      <p>2 は、通らなかったことを<b>いちいち赤で出さない</b>ための動きです。
+      送り直して通れば、何ごともなかったように ✓ に変わります。
+      この間も印は回ったままなので、続けて見ると「ずっと回っている」ように見えます。</p>
+
+      <p><b>2分を超えて回り続けるとき。</b>次の順で試してください。</p>
+
+      <ol class="help-steps">
+        <li>電波が届いているか見る（他のアプリが開けるか）</li>
+        <li>アプリをいったん閉じて、開き直す</li>
+        <li>それでも続くなら、設定の<b>「赤くなった記録」</b>を開いて、日時と理由を店長に伝える</li>
+      </ol>
+    </div>
+
+    <div class="help-q">
+      <p class="help-q__title">「つながりません」「送れていません」と出る</p>
+
+      <div class="help-first">
+        <span class="help-first__label">まず知っておいてください</span>
+        <p>どの理由で出ていても、<b>入力した内容が消えることはありません。</b>
+        つながり次第、自動で送られます。</p>
+      </div>
+
+      <p>赤い帯に理由が出ます。<b>やることが理由ごとに違います。</b></p>
+
+      <ul class="help-marks">
+        <li class="help-marks__row"><span class="help-marks__text">
+          <span class="help-marks__name">電波が届いていません</span>
+          <span class="help-marks__desc">電波の問題です。つながる場所へ移れば、自動で送られます。</span>
+        </span></li>
+        <li class="help-marks__row"><span class="help-marks__text">
+          <span class="help-marks__name">サーバーが返事をしません</span>
+          <span class="help-marks__desc">混み合っています。<b>電波の問題ではありません。</b>待っていると自動で送り直します。</span>
+        </span></li>
+        <li class="help-marks__row"><span class="help-marks__text">
+          <span class="help-marks__name">Google 側で結果を受け取れませんでした</span>
+          <span class="help-marks__desc">Google の中で止まっています。<b>こちらのアプリも電波も悪くありません。</b>自動で送り直します。</span>
+        </span></li>
+        <li class="help-marks__row"><span class="help-marks__text">
+          <span class="help-marks__name">合言葉（PIN）が違います</span>
+          <span class="help-marks__desc">これだけは自分で直します。設定の「PINを入れ直す」から、正しい合言葉を入れてください。</span>
+        </span></li>
+      </ul>
+
+      <p class="help-note">
+        <b>夜、続けて出ることがあります。</b>2026年9月から、Google 側で結果を渡す所が
+        止まりやすくなっています。<b>お店のやり方が悪いのでも、電波が悪いのでもありません。</b>
+        アプリは黙って3回送り直すようにしてあるので、たいていはそのまま通ります。
+      </p>
+    </div>
+
+    <h3 style="margin:22px 0 10px;font-size:15.5px;font-weight:800;">ヘッダーの印の見かた</h3>
+    <p style="margin:0 0 10px;font-size:14px;line-height:1.75;">
+      画面の右上にある丸い印が、今どうなっているかを表しています。押すと、その場で同期します。
+    </p>
+    <ul class="help-marks">
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name">✓ 同期できています</span>
+        <span class="help-marks__desc">入力した内容が、みんなの端末に届いています。</span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name">回っている印 … 送っています</span>
+        <span class="help-marks__desc">少し待つと ✓ に変わります。静かに送り直している最中も、この印です。</span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name">↑ まだ送れていない分があります</span>
+        <span class="help-marks__desc">つながり次第、自動で送られます。入力した内容が消えることはありません。</span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name">! 送れていません</span>
+        <span class="help-marks__desc">3回送り直しても通らなかったときです。理由は赤い帯に出ます。上の3つを見てください。</span>
+      </span></li>
+    </ul>
+
+    <h3 style="margin:22px 0 10px;font-size:15.5px;font-weight:800;">「新しい版があります」と出たら</h3>
+    <p style="margin:0;font-size:14px;line-height:1.8;">
+      画面の下に青い帯で出ます。<b>押して更新してください。</b>
+      直したところが、その端末にも入ります。押さないと古い画面のままです。
+    </p>
+  </section>
+
+</div>
+
+</body>
+</html>

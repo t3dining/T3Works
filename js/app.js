@@ -64,6 +64,7 @@ const el = {
   syncLegend: $('syncLegend'),
   syncLog: $('syncLog'),
   syncLogClear: $('syncLogClear'),
+  helpLink: $('helpLink'),
   pinModal: $('pinModal'), pinInput: $('pinInput'), pinError: $('pinError'),
   codeInput: $('codeInput'), codeField: $('codeField'), codeHint: $('codeHint'),
   pinMessage: $('pinMessage'),
@@ -393,6 +394,12 @@ function renderStoreTabs() {
    mine/ のように1つ下の階層に置いた版では、公開用を作る.py が
    body に data-assets="../" を付けるので、その分だけ前に足します */
 const ASSET_BASE = document.body.dataset.assets || '';
+
+/* ★設定の中の「使い方を見る」の行き先を、階層に合わせて直します。
+     index.html には `help/` と書いてありますが、**マイン（mine/）から開くと
+     `/mine/help/` を見に行って404**になります。ロゴ画像と同じ直し方です。
+     `../` + `help/` で `/help/` に戻ります。 */
+if (el.helpLink) el.helpLink.href = ASSET_BASE + 'help/';
 
 /* 画面に出すアプリ名。
    管理者用（mine/）は「T3 Works Mine」、スタッフ用は「T3 Works」 */
@@ -3299,6 +3306,16 @@ function cashYomiApply(積) {
      ★`cashEdit.how` は**別のもの**です（現金が読めたかどうか）。
        同じ名前にしかけたので、ここは ocrHow にしています。 */
   cashEdit.ocrHow = res.ocrHow || '';
+  /* ★場所（座標）から組み直した文字。**まだ読み取りには使っていません。**
+       「読み取った文字を見る」に、いまの文字と並べて出すだけです。
+       本物の紙でうまく組めているかを、目で見くらべるためのものです（2026-09-16）。
+     ★枚 … 今月 Cloud Vision で読んだ数（1か月1000枚の枠）。推測しないで済むように数えます。
+     ★ocrMs … サーバーの中で読み取りにかかった時間。座標を足す前に押さえておくためです
+              （ウェブアプリは6分で打ち切られます） */
+  cashEdit.行 = res.行 || '';
+  cashEdit.枚 = res.枚 || 0;
+  cashEdit.語数 = res.語数 || 0;
+  cashEdit.ocrMs = res.ocrMs || 0;
 
   cashEdit.pending = 積.dataUrl;
   // ★読み取った文字はそのまま持っておきます。金額が違って入ったときに、
@@ -3503,16 +3520,29 @@ function openOcrText() {
     // ★どの読み取りで読んだか。「直したのに効いていない」を見分けるためです
     cashEdit.ocrHow === 'vision' ? '読み取り Vision' : '',
     cashEdit.ocrHow === 'drive' ? '★読み取り ドライブ（Visionが使われていません）' : '',
+    cashEdit.ocrMs ? `サーバーの中 ${(cashEdit.ocrMs / 1000).toFixed(1)}秒` : '',
+    cashEdit.枚 ? `今月 ${cashEdit.枚}枚め（1か月1000枚まで）` : '',
   ].filter(Boolean).join('　');
+  /* ★下に「場所から組み直した文字」を並べます。**まだ読み取りには使っていません。**
+       本物の紙でうまく組めているかを見くらべるためです。
+       うまく組めていれば、紙のとおり「名前　件数　金額」が1行に並んでいるはずです。 */
+  const 組み = cashEdit.行
+    ? `\n\n────────────────\n★場所から組み直した文字（${cashEdit.語数}語）`
+      + '　※まだ読み取りには使っていません\n────────────────\n' + cashEdit.行
+    : '';
   el.ocrText.textContent = (how ? `（${how}）\n\n` : '')
-    + (cashEdit.text || '（何も読み取れませんでした）');
+    + (cashEdit.text || '（何も読み取れませんでした）') + 組み;
   el.ocrCopy.textContent = 'コピーする';
   el.ocrModal.classList.remove('is-hidden');
 }
 
 async function copyOcrText() {
   try {
-    await navigator.clipboard.writeText(cashEdit.text || '');
+    // ★組み直した方も一緒にコピーします（送っていただくとき、片方だけだと見くらべられません）
+    await navigator.clipboard.writeText(
+      (cashEdit.text || '')
+      + (cashEdit.行 ? '\n\n──── 場所から組み直した文字 ────\n' + cashEdit.行 : '')
+    );
     el.ocrCopy.textContent = 'コピーしました';
   } catch (e) {
     el.ocrCopy.textContent = 'コピーできませんでした';
