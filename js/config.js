@@ -1922,6 +1922,55 @@ function journal客数の積み上がり(lines, もと) {
   return null;
 }
 
+/** 紙の中から「客単価（税抜）」を拾います（客数の逆算にだけ使います） */
+function journal客単価税抜(lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const p = cashPlain(lines[i] || '');
+    if (!/客単価/.test(p) || !/税抜/.test(p)) continue;
+    const 自 = cashMarkedOf(lines[i]);
+    if (自 !== null && 自 > 0) return 自;
+    for (let j = i + 1; j < Math.min(i + 3, lines.length); j++) {
+      if (journalIsLabel(lines[j])) break;
+      const v = cashMarkedOf(lines[j]);
+      if (v !== null && v > 0) return v;
+    }
+  }
+  return null;
+}
+
+/**
+ * 客数が読めなかったとき、**客単価から逆に計算**します
+ *
+ * ★2026年8月5日・8月10日の紙（ko-dai さん）。客数の数字そのものが読み取られず、
+ *   名前も「数」だけに崩れていました。**読める手がかりが1つもありません。**
+ *   けれど紙には客単価が2つ載っていて、そこから戻せます。
+ *
+ *       売上   ÷ 客単価（税込） ＝ 客数
+ *       純売上 ÷ 客単価（税抜） ＝ 客数
+ *
+ * ★★**2つが同じ整数になったときだけ**使います。4つの別々に読んだ数
+ *   （売上・純売上・客単価2つ）が1つの客数で揃うのは、偶然では起きません。
+ *   どれかを読み違えていれば、2つは食いちがいます。
+ * ★さらに、戻した客数から客単価を計算し直して、紙の客単価と合うことも見ます。
+ * ★★これは**読み取りではなく計算**です。`fixed` に入れて、画面にもそう出します。
+ *   男性・女性・選択なしは**消します**。客数が読めなかった紙では、
+ *   そのあたりが崩れていることが多く（実際に「2・2・20」と出ました）、
+ *   残すと足し算の検算が落ちて、せっかく戻した客数まで捨ててしまいます。
+ */
+function journal客数を客単価から(lines, v) {
+  if (v.guests !== null && v.guests !== undefined) return null;
+  if (!v.gross || !v.net || !v.per || v.per <= 0) return null;
+  const per2 = journal客単価税抜(lines);
+  if (!per2 || per2 <= 0) return null;
+  const a = Math.round(v.gross / v.per);
+  const b = Math.round(v.net / per2);
+  if (a !== b || a <= 0 || a > 100000) return null;
+  // ★戻した客数から計算し直して、紙の客単価に戻るかも見ます
+  if (Math.abs(Math.round(v.gross / a) - v.per) > 1) return null;
+  if (Math.abs(Math.round(v.net / a) - per2) > 1) return null;
+  return a;
+}
+
 function parseJournal(text) {
   const lines = String(text || '').split(/\r?\n/);
   const pairs = journalPairs(lines);
@@ -1939,12 +1988,35 @@ function parseJournal(text) {
     if (積) Object.keys(積).forEach((k) => { v[k] = 積[k]; });
   }
   const fixed = picked.fixed;
+  /* ★それでも客数が読めないときは、客単価から逆に計算します（上の説明） */
+  let 逆算の客数 = null;
+  if (v.guests === null || v.guests === undefined) {
+    逆算の客数 = journal客数を客単価から(lines, v);
+    if (逆算の客数) {
+      v.guests = 逆算の客数;
+      v.men = null; v.women = null; v.nosel = null;   // ★崩れているので消します
+      fixed.push('当日客数');
+    }
+  }
   const has = (k) => v[k] !== null && v[k] !== undefined;
   const sumPay = () => JOURNAL_PAY.reduce((a, k) => a + (v[k] || 0), 0);
 
   /* ---- 検算。★1つ1つの数に「守ってくれる式」を結びつけ、
      その式が通った数だけを使います ---- */
   const checks = journalCheck(v, 件数);
+  /* ★逆算で戻したときは、その根拠（2つのわり算が揃ったこと）を検算として残します。
+       ★これが無いと、客数を守っているのが「売上÷客数＝客単価」だけになります。
+         それは逆算で作った数なので、**必ず通ってしまいます。**
+         2つのわり算が揃ったことの方が、本当の根拠です。 */
+  if (逆算の客数) {
+    const per2 = journal客単価税抜(lines);
+    checks.push({
+      name: '売上÷客単価（税込）と 純売上÷客単価（税抜）が同じ客数になるか',
+      left: Math.round(v.gross / v.per), right: per2 ? Math.round(v.net / per2) : -1,
+      ok: !!per2 && Math.round(v.gross / v.per) === Math.round(v.net / per2),
+      covers: ['guests'],
+    });
+  }
   const sure = {};
   Object.keys(v).forEach((k) => {
     if (!has(k)) return;

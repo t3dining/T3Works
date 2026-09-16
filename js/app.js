@@ -3323,7 +3323,62 @@ function cash読めた具合(店, text) {
 }
 
 /**
- * 「いまの文字」と「場所から組み直した文字」の、**よく読めた方**を選びます
+ * 「いまの文字」と「場所から組み直した文字」を、**合わせます**
+ *
+ * ★★片方を選ぶ形にしていましたが、**それが間違いでした**（2026-09-16、実物6日分）。
+ *   8月6日の紙で、こうなりました。
+ *
+ *       いまの文字 … 客数は読めた。**電子マネーの金額が商品券に入っている**
+ *       組み直し   … 電子マネーも商品券も正しい。**選択なしを読み違えて客数が使えない**
+ *
+ *   **どちらも正しい欄と、まちがった欄を持っています。**どちらを選んでも、
+ *   正しく読めていた数を1つ捨てることになります。
+ *
+ * ★だから、**欄ごとに合わせます。**
+ *
+ *       どちらかで検算を通っていれば   … その数を使います
+ *       両方で通っていて、数がちがえば … ★どちらも使いません（空欄）
+ *
+ *   ★検算を通っているというのは、**その読み方の中で紙の足し算が合った**という意味です。
+ *     片方だけで通っていても、その足し算は本物です。
+ *   ★食いちがったときに空欄にするのは、決まりどおりです。
+ *     どちらかが間違っているので、まちがった数を入れるより空欄の方が正しい。
+ */
+function cashジャーナル合わせ(店, いま, 組み) {
+  const a = parseJournalFor(店, いま || '');
+  if (!組み) return { jr: a, 合わせた: [] };
+  const b = parseJournalFor(店, 組み);
+  const v = Object.assign({}, a.v);
+  const sure = Object.assign({}, a.sure);
+  const 合わせた = [];
+  const ある = (r, k) => r.sure[k] && r.v[k] !== null && r.v[k] !== undefined;
+  Object.keys(b.v).forEach((k) => {
+    if (!ある(b, k)) return;
+    if (!ある(a, k)) { v[k] = b.v[k]; sure[k] = true; 合わせた.push(k); return; }
+    if (a.v[k] !== b.v[k]) sure[k] = false;     // ★食いちがい。どちらも使いません
+  });
+  const 要る = ['cash', 'credit', 'emoney', 'net', 'guests'];
+  /* ★「計算で埋めた」も合わせます。**片方でだけ埋めた数が、埋めた印を失うと
+       画面では『読み取れた数』に見えます。**読んだのか計算したのかは、
+       ko-dai さんが数を信じるかどうかの判断材料なので、落としません。
+     ★実際に落としていました。8月5日と8月10日の客数は客単価から戻した数なのに、
+       「計算で埋めた」が空のまま出ていました（2026-09-16）。 */
+  const 埋めた = (a.fixed || []).slice();
+  (b.fixed || []).forEach((x) => { if (埋めた.indexOf(x) < 0) 埋めた.push(x); });
+  return {
+    jr: Object.assign({}, a, {
+      v, sure, fixed: 埋めた,
+      checks: (a.checks || []).concat(b.checks || []),
+      ok: 要る.every((k) => sure[k]),
+      missing: 要る.filter((k) => !sure[k])
+        .map((k) => (JOURNAL_FIELDS.find((f) => f.key === k) || {}).name),
+    }),
+    合わせた,
+  };
+}
+
+/**
+ * 現金の金額は、**よく読めた方**から取ります
  *
  * ★組み直した文字は、紙の1行を1行にそろえたものです（gas/現金売上.gs）。
  *   実物で見くらべたところ、支払の欄は組み直した方が確かでした
@@ -3346,10 +3401,9 @@ function cashYomiApply(積) {
   const res = 積.res;
   // ★様式ごとに読みます。おいでんテラスの紙には「現金以外おつり」があり、
   //   ふつうの読み方だと、そこを現金の行と取りちがえます
-  /* ★「いまの文字」と「場所から組み直した文字」の、よく読めた方を使います（上の説明） */
+  /* ★現金の金額は、よく読めた方から。日報の5つは、欄ごとに合わせます（上の説明） */
   const 選 = cash読む文を選ぶ(積.店, res.text, res.行);
-  const 読む文 = 選.text;
-  const got = parseCashFor(積.店, 読む文);
+  const got = parseCashFor(積.店, 選.text);
   cashEdit.ms = 積.ms;
   cashEdit.size = Math.round(積.dataUrl.length * 3 / 4 / 1024);
   cashEdit.gas = res.v || '（分かりません）';
@@ -3382,7 +3436,9 @@ function cashYomiApply(積) {
   // ★同じ文字から、日報に入れる5つも読みます。
   //   検算が通らなければ使いません（現金だけの読み取りは、これまでどおり動きます）
   if (JOURNAL_STORES.includes(積.店)) {
-    const jr = parseJournalFor(積.店, 読む文);
+    const 合 = cashジャーナル合わせ(積.店, res.text, res.行);
+    const jr = 合.jr;
+    cashEdit.合わせた = 合.合わせた;
     // ★検算が通らなくても入れます。ここを null にすると箱ごと消えてしまい、
     //   うまくいかなかったことすら分からなくなります（実際にそうなりました）
     cashEdit.j = jr.v;
@@ -3564,7 +3620,10 @@ function openOcrText() {
     cashEdit.ocrHow === 'drive' ? '★読み取り ドライブ（Visionが使われていません）' : '',
     cashEdit.ocrMs ? `サーバーの中 ${(cashEdit.ocrMs / 1000).toFixed(1)}秒` : '',
     cashEdit.枚 ? `今月 ${cashEdit.枚}枚め（1か月1000枚まで）` : '',
-    cashEdit.どちら ? '★組み直した方を使いました' : '',
+    cashEdit.どちら ? '★現金は組み直した方から' : '',
+    (cashEdit.合わせた || []).length
+      ? `★組み直した方から取った欄：${cashEdit.合わせた.map((k) => (JOURNAL_FIELDS.find((f) => f.key === k) || {}).name || k).join('・')}`
+      : '',
   ].filter(Boolean).join('　');
   /* ★下に「場所から組み直した文字」を並べます。**まだ読み取りには使っていません。**
        本物の紙でうまく組めているかを見くらべるためです。
