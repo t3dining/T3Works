@@ -63,20 +63,51 @@
 }
 .help-toc__sub { font-size: 12px; font-weight: 600; color: var(--text-weak); margin-left: auto; }
 
-/* ---- 章 ---- */
-.help-sec { margin: 0 0 28px; scroll-margin-top: 64px; }
+/* ---- 章 ----
+   ★見出しは青い帯にしています（2026-09-16、ko-dai さん「もう少し目立つように」）。
+     小見出し（h3 の左の青い線）と見分けがつくように、帯と白い字にしました */
+.help-sec { margin: 0 0 44px; scroll-margin-top: 64px; }
 .help-sec__head {
-  display: flex; align-items: center; gap: 10px;
-  margin: 0 0 12px; padding-bottom: 9px;
-  border-bottom: 2px solid var(--accent);
+  display: flex; align-items: center; gap: 12px;
+  margin: 0 0 12px; padding: 14px 16px;
+  background: var(--accent); color: #fff;
+  border-radius: 14px; box-shadow: var(--shadow);
 }
 .help-sec__n {
-  flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%;
+  flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
-  background: var(--accent); color: #fff;
-  font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums;
+  background: #fff; color: var(--accent);
+  font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums;
 }
-.help-sec__title { margin: 0; font-size: 18px; font-weight: 800; letter-spacing: .01em; }
+.help-sec__title { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: .02em; color: #fff; }
+
+/* ---- 章の目次 ----
+   ★中身は下の <script> が、その章の小見出し（h3 と「困ったとき」の質問）から組み立てます。
+     手で書くと、小見出しを足したり入れ替えたりしたときに目次だけ古くなるためです。
+     画面の絵（.help-shot）の中の見出しは拾いません */
+.help-sec-toc {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 12px; margin: 0 0 20px; overflow: hidden;
+}
+.help-sec-toc__label {
+  padding: 8px 14px 7px; background: var(--surface-2);
+  border-bottom: 1px solid var(--line-2);
+  font-size: 11.5px; font-weight: 800; letter-spacing: .04em; color: var(--text-weak);
+}
+.help-sec-toc__list { list-style: none; margin: 0; padding: 0; }
+.help-sec-toc__list li + li { border-top: 1px solid var(--line-2); }
+.help-sec-toc__list a {
+  display: flex; align-items: center; gap: 8px; min-height: 44px; box-sizing: border-box;
+  padding: 10px 14px; color: var(--text); text-decoration: none;
+  font-size: 14px; font-weight: 700; line-height: 1.45;
+}
+.help-sec-toc__list a::after {
+  content: '›'; margin-left: auto; padding-left: 6px;
+  color: var(--text-weak); font-size: 19px; font-weight: 400; line-height: 1;
+}
+.help-sec-toc__list a:active { background: var(--surface-2); }
+/* 飛んだ先の見出しが、上に貼りついた帯の下に隠れないように */
+.help-jump { scroll-margin-top: 72px; }
 
 .help-q {
   background: var(--surface); border: 1px solid var(--line);
@@ -207,14 +238,14 @@
 
 /* ---- 印刷（PDFにするとき） ---- */
 @media print {
-  .help-header, .help-toc, .help-back { display: none !important; }
+  .help-header, .help-toc, .help-sec-toc, .help-back { display: none !important; }
   body { background: #fff; font-size: 11pt; }
   .help-page { max-width: none; padding: 0; }
   .help-sec { break-inside: avoid; margin-bottom: 18pt; }
   .help-q, .help-lead, .help-first { box-shadow: none; break-inside: avoid; }
 }
 </style>
-<meta name="app-version" content="d0df0a93">
+<meta name="app-version" content="e153003c">
 </head>
 <body>
 
@@ -1325,6 +1356,56 @@
     back.href = from.pathname;
   } catch (e) {
     // 読めないときは、今までどおりワークスへ
+  }
+})();
+
+/* ★各章の目次（2026-09-16、ko-dai さん「その章に何が書かれているか分かるように、押すとそこまで飛べるように」）。
+     章の見出しのすぐ下に、その章の小見出しを並べます。押すと、その小見出しまで飛びます。
+   ・拾うのは h3 と「困ったとき」の質問（.help-q__title）。**画面の絵（.help-shot）の中は拾いません**
+     （絵の中にもアプリの見出しの h3 があるためです）
+   ・飛び先の id は「章の id-何番目」（s3-2 など）。小見出しを足すと番号がずれますが、目次も一緒に作り直すので、
+     ページの中のリンクは切れません
+   ・小見出しが1つしかない章には出しません */
+(function () {
+  var secs = document.querySelectorAll('.help-sec');
+  for (var k = 0; k < secs.length; k++) {
+    var sec = secs[k];
+    var head = sec.querySelector('.help-sec__head');
+    if (!head || !sec.id) continue;
+    var found = sec.querySelectorAll('h3, .help-q__title');
+    var items = [];
+    for (var i = 0; i < found.length; i++) {
+      if (!found[i].closest('.help-shot')) items.push(found[i]);
+    }
+    if (items.length < 2) continue;
+
+    var nav = document.createElement('nav');
+    nav.className = 'help-sec-toc';
+    nav.setAttribute('aria-label', 'この章の目次');
+    var label = document.createElement('div');
+    label.className = 'help-sec-toc__label';
+    label.textContent = 'この章に書いてあること';
+    var list = document.createElement('ul');
+    list.className = 'help-sec-toc__list';
+    for (var j = 0; j < items.length; j++) {
+      var h = items[j];
+      if (!h.id) h.id = sec.id + '-' + (j + 1);
+      h.classList.add('help-jump');
+      var a = document.createElement('a');
+      a.href = '#' + h.id;
+      a.textContent = h.textContent.replace(/\s+/g, ' ').trim();
+      var li = document.createElement('li');
+      li.appendChild(a);
+      list.appendChild(li);
+    }
+    nav.appendChild(label);
+    nav.appendChild(list);
+    head.parentNode.insertBefore(nav, head.nextSibling);
+  }
+  // 小見出しへのリンク（#s3-2 など）で開いたときは、作ったあとでそこへ移ります
+  if (location.hash) {
+    var to = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+    if (to) to.scrollIntoView();
   }
 })();
 </script>
