@@ -662,13 +662,30 @@ const ASK_静かな間 = [3000, 6000, 12000];
  *
  * ★ここを通すのは、**やり直しても同じ答えになる頼みごと**だけです
  *   （見るだけ・同じ値を同じマスに書く・同じ日の写真を残す・写真を読む）。
- *   ★スクリプトは1回目でもう終わっているので、送り直しても二重にはなりません。
+ *   ★404のときスクリプトは1回目でもう終わっているので、送り直しても二重にはなりません。
  * ★電波が無いとき、PINや権限で断られたときは送り直しません。同じ答えになるだけです。
+ *
+ * ★★**時間切れ（返事なし）は、404とは別ものです**（2026-09-16、入れた日の夕方に気づきました）。
+ *
+ *     404      … Google が結果を渡せなかった。**スクリプトはもう終わっています**
+ *     時間切れ … 端末が60秒であきらめただけ。**スクリプトはまだ動いています**
+ *
+ *   こちらの fetch をやめても、Apps Script は止まりません。時間切れで送り直すと、
+ *   **同じ仕事がもう1つ走ります。**写真の読み取りでは、それが
+ *   **Cloud Vision の1枚**として数えられます（1か月1000枚の枠）。
+ *   3回送り直せば、1枚の写真で4枚使うことになります。
+ *   ★9月14日に、6分で打ち切られた実行が1つありました（本部の調べ）。
+ *     60秒を超えることは、実際に起きています。
+ *   ★だから**写真は時間切れでは送り直しません**（`時間切れは送らない`）。
+ *     日報の読み書きは安く、同じ値を同じマスに書くだけなので、これまでどおり送り直します。
  */
-async function askAgain(action, extra) {
+async function askAgain(action, extra, 決め) {
+  const 時間切れか = (r) => r.kind === '返事なし' || /返事をしません/.test(String(r.error || ''));
+  const 送らない = !!(決め && 決め.時間切れは送らない);
   let 出 = await Sync.ask(action, extra);
   let 回 = 0;
-  while (!出.ok && cashTodokazu(出.error) && 出.kind !== '電波なし' && 回 < ASK_静かな間.length) {
+  while (!出.ok && cashTodokazu(出.error) && 出.kind !== '電波なし'
+    && !(送らない && 時間切れか(出)) && 回 < ASK_静かな間.length) {
     await new Promise((r) => setTimeout(r, ASK_静かな間[回]));
     回 += 1;
     出 = await Sync.ask(action, extra);
@@ -3333,12 +3350,13 @@ async function cashReadPhoto(dataUrl, dateStr, file) {
     // ★ここでは読み取るだけで、ドライブには残しません。
     //   残すのは「記録する」を押したときです（撮っただけの写真が溜まらないように）
     const from = Date.now();
+    // ★読み取り1回＝Cloud Vision 1枚。時間切れでは送り直しません（askAgain の説明を見てください）
     let res = await askAgain('journal', {
       mode: 'read',
       store: 元の店,
       date: dateStr,
       image: dataUrl,
-    });
+    }, { 時間切れは送らない: true });
     if (!res.ok) throw new Error(res.error || '送れませんでした');
 
     // ★Apps Script の貼り直しが済んでいるか、ここで見ます。
@@ -3533,6 +3551,10 @@ async function saveCash() {
     const before = el.cashSave.textContent;
     el.cashSave.textContent = '写真を残しています…';
     const from = Date.now();
+    /* ★写真を残すのも、時間切れでは送り直しません。
+         向こうはまだ書いている最中かもしれず、重ねて送ると
+         「古いのをゴミ箱へ入れて、新しく作る」が2つ同時に走ります。
+       ★残せなかったと出たら、ko-dai さんが「記録する」をもう一度押せば済みます。 */
     const res = await askAgain('journal', {
       mode: 'save',
       store: state.storeId,
@@ -3540,7 +3562,7 @@ async function saveCash() {
       storeName: getStore(state.storeId).name,
       date: dateStr,
       image: cashEdit.pending,
-    });
+    }, { 時間切れは送らない: true });
     el.cashSave.disabled = false;
     el.cashSave.textContent = before;
     cashEdit.saveMs = Date.now() - from;
