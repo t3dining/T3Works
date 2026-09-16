@@ -1167,7 +1167,7 @@ function cashMarkedOf(line) {
  *   本当に1000円未満だった日は読み取れませんが、そのときは手で入れてもらいます
  *   （まちがった金額が入るより、入らない方が安全です）。
  */
-function cashBareOf(line) {
+function cashBareOf(line, 同じ行) {
   const s = cashNormalize(line);
   const out = [];
   const re = /([\d][\d,.]*)\s*([件点%個人])?/g;
@@ -1176,7 +1176,12 @@ function cashBareOf(line) {
     if (m[2]) continue;                       // 「4件」のような数え方は外します
     const v = cashNumOf(m[1]);
     if (v === null) continue;
-    if (v !== 0 && v < 1000) continue;        // 件数らしい小さな数は受け付けません
+    /* 件数らしい小さな数は受け付けません。
+       ★ただし**その項目の名前と同じ行にある数**だけは受け付けます（2026-09-16）。
+         場所から組み直した文字では「客数 111」のように名前と数が1行に並びます。
+         離れた行の小さな数は当てになりませんが、名前のとなりの数は別です。
+         ★これが無いと、組み直した文で**客数が読めません**（実物で確かめました）。 */
+    if (v !== 0 && v < 1000 && !同じ行) continue;
     out.push(v);
   }
   return out.length ? out[out.length - 1] : null;
@@ -1568,7 +1573,8 @@ function journalCandidates(lines, field, pairs, seq) {
       if (JOURNAL_PAY.indexOf(field.key) >= 0) return [];
       for (let j = from; step > 0 ? j <= to : j >= to; j += step) {
         if (j !== i && journalIsLabel(lines[j])) break;
-        const v = cashBareOf(lines[j]);
+        // ★j === i は「その項目の名前が書いてある行そのもの」です（上の説明）
+        const v = cashBareOf(lines[j], j === i);
         if (v !== null) return [v];
       }
       return [];

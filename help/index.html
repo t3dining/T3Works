@@ -207,7 +207,7 @@
   .help-q, .help-lead, .help-first { box-shadow: none; break-inside: avoid; }
 }
 </style>
-<meta name="app-version" content="adf332e5">
+<meta name="app-version" content="93a643c1">
 </head>
 <body>
 
@@ -227,14 +227,14 @@
   </p>
 
   <ul class="help-toc">
-    <li class="help-toc__item"><a href="#s1"><span class="help-toc__n">1</span>はじめに<span class="help-toc__sub">これから</span></a></li>
-    <li class="help-toc__item"><a href="#s2"><span class="help-toc__n">2</span>クローズ<span class="help-toc__sub">これから</span></a></li>
-    <li class="help-toc__item"><a href="#s3"><span class="help-toc__n">3</span>週間掃除<span class="help-toc__sub">これから</span></a></li>
-    <li class="help-toc__item"><a href="#s4"><span class="help-toc__n">4</span>教育<span class="help-toc__sub">これから</span></a></li>
-    <li class="help-toc__item"><a href="#s5"><span class="help-toc__n">5</span>シフト<span class="help-toc__sub">これから</span></a></li>
-    <li class="help-toc__item"><a href="#s6"><span class="help-toc__n">6</span>記録を見る<span class="help-toc__sub">これから</span></a></li>
-    <li class="help-toc__item"><a href="#s7"><span class="help-toc__n">7</span>お金まわり<span class="help-toc__sub">これから</span></a></li>
-    <li class="help-toc__item"><a href="#s8"><span class="help-toc__n">8</span>困ったとき<span class="help-toc__sub">書けています</span></a></li>
+    <li class="help-toc__item"><a href="#s1"><span class="help-toc__n">1</span>はじめに<span class="help-toc__sub">ホーム画面と合言葉</span></a></li>
+    <li class="help-toc__item"><a href="#s2"><span class="help-toc__n">2</span>クローズ<span class="help-toc__sub">毎日やります</span></a></li>
+    <li class="help-toc__item"><a href="#s3"><span class="help-toc__n">3</span>週間掃除<span class="help-toc__sub">2週間ごと</span></a></li>
+    <li class="help-toc__item"><a href="#s4"><span class="help-toc__n">4</span>教育<span class="help-toc__sub">新しく入った人に</span></a></li>
+    <li class="help-toc__item"><a href="#s5"><span class="help-toc__n">5</span>シフト<span class="help-toc__sub">希望を出す・組む</span></a></li>
+    <li class="help-toc__item"><a href="#s6"><span class="help-toc__n">6</span>記録を見る<span class="help-toc__sub">あとから見る</span></a></li>
+    <li class="help-toc__item"><a href="#s7"><span class="help-toc__n">7</span>お金まわり<span class="help-toc__sub">立て替え・キャッチ</span></a></li>
+    <li class="help-toc__item"><a href="#s8"><span class="help-toc__n">8</span>困ったとき<span class="help-toc__sub">よくある3つ</span></a></li>
   </ul>
 
   <section class="help-sec" id="s1">
@@ -465,27 +465,288 @@
 
   <section class="help-sec" id="s3">
     <div class="help-sec__head"><span class="help-sec__n">3</span><h2 class="help-sec__title">週間掃除</h2></div>
-    <div class="help-todo">2週間の見方／チェックのしかた／随時掃除。<br>これから書きます。</div>
+    <p>
+      クローズが毎日なのに対して、こちらは<b>2週間で1回</b>ずつやる掃除です。
+      「今週やる」「来週やる」を、表で見ながら進めます。
+    </p>
+
+    <h3>表の見かた</h3>
+    <p>
+      <b>縦が掃除する場所、横が週</b>です。左に並んでいるのが掃除の中身、
+      右の2つのマスが「1週目」と「2週目」です。
+    </p>
+
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <div class="table-scroll">
+          <table class="week-table">
+            <thead>
+              <tr>
+                <th class="col-item">掃除する場所</th>
+                <th class="is-now"><span class="week-th__nth">1週目</span><span class="week-th__range">9/14〜9/20</span><span class="week-th__now">今週</span></th>
+                <th><span class="week-th__nth">2週目</span><span class="week-th__range">9/21〜9/27</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="week-group"><td colspan="3"><span class="week-group__label">ホール</span></td></tr>
+              <tr>
+                <td class="col-item">エアコンのフィルター<span class="week-every">毎週</span></td>
+                <td class="week-cell is-now"><button type="button" class="week-btn is-done">
+                  <span class="week-btn__mark">✓</span><span class="week-btn__name">田中</span><span class="week-btn__date">9/16</span>
+                </button></td>
+                <td class="week-cell is-future"><button type="button" class="week-btn"><span class="week-btn__mark">・</span></button></td>
+              </tr>
+              <tr class="is-alt">
+                <td class="col-item">窓ガラス</td>
+                <td class="week-cell is-now"><button type="button" class="week-btn"><span class="week-btn__mark">・</span></button></td>
+                <td class="week-cell is-future"><button type="button" class="week-btn"><span class="week-btn__mark">・</span></button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p class="help-shot__cap">
+        名前は見本です。<b>青い枠で囲まれているのが今週</b>です。
+        斜めの線が入っているマスは、まだ来ていない週です。
+      </p>
+    </div>
+
+    <h3>印の見かた</h3>
+    <ol class="help-steps">
+      <li><b>・（中点）</b>は、まだやっていません</li>
+      <li><b>✓</b>が付いていれば、済んでいます。<b>やった人の名前と日付</b>も出ます</li>
+      <li>掃除の名前の横の<b>紫の「毎週」</b>は、2週間に1回ではなく<b>毎週やるもの</b>です</li>
+      <li>マスが2つつながって1つに見えるものは、<b>2週間に1回</b>でよいものです</li>
+    </ol>
+
+    <h3>やったら、マスを押す</h3>
+    <p>
+      掃除が終わったら、<b>その場所の、その週のマスを押します。</b>
+      やった人の名前を選ぶ画面が出るので、自分の名前を選んでください。
+    </p>
+    <div class="help-note">
+      <b>押すのはマス全体です。</b>小さな印を狙わなくても、四角の中ならどこでも押せます。
+    </div>
+
+    <h3>2週間分をまとめて提出する</h3>
+    <p>
+      表の下に<b>「この2週間分を提出する」</b>があります。
+      2週間が終わったら押してください。クローズと同じで、<b>押さないと提出したことになりません。</b>
+    </p>
+
+    <h3>随時掃除</h3>
+    <p>
+      表の下に、もう1つ<b>「🧽 随時掃除」</b>があります。
+      こちらは<b>いつやってもよい掃除</b>で、決まった週がありません。
+    </p>
+    <p>
+      それぞれに<b>「最後にやった日」</b>が出ています。
+      間があいているものから手を付けてください。やったら押して、名前を選びます。
+    </p>
+    <div class="help-note">
+      <b>随時掃除は、達成率に入りません。</b>提出も要りません。
+      「そろそろやった方がよい」を思い出すための一覧です。
+    </div>
   </section>
 
   <section class="help-sec" id="s4">
     <div class="help-sec__head"><span class="help-sec__n">4</span><h2 class="help-sec__title">教育</h2></div>
-    <div class="help-todo">人を選ぶ／項目にチェック／終わった人。<br>これから書きます。</div>
+    <p>
+      新しく入った人に<b>何を教えたか</b>を記録するページです。
+      教える側が、終わったものにチェックを入れていきます。
+    </p>
+
+    <h3>人を選ぶ</h3>
+    <p>
+      教育中の人が並んでいます。<b>名前を押すと、その人の項目が開きます。</b>
+      名前の横の棒は、どこまで進んだかです。
+    </p>
+
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <button type="button" class="train-person" style="width:100%;">
+          <span class="train-person__name">山田</span>
+          <span class="train-person__bar"><span class="train-person__fill" style="width:62%;"></span></span>
+          <span class="train-person__num">21 / 34</span>
+        </button>
+      </div>
+      <p class="help-shot__cap">名前は見本です。34項目のうち21まで終わっている、という意味です。</p>
+    </div>
+
+    <h3>チェックを入れる</h3>
+    <p>
+      教えたものを押していきます。<b>クローズと同じ押し心地</b>です。
+      入れた時刻も残るので、あとから「いつ教えたか」が分かります。
+    </p>
+
+    <h3>全部終わったら</h3>
+    <p>
+      その人は一覧から消えて、下の<b>「終わった人」</b>にまとまります。
+      <b>記録が消えるわけではありません。</b>「終わった人」を押すと開いて、中身を見られます。
+    </p>
+    <div class="help-note">
+      <b>教える項目は、お店ごとにちがいます。</b>足したいものがあれば店長に伝えてください。
+    </div>
+
+    <h3>名前を足す</h3>
+    <p>
+      新しい人が入ったら、一番下の入力欄に名前を入れて足します。
+      <b>ここで足した名前は、この教育のページだけで使います。</b>
+    </p>
   </section>
 
   <section class="help-sec" id="s5">
     <div class="help-sec__head"><span class="help-sec__n">5</span><h2 class="help-sec__title">シフト</h2></div>
-    <div class="help-todo">希望を出す（提出ページ。1人に1つの番号を使います）／組む。<br>これから書きます。</div>
+    <p>
+      シフトには<b>2つの画面</b>があります。まちがえやすいので、先に分けておきます。
+    </p>
+    <ol class="help-steps">
+      <li><b>希望を出す人（アルバイト）</b>… LINEでもらったURLの<b>提出ページ</b>。このアプリではありません</li>
+      <li><b>組む人（お店）</b>… このアプリの中の<b>「シフト」</b></li>
+    </ol>
+
+    <h3>希望を出す（アルバイトの人）</h3>
+    <p>
+      店長からLINEでURLが届きます。開くと、まず<b>番号</b>を聞かれます。
+    </p>
+
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <div class="modal__panel modal__panel--confirm" style="box-shadow:none;border:1px solid var(--line);">
+          <h2 class="modal__title">あなたの番号を入れてください</h2>
+          <div class="pin-row">
+            <input type="text" class="field__input" style="text-align:center;letter-spacing:.2em;font-size:18px;" value="000000" readonly>
+          </div>
+          <div class="modal__actions modal__actions--confirm" style="margin-top:12px;">
+            <button type="button" class="btn btn--primary">開く</button>
+          </div>
+        </div>
+      </div>
+      <p class="help-shot__cap">店長から配られた、あなただけの番号です。</p>
+    </div>
+
+    <div class="help-important">
+      <span class="help-important__label">この番号について</span>
+      <p>
+        アプリの合言葉（PIN）とは<b>別のもの</b>です。1人に1つで、<b>他の人には教えないでください。</b>
+        番号で「誰の希望か」が決まるので、他の人の名前では出せません。
+      </p>
+    </div>
+
+    <p>
+      番号を入れると、<b>お店が募集している半月分</b>の日が並びます。
+      出たい日の枠を押して、最後に<b>出す</b>を押してください。
+    </p>
+    <ol class="help-steps">
+      <li>枠の名前はお店によってちがいます（立ち上げ・ランチ・ディナーなど）</li>
+      <li>出られない日は、何も押さずに飛ばします</li>
+      <li>出したあとでも、<b>締め切りまでは直せます</b></li>
+    </ol>
+    <div class="help-note">
+      <b>募集していないときは開けません。</b>「今は募集していません」と出ます。
+      お店が募集をはじめると出せるようになります。
+    </div>
+
+    <h3>組む（お店の人）</h3>
+    <p>
+      アプリの<b>「シフト」</b>を開くと、みんなが出した希望が並びます。
+      枠に人を入れていくと表ができます。
+    </p>
+    <ol class="help-steps">
+      <li>まず<b>「シフト募集をはじめる」</b>を押します。押すまで、みんなは出せません</li>
+      <li>集まったら、枠に名前を入れていきます</li>
+      <li>できたら<b>確定</b>します。確定すると、出した人の画面に決まった表が出ます</li>
+    </ol>
   </section>
 
   <section class="help-sec" id="s6">
     <div class="help-sec__head"><span class="help-sec__n">6</span><h2 class="help-sec__title">記録を見る</h2></div>
-    <div class="help-todo">クローズの提出記録／週間掃除の達成状況／月間表。<br>これから書きます。</div>
+    <p>
+      入れた記録を、あとから見る画面です。<b>店舗を選ぶ画面の下</b>に並んでいます。
+      どの店にいても、6店舗分すべてを見られます。
+    </p>
+
+    <h3>クローズの提出記録</h3>
+    <p>
+      カレンダーの形で、<b>どの店が、どの日に出したか</b>が並びます。
+      出ていない日がひと目で分かります。
+    </p>
+    <ol class="help-steps">
+      <li><b>緑</b>… 出ています</li>
+      <li><b>赤</b>… 出ていません</li>
+      <li><b>灰色</b>… 定休日です。出さなくてかまいません</li>
+    </ol>
+    <p>日を押すと、その日の中身が開きます。</p>
+
+    <h3>週間掃除の達成状況</h3>
+    <p>
+      2週間ごとに、<b>どこまで終わったか</b>を6店舗まとめて見る画面です。
+      自分の店だけでなく、他の店の進み具合も分かります。
+    </p>
+
+    <h3>月間表</h3>
+    <p>
+      1か月分のクローズを、<b>1枚の表</b>にしたものです。
+      縦がやること、横が日付です。「この項目だけ、いつも抜けている」が見つけやすくなります。
+    </p>
+    <div class="help-note">
+      月間表は、店舗を選んでから<b>業務の一覧</b>に出ます（クローズや週間掃除と同じ場所です）。
+    </div>
   </section>
 
   <section class="help-sec" id="s7">
     <div class="help-sec__head"><span class="help-sec__n">7</span><h2 class="help-sec__title">お金まわり</h2></div>
-    <div class="help-todo">現金支払い管理表／キャッチ集計／会議資料。<br>これから書きます。</div>
+    <p>
+      お金にかかわる3つです。こちらも<b>店舗を選ぶ画面の下</b>にあります。
+      緑の線が付いているものが、お金のページです。
+    </p>
+
+    <h3>現金支払い管理表</h3>
+    <p>
+      <b>自分のお金で買ったものを記録する</b>ところです。
+      買い出しで立て替えたら、ここに入れておくと、あとでお店から返ってきます。
+    </p>
+    <ol class="help-steps">
+      <li>上の<b>「立て替えを記録する」</b>を押します</li>
+      <li>日付・立て替えた人・お店・金額・何を買ったかを入れます</li>
+      <li>レシートがあるかどうかも選びます</li>
+      <li><b>記録する</b>を押して終わりです</li>
+    </ol>
+    <div class="help-important">
+      <span class="help-important__label">忘れないうちに</span>
+      <p>
+        買ったその日に入れてください。<b>月が変わると、その月の精算には入りません。</b>
+        レシートは、お店の決まった場所に出しておいてください。
+      </p>
+    </div>
+    <p>
+      入れたものは<b>人ごとにまとまって</b>出ます。自分の名前のところに、その月の合計が出ます。
+      まちがえたときは、その行の<b>「直す」</b>で直せます。
+    </p>
+
+    <h3>キャッチ集計</h3>
+    <p>
+      キャッチに払ったお金を記録するところです。
+      <b>店舗ごとに「何人つれてきて、いくら払ったか」</b>を入れます。
+    </p>
+    <ol class="help-steps">
+      <li>日付・払った人・お店を選びます</li>
+      <li>渡した相手と、人数と金額を入れます</li>
+      <li>記録すると、店舗ごとにまとまって出ます</li>
+    </ol>
+    <div class="help-note">
+      1日に何回か渡したときは、<b>1行にまとまって出ます。</b>
+      中身を見たいときは「明細」を押してください。1件ずつ直せます。
+    </div>
+
+    <h3>会議資料</h3>
+    <p>
+      その月の売上と、会議で決まったことがまとまっているページです。
+      <b>見るためのもの</b>で、ふだんの作業で入力することはありません。
+    </p>
+    <p>
+      会議の前に開いて、自分の店の数字を見ておくと話が分かりやすくなります。
+    </p>
   </section>
 
   <!-- ============================================================
