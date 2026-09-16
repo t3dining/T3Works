@@ -207,7 +207,7 @@
   .help-q, .help-lead, .help-first { box-shadow: none; break-inside: avoid; }
 }
 </style>
-<meta name="app-version" content="2a254068">
+<meta name="app-version" content="5e9adfc1">
 </head>
 <body>
 
@@ -223,11 +223,11 @@
   <p class="help-lead">
     T3 Works は、6店舗の閉店作業・掃除・教育・シフトを、<b>みんなの端末で同じように見るため</b>のアプリです。
     入力したものは、他の人の端末にも届きます。<br>
-    困ったときは <b>8 番</b>から読んでください。よくある3つのことを、そこに書いてあります。
+    はじめて使う人は <b>1 番</b>から、困ったときは <b>8 番</b>から読んでください。<br><b>数字が3つ出てきます</b>（合言葉・あなたの番号・シフトの番号）。取りちがえやすいので、1番の表で見くらべてください。
   </p>
 
   <ul class="help-toc">
-    <li class="help-toc__item"><a href="#s1"><span class="help-toc__n">1</span>はじめに<span class="help-toc__sub">ホーム画面と合言葉</span></a></li>
+    <li class="help-toc__item"><a href="#s1"><span class="help-toc__n">1</span>はじめに<span class="help-toc__sub">ホーム画面・合言葉・番号</span></a></li>
     <li class="help-toc__item"><a href="#s2"><span class="help-toc__n">2</span>クローズ<span class="help-toc__sub">毎日やります</span></a></li>
     <li class="help-toc__item"><a href="#s3"><span class="help-toc__n">3</span>週間掃除<span class="help-toc__sub">2週間ごと</span></a></li>
     <li class="help-toc__item"><a href="#s4"><span class="help-toc__n">4</span>教育<span class="help-toc__sub">新しく入った人に</span></a></li>
@@ -308,6 +308,84 @@
       <b>合言葉が分からない・入れても通らないとき。</b>こうだいに聞いてください。
       何度もまちがえると、しばらく開けなくなることがあります。
       <b>10分ほど待ってから</b>、もう一度ためしてください。
+    </div>
+
+    <h3>あなたの番号を入れる</h3>
+    <p>
+      合言葉のあと、もう1つ<b>「あなたの番号」</b>を聞かれます。
+      6桁の数字で、<b>1人に1つ</b>です。こうだいから渡されます。
+    </p>
+
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <div class="modal__panel modal__panel--confirm" style="box-shadow:none;border:1px solid var(--line);">
+          <h2 class="modal__title">あなたの番号を入れてください</h2>
+          <p class="confirm__message">誰が入力したかが分かるようにするための、あなただけの番号です。<br>一度入れれば、この端末では次回から不要です。</p>
+          <div class="field">
+            <label class="field__label">あなたの番号（6桁）</label>
+            <input type="text" class="field__input" style="text-align:center;letter-spacing:.2em;font-size:18px;" value="000000" readonly>
+          </div>
+          <div class="modal__actions modal__actions--confirm" style="margin-top:12px;">
+            <button type="button" class="btn btn--primary">開く</button>
+          </div>
+        </div>
+      </div>
+      <p class="help-shot__cap">この画面が出たら、渡された6桁を入れて「開く」を押します。</p>
+    </div>
+
+    <p>
+      入れると、<b>画面の上に自分の名前が出ます。</b>
+      「〇〇さんのアカウント」と出ていれば、正しく入っています。
+    </p>
+    <p>
+      <b>なぜ要るのか。</b>誰が入力したかが分かるようにするためです。
+      合言葉だけだと、6店舗の誰が入れたのか分かりません。
+    </p>
+
+    <div class="help-important">
+      <span class="help-important__label">番号は人に教えないでください</span>
+      <p>
+        番号で「あなた」が決まります。人に教えると、その人があなたとして入力できてしまいます。
+        合言葉はみんな同じですが、<b>番号は1人ずつ違います。</b>
+      </p>
+    </div>
+
+    <h3>数字が3つ出てきます。混ざらないように</h3>
+    <p>使う場所がそれぞれ違います。</p>
+
+    <div style="overflow-x:auto;">
+    <table style="border-collapse:collapse;width:100%;font-size:13.5px;min-width:320px;">
+      <thead>
+        <tr style="background:var(--surface-2);">
+          <th style="text-align:left;padding:9px 10px;border-bottom:2px solid var(--line);">何の数字か</th>
+          <th style="text-align:left;padding:9px 10px;border-bottom:2px solid var(--line);">どこで使うか</th>
+          <th style="text-align:left;padding:9px 10px;border-bottom:2px solid var(--line);">1人ずつ？</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding:9px 10px;border-bottom:1px solid var(--line-2);"><b>合言葉（PIN）</b></td>
+          <td style="padding:9px 10px;border-bottom:1px solid var(--line-2);">このアプリを開くとき</td>
+          <td style="padding:9px 10px;border-bottom:1px solid var(--line-2);">みんな同じ</td>
+        </tr>
+        <tr>
+          <td style="padding:9px 10px;border-bottom:1px solid var(--line-2);"><b>あなたの番号</b></td>
+          <td style="padding:9px 10px;border-bottom:1px solid var(--line-2);">合言葉のあと。このアプリ</td>
+          <td style="padding:9px 10px;border-bottom:1px solid var(--line-2);"><b>1人ずつ違う</b></td>
+        </tr>
+        <tr>
+          <td style="padding:9px 10px;"><b>シフトの番号</b></td>
+          <td style="padding:9px 10px;">シフト提出のページ（5番）</td>
+          <td style="padding:9px 10px;"><b>1人ずつ違う</b></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="help-note">
+      ★<b>「あなたの番号」と「シフトの番号」は別の数字です。</b>
+      取りちがえると入れません。シフトの番号でこのアプリには入れませんし、
+      その逆もできません。<b>わざと分けてあります。</b>
     </div>
   </section>
 
@@ -614,6 +692,7 @@
       <div class="help-shot__body">
         <div class="modal__panel modal__panel--confirm" style="box-shadow:none;border:1px solid var(--line);">
           <h2 class="modal__title">あなたの番号を入れてください</h2>
+          <p class="confirm__message">★1番の「あなたの番号」とは<b>別の数字</b>です。</p>
           <div class="pin-row">
             <input type="text" class="field__input" style="text-align:center;letter-spacing:.2em;font-size:18px;" value="000000" readonly>
           </div>
