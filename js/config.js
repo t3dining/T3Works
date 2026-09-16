@@ -1476,6 +1476,48 @@ function journalPaySeq(lines) {
 }
 
 /**
+ * 支払方法ごとの「◯件」を読みます
+ *
+ * ★2026年8月3日のバグるの紙（ko-dai さん）。支払の欄が、名前と件数だけ先に
+ *   まとまって出ていました。
+ *
+ *     電子マネー / ◯◯件 / 商品券(釣無し) / 0件 / ¥◯◯,◯◯◯ / ¥0
+ *
+ *   このとき**電子マネーの金額が商品券に入り**、電子マネーは0円になりました。
+ *   ★★それでも「支払方法の合計 ＝ 売上」は通ります。**入れ替えても合計は同じ**だからです。
+ *   合計の検算は「いくらか」は守れますが、「どの欄か」は守れません。
+ *
+ * ★そこで件数を使います。**0件なら0円、1件以上なら0円ではない。**
+ *   上の紙では、商品券(釣無し)が0件なのに金額が入っていて、すぐ分かります。
+ *   これは選び分けにも効きます（検算がいちばん通る組み合わせが選ばれるため）。
+ */
+function journalPayCounts(lines) {
+  const mine = JOURNAL_FIELDS.filter((f) => JOURNAL_PAY.indexOf(f.key) >= 0);
+  let from = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (CASH_SECTION_MARKS.some((m) => cashPlain(lines[i]).includes(m))) { from = i; break; }
+  }
+  if (from < 0) return {};
+  const out = {};
+  let いま = '';
+  for (let i = from + 1; i < lines.length; i++) {
+    const p = cashPlain(lines[i]);
+    if (!p) continue;
+    // かっこ書きは、その上の項目の内わけなので数えません
+    if (/^[(（]/.test(p) || p.indexOf('含') >= 0) continue;
+    const f = mine.find((x) => !x.skip.some((ng) => p.includes(cashPlain(ng)))
+      && x.hit.some((h) => p.includes(cashPlain(h))));
+    // ★同じ名前が2度出たら、あとは見ません。取りちがえるより読まない方が安全です
+    if (f) いま = out[f.key] === undefined ? f.key : '';
+    else if (journalIsLabel(lines[i])) いま = '';    // よその見出しが来たら、そこで切ります
+    if (!いま) continue;
+    const m = /([\d][\d,]*)\s*件/.exec(cashNormalize(lines[i]));
+    if (m) { out[いま] = cashNumOf(m[1]); いま = ''; }
+  }
+  return out;
+}
+
+/**
  * 1つの項目の数の「候補」を集めます
  *
  * ★読み取りは、値が項目名の【下】に来ることも【上】に来ることもあります。
@@ -1634,7 +1676,7 @@ function journalSane(v) {
 }
 
 /** 検算をして、通った数・落ちた数を返します */
-function journalCheck(v) {
+function journalCheck(v, 件数) {
   const has = (k) => v[k] !== null && v[k] !== undefined;
   const sumPay = () => JOURNAL_PAY.reduce((a, k) => a + (v[k] || 0), 0);
   const checks = [];
@@ -1661,6 +1703,20 @@ function journalCheck(v) {
       ok: Math.abs(calc - v.per) <= 2, covers: ['guests', 'per', 'gross'],
     });
   }
+  /* ★件数と金額（上の journalPayCounts を見てください）。
+       0件なら0円、1件以上なら0円ではない。**どの欄に入ったか**を守る、ただ1つの検算です */
+  const 件 = 件数 || {};
+  JOURNAL_PAY.forEach((k) => {
+    const c = 件[k];
+    if (c === null || c === undefined || !has(k)) return;
+    const 名 = (JOURNAL_FIELDS.find((f) => f.key === k) || {}).name || k;
+    checks.push({
+      name: `${名}　${c}件と金額が合っているか`,
+      left: v[k], right: c === 0 ? 0 : '0でない金額',
+      ok: (c === 0) === (v[k] === 0), covers: [k],
+    });
+  });
+
   if (has('gross') && has('net') && !has('tax')) {
     const r = v.gross ? v.net / v.gross : 0;
     checks.push({
@@ -1673,7 +1729,7 @@ function journalCheck(v) {
 }
 
 /** 候補の組み合わせを試して、検算が一番通るものを選びます */
-function journalPick(cands) {
+function journalPick(cands, 件数) {
   const keys = Object.keys(cands);
   const pick = {};
   keys.forEach((k) => { pick[k] = cands[k].length ? cands[k][0] : null; });
@@ -1688,7 +1744,7 @@ function journalPick(cands) {
     if (!journalSane(v)) return { ok: 0, ng: 99, got: 0, point: -9999 };
     const filled = journalFill(v).v;
     if (!journalSane(filled)) return { ok: 0, ng: 99, got: 0, point: -9999 };
-    const cs = journalCheck(filled);
+    const cs = journalCheck(filled, 件数);
     const ok = cs.filter((c) => c.ok).length;
     const ng = cs.length - ok;
     const got = keys.filter((k) => v[k] !== null && v[k] !== undefined).length;
@@ -1742,6 +1798,16 @@ function journalPick(cands) {
  *
  *   組数を並びに数えないと、値が1つずれて客数が読めません。
  *
+ * ★2026年8月3日の紙は、同じ並びが**3つずつに分かれて**出ていました。
+ *
+ *     組数 / 客数 / 男性        ← 名前3つ
+ *     ◯◯組 / ◯◯ / ◯◯        ← 値3つ
+ *     女性 / 選択なし / 客単価(税込)
+ *     ◯ / 0 / ¥◯,◯◯◯
+ *
+ *   まとまりごとに結んで、**つないでいきます**。つないだ先で確かめが通ったら、そこで止めます。
+ *   ★同じ名前は2度使いません。つなぎ過ぎて、よその数まで巻き込まないためです。
+ *
  * ★★**男性 ＋ 女性 ＋ 選択なし ＝ 客数** にならなければ使いません。
  *   順で結ぶのは危ういので、紙の中の足し算で確かめてから入れます。
  * ★名前の数と値の数がそろわないときも使いません。
@@ -1775,45 +1841,63 @@ function journal客数の積み上がり(lines, もと) {
   // 「取引別」は組数の小見出しで、値を持ちません。並びに数えず、飛ばします
   const 飛ばす = (p) => /^取引別$/.test(p);
   const 素 = lines.map((l) => cashPlain(l || '').trim());
-  // 名前が続いているところを探します
-  for (let i = 0; i < 素.length; i++) {
-    const 並び = [];
-    let j = i;
-    while (j < 素.length) {
-      if (飛ばす(素[j])) { j += 1; continue; }
-      const 当 = 名.find((x) => x.み(素[j]) && !/\d/.test(素[j]));
-      if (!当 || 並び.some((y) => y.当 === 当)) break;
-      並び.push({ 当, i: j });
-      j += 1;
-    }
-    if (並び.length < 4) continue;              // 4つ以上そろって初めて見ます
-    const 値 = [];
-    for (let k = j; k < 素.length && 値.length < 並び.length; k++) {
-      const c = /^[¥￥]?\s*(\d[\d,]*)\s*[客人組]?$/.exec(素[k]);
-      if (c) { 値.push(Number(c[1].replace(/,/g, ''))); continue; }
-      if (素[k]) break;                          // 数でない行が挟まったら、そこまで
-    }
-    if (値.length !== 並び.length) continue;
-    const out = {};
-    並び.forEach((x, n) => { if (x.当.key) out[x.当.key] = 値[n]; });
-    // ★足し算で確かめます
-    if (out.guests === undefined) continue;
-    const per2 = out.per2;
-    delete out.per2;                       // 税抜の客単価は、確かめにだけ使います
-    const 足す = (out.men || 0) + (out.women || 0) + (out.nosel || 0);
-    if (足す === out.guests) return out;
+  const 近い = (a, b) => a !== null && a !== undefined
+    && b !== null && b !== undefined && Math.abs(Math.round(a) - b) <= 2;
 
-    /* ★足し算が合いませんでした。どれかが読み違えられています。
+  /** 集まったものが、使えるところまで来たか */
+  const 見きわめ = (out, 数) => {
+    if (数 < 4) return null;                       // 4つ以上そろって初めて見ます
+    if (out.guests === undefined || out.guests === null) return null;
+    const 実 = {};
+    Object.keys(out).forEach((k) => { if (k !== 'per2') 実[k] = out[k]; });
+    // ① 紙の中の足し算。★男性と女性がそろっているときだけ見ます
+    //    （0どうしで「合った」ことにしないためです）
+    if (out.men !== undefined && out.women !== undefined
+      && out.men + out.women + (out.nosel || 0) === out.guests) return 実;
+
+    /* ② 足し算が合いません。どれかが読み違えられています。
          客数そのものが正しいかは、**わり算2つ**で確かめます。
          2つとも合ったときだけ、**客数と客単価だけ**を返します。 */
-    const 近い = (a, b) => a !== null && a !== undefined
-      && b !== null && b !== undefined && Math.abs(Math.round(a) - b) <= 2;
     const v = もと || {};
-    if (!out.guests || out.guests < 0) continue;
-    if (!v.gross || !v.net) continue;
-    if (!近い(v.gross / out.guests, out.per)) continue;
-    if (!近い(v.net / out.guests, per2)) continue;
+    if (!out.guests || out.guests < 0) return null;
+    if (!v.gross || !v.net) return null;
+    if (!近い(v.gross / out.guests, out.per)) return null;
+    if (!近い(v.net / out.guests, out.per2)) return null;
     return { guests: out.guests, per: out.per };
+  };
+
+  // 名前が続いているところを探します
+  for (let i = 0; i < 素.length; i++) {
+    const out = {};
+    const 使った = [];
+    let 数 = 0;
+    let j = i;
+    // ★まとまりが分かれていても、続くかぎりつないでいきます
+    for (;;) {
+      const 並び = [];
+      let k = j;
+      while (k < 素.length) {
+        if (飛ばす(素[k])) { k += 1; continue; }
+        const 当 = 名.find((x) => x.み(素[k]) && !/\d/.test(素[k]));
+        if (!当 || 使った.indexOf(当) >= 0 || 並び.some((y) => y.当 === 当)) break;
+        並び.push({ 当, i: k });
+        k += 1;
+      }
+      if (!並び.length) break;
+      const 値 = [];
+      let m = k;
+      for (; m < 素.length && 値.length < 並び.length; m++) {
+        const c = /^[¥￥]?\s*(\d[\d,]*)\s*[客人組]?$/.exec(素[m]);
+        if (c) { 値.push(Number(c[1].replace(/,/g, ''))); continue; }
+        if (素[m]) break;                        // 数でない行が挟まったら、そこまで
+      }
+      if (値.length !== 並び.length) break;
+      並び.forEach((x, n) => { if (x.当.key) out[x.当.key] = 値[n]; 使った.push(x.当); });
+      数 += 並び.length;
+      j = m;
+      const 決 = 見きわめ(out, 数);
+      if (決) return 決;
+    }
   }
   return null;
 }
@@ -1822,10 +1906,11 @@ function parseJournal(text) {
   const lines = String(text || '').split(/\r?\n/);
   const pairs = journalPairs(lines);
   const seq = journalPaySeq(lines);
+  const 件数 = journalPayCounts(lines);
   const cands = {};
   JOURNAL_FIELDS.forEach((f) => { cands[f.key] = journalCandidates(lines, f, pairs, seq); });
 
-  const picked = journalFill(journalPick(cands));
+  const picked = journalFill(journalPick(cands, 件数));
   const v = picked.v;
   /* ★客数が読めなかったときだけ、「名前が先に並ぶ形」を試します。
        ふつうに読めている紙には触りません（127枚の試験を動かさないため）。 */
@@ -1839,7 +1924,7 @@ function parseJournal(text) {
 
   /* ---- 検算。★1つ1つの数に「守ってくれる式」を結びつけ、
      その式が通った数だけを使います ---- */
-  const checks = journalCheck(v);
+  const checks = journalCheck(v, 件数);
   const sure = {};
   Object.keys(v).forEach((k) => {
     if (!has(k)) return;
