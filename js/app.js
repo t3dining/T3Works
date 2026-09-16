@@ -929,7 +929,7 @@ function calcPadMake() {
   pad.id = 'calcPad';
   pad.style.cssText = [
     'position:fixed', 'left:0', 'right:0', 'bottom:0', 'z-index:99999',
-    'display:none', 'grid-template-columns:repeat(5,1fr)', 'gap:6px',
+    'display:none', 'grid-template-columns:repeat(4,1fr)', 'gap:6px',
     'padding:8px 8px calc(8px + env(safe-area-inset-bottom))',
     'background:#2b2b2b', 'box-shadow:0 -2px 12px rgba(0,0,0,.35)',
   ].join(';');
@@ -1041,24 +1041,35 @@ function calcPadMake() {
 
   const 数 = '#555';
   const 記号 = '#3d5a80';
+  /* ★★記号は「＝ ＋ −」の3つだけにしました（ko-dai さん・2026-09-16）。
+       ジャーナルで使うのは「=1000+2000-500」の形だけで、（ ）× ÷ ．は使いません。
+       使わないキーがあると、その分キーが細くなり、**隣のキーを押しやすく**なります。
+       5列 → 4列にして、1つずつのキーを横に広くしました。
+     ★記号は右の1列に、式を打つ順（＝ → ＋ → −）で上から並べます。
+     ★⌫ は右下（iPhone の数字キーボードと同じ場所）、0 は2つ分の幅です。
+     ★計算そのもの（cashFormulaEval）は、今までどおり × ÷ （ ） も読めます。
+       キーを減らしただけなので、前に入れた式が読めなくなることはありません。
+     ★テンキーを使うのはジャーナルの画面の3か所だけです（出前館などの欄・仕入と人件費・手で直す欄）。 */
   [
-    ['7', 数], ['8', 数], ['9', 数], ['⌫', '#8a4a4a'], ['=', 記号],
-    ['4', 数], ['5', 数], ['6', 数], ['(', 記号], ['+', 記号],
-    ['1', 数], ['2', 数], ['3', 数], [')', 記号], ['-', 記号],
-    ['0', 数], ['00', 数], ['.', 数], ['*', 記号], ['/', 記号],
-  ].forEach(([c, 色]) => {
-    pad.appendChild(c === '⌫' ? キー(c, calcPadBack, 色) : キー(c, () => calcPadInsert(c), 色));
+    ['7', 数], ['8', 数], ['9', 数], ['=', 記号],
+    ['4', 数], ['5', 数], ['6', 数], ['+', 記号],
+    ['1', 数], ['2', 数], ['3', 数], ['-', 記号],
+    ['0', 数, 2], ['00', 数], ['⌫', '#8a4a4a'],
+  ].forEach(([c, 色, 幅]) => {
+    const b = c === '⌫' ? キー(c, calcPadBack, 色) : キー(c, () => calcPadInsert(c), 色);
+    if (幅) b.style.gridColumn = `span ${幅}`;
+    pad.appendChild(b);
   });
 
   // 下の段：全部消す ／ 閉じる ／ 確定（右下）
   const 消 = キー('全部消す', calcPadClear, '#5a3a3a');
   消.style.fontSize = '13px';
-  消.style.gridColumn = 'span 2';
+  消.style.gridColumn = 'span 1';
   pad.appendChild(消);
 
   const 閉 = キー('閉じる', calcPadClose, '#3a3a3a');
   閉.style.fontSize = '13px';
-  閉.style.gridColumn = 'span 1';
+  閉.style.gridColumn = 'span 1';     // 全部消す 1 ＋ 閉じる 1 ＋ 確定 2 ＝ 4列
   pad.appendChild(閉);
 
   // ★確定は右下です。押すと、その場で残して次の欄へ進みます。
