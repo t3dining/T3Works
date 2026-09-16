@@ -13,8 +13,8 @@
 <link rel="icon" type="image/png" sizes="64x64" href="../img/manage-icon-64.png?v=2b8a9145">
 <title>T3 Works Manage｜T3Dining株式会社</title>
 <link rel="stylesheet" href="../css/style.css?v=871a5653">
-<link rel="stylesheet" href="css/admin.css?v=27e01b9d">
-<meta name="app-version" content="1b1e6990">
+<link rel="stylesheet" href="css/admin.css?v=444d3c60">
+<meta name="app-version" content="16a57d44">
 </head>
 <body class="no-daytabs">
 
@@ -100,6 +100,13 @@
       <b>シフトの「配る番号」とは別の番号です。</b>アルバイトの番号では、ここには入れません。<br>
       <b class="admin-warn" id="acctNotLive">★今はまだ、この番号は使われていません。</b>
     </p>
+    <!-- ★番号を必須にする切り替え。**決めるのはサーバー**（gas/コード.gs の staffCodeRequired_）で、
+         ここはその設定を送るだけです。2026-09-16 まで、この切り替えがどこにもありませんでした
+         （設定の名前だけが ADMIN_SETTINGS にあって、押す所が無い状態でした）。 -->
+    <div class="admin-actions" id="acctRequireRow">
+      <button type="button" class="btn" id="acctRequire">番号を必須にする</button>
+      <span class="admin-note" id="acctRequireNote"></span>
+    </div>
     <div class="admin-actions">
       <input id="acctName" class="field__input" type="text" placeholder="名前（例：田中）">
       <button type="button" class="btn btn--primary" id="acctAdd">追加して番号を作る</button>
@@ -731,8 +738,8 @@
 <script>window.T3_ADMIN_PAGE = true;</script>
 <script src="../js/config.js?v=e9c76818"></script>
 <script src="../js/storage.js?v=f31370dc"></script>
-<script src="../js/sync.js?v=6140ce01"></script>
+<script src="../js/sync.js?v=07598bf7"></script>
 <script src="../js/update.js?v=c530219e"></script>
-<script src="js/admin.js?v=53498445"></script>
+<script src="js/admin.js?v=2a8891cf"></script>
 </body>
 </html>

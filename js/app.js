@@ -11453,9 +11453,13 @@ function openPinModal(message) {
     : '全店舗で共有しているデータを開くために必要です。<br>'
       + '一度入力すれば、この端末では次回から不要です。';
   el.codeInput.value = Sync.code();
-  // 「あとで」は、**PINが通っているあいだだけ**出します。
-  // ★ここを出しておかないと、番号を配り終える前に全員が止まります
-  el.codeLater.classList.toggle('is-hidden', !pin済み);
+  /* 「あとで」は、**PINが通っているあいだだけ**出します。
+     ★ここを出しておかないと、番号を配り終える前に全員が止まります
+     ★★ただし**サーバーが番号を求めているとき（締めつけ後）は出しません。**
+        あとで閉じても同期できず、赤いまま何もできなくなるためです。
+        この画面は背景を押しても閉じません（`pinModal` の backdrop に data-close がありません）。
+        つまり**番号を入れるまで閉じられない**のが、締めつけ後の正しい形です（2026-09-16）。 */
+  el.codeLater.classList.toggle('is-hidden', !pin済み || !!Sync.needStaffCode);
   el.pinModal.classList.remove('is-hidden');
   setTimeout(() => (pin済み ? el.codeInput : el.pinInput).focus(), 50);
 }
@@ -12011,7 +12015,24 @@ async function init() {
 
   // 共有版のとき：PIN未入力なら先に聞く。入力済みならすぐ同期を始める
   if (Sync.enabled()) {
-    Sync.onChange = () => { renderSyncStatus(); renderSyncWarn(); };
+    /* ★サーバーが「番号を入れてください」と言ってきたら、その場で聞きます。
+         ★2026-09-16 まで、`Sync.needStaffCode` を**誰も見ていませんでした。**
+           締めつけ（マネージの `staffCodeRequired`）を入れると、既にアプリを
+           使っている人は**赤い帯が出るだけ**で、どこから番号を入れるのか
+           分かりませんでした（「PINを入れ直す」の中にあることを知っている人しか入れられない）。
+         ★開くのは1回だけにします。閉じたあとに何度も開くと、操作を妨げます。
+           もう一度出したいときは、設定の「PINを入れ直す」から開けます。 */
+    let 番号を聞いた = false;
+    Sync.onChange = () => {
+      renderSyncStatus();
+      renderSyncWarn();
+      if (Sync.needStaffCode && !番号を聞いた
+          && el.pinModal.classList.contains('is-hidden')) {
+        番号を聞いた = true;
+        askStaffCode(Sync.lastError || 'あなたの番号を入れてください。');
+      }
+      if (!Sync.needStaffCode) 番号を聞いた = false;
+    };
     if (!Sync.pin()) openPinModal();
     else { Sync.start(); cashResume(); }
     return;

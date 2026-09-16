@@ -737,6 +737,15 @@ const Sync = {
       if (window.T3_ADMIN_PAGE && settings.staffAccounts) {
         localStorage.setItem(StaffAccounts._key, JSON.stringify(settings.staffAccounts));
       }
+      /* ★番号の締めつけ（`staffCodeRequired`）。**マネージの画面に出すためだけ**に持ちます。
+           ★「番号が要るか」を決めるのは**サーバー**です（`gas/コード.gs` の `staffCodeRequired_`）。
+             端末のこの値は**表示だけ**で、判定には使いません。
+             端末で判定すると、画面をいじれば通ってしまいます（社員のアカウントと同じ考えです）。
+           ★現場の端末には要りません（マネージにしか切り替えが無いため）。 */
+      if (window.T3_ADMIN_PAGE && settings.staffCodeRequired !== undefined) {
+        localStorage.setItem(APP.storageKey + ':staffCodeRequired',
+                             JSON.stringify(settings.staffCodeRequired === true));
+      }
       /* ★ここに「マネージ以外なら消す」を置いていました。**外しました。**
            2026-09-11、ko-dai さんが登録した社員のアカウントが**消えました。**
            端末の保存は**ページごとではなく、おおもと（オリジン）ごと**です。

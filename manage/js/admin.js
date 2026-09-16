@@ -40,6 +40,7 @@ const el = {};
   'weeklyStoreName', 'weeklyCount', 'weeklyEditor',
   'staffInput', 'saveStaff', 'staffCount', 'staffSaved',
   'acctName', 'acctAdd', 'acctCount', 'acctSaved', 'acctList', 'acctNotLive',
+  'acctRequire', 'acctRequireNote',
   'driversInput', 'saveDrivers', 'driversCount', 'driversSaved',
   'catchStaffFields', 'saveCatchStaff', 'catchStaffCount', 'catchStaffSaved',
   'shiftStaffInput', 'saveShiftStaff', 'shiftStaffCount', 'shiftStaffSaved',
@@ -1827,9 +1828,64 @@ function copyShiftCode(p, btn) {
  *  ★ここは**入れ物と配り方だけ**です。「その番号で入れるか」を決めるのは
  *    サーバー（GAS）です。端末側で判定すると、画面をいじれば通ります。
  * ============================================================ */
+/** いま番号が必須か（**表示だけ**。決めるのはサーバーです） */
+function 番号は必須か() {
+  try {
+    return JSON.parse(localStorage.getItem(APP.storageKey + ':staffCodeRequired') || 'false') === true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * 番号を必須にする／やめる
+ *
+ * ★押すとサーバーの設定（`staffCodeRequired`）を書き替えます。**管理用PINが要ります**
+ *   （`ADMIN_SETTINGS` に入っています）。
+ * ★必須にすると、**番号を入れていない端末は同期できなくなります。**
+ *   アプリ側は、その返事を受けたら番号を聞く画面を出します（js/app.js）。
+ * ★**全員に番号を配り終えてから**押してください。配る前に押すと、全員が止まります。
+ */
+function 締めつけを切り替える(する) {
+  const 生きている = StaffAccounts.ordered().filter((v) => !v.off).length;
+  if (する && !生きている) {
+    alert('番号がまだ1つもありません。先に「追加して番号を作る」で作ってください。');
+    return;
+  }
+  const 文 = する
+    ? `番号を必須にします。\n\nいま使える番号は ${生きている}人分です。\n`
+      + '★これを押すと、**番号を入れていない端末は同期できなくなります。**\n'
+      + '（アプリを開くと番号を聞く画面が出ます）\n\nよろしいですか。'
+    : '番号の必須をやめます。\n\nPINだけで使えるように戻ります。\n\nよろしいですか。';
+  if (!confirm(文)) return;
+  Sync.enqueue({ t: 'setting', n: 'staffCodeRequired', v: !!する }, true);
+  // 画面はすぐ書き替えます（サーバーの返事を待つと、押した手ごたえがありません）
+  localStorage.setItem(APP.storageKey + ':staffCodeRequired', JSON.stringify(!!する));
+  renderAccounts();
+}
+
 function renderAccounts() {
   // ★登録した順（あとから増えた人が下に付きます。担当者のリストと同じ並び方です）
   const 並び = StaffAccounts.ordered();
+  /* ★番号が必須かどうかを、押す所と一緒に出します（2026-09-16）。
+       ここまで「★今はまだ、この番号は使われていません」という文だけがあって、
+       **必須にする押し所がどこにもありませんでした。** */
+  const 必須 = 番号は必須か();
+  if (el.acctNotLive) {
+    el.acctNotLive.textContent = 必須
+      ? '★いま、この番号が必要です。番号を入れていない端末は同期できません。'
+      : '★今はまだ、この番号は使われていません。';
+    el.acctNotLive.classList.toggle('is-ok', 必須);
+  }
+  if (el.acctRequire) {
+    el.acctRequire.textContent = 必須 ? '番号の必須をやめる' : '番号を必須にする';
+    el.acctRequire.classList.toggle('btn--primary', !必須);
+  }
+  if (el.acctRequireNote) {
+    el.acctRequireNote.textContent = 必須
+      ? '必須です。新しい人には、番号を渡してから使ってもらってください。'
+      : '全員に番号を配り終えてから押してください。';
+  }
   const 生きている = 並び.filter((v) => !v.off).length;
   el.acctCount.textContent = 並び.length
     ? `${生きている}人（使えなくした人 ${並び.length - 生きている}）` : 'まだ登録なし';
@@ -3353,6 +3409,9 @@ function bindEvents() {
   el.saveCatchStaff.addEventListener('click', saveCatchStaff);
   el.saveShiftStaff.addEventListener('click', saveShiftStaff);
   el.acctAdd.addEventListener('click', addAccount);
+  if (el.acctRequire) {
+    el.acctRequire.addEventListener('click', () => 締めつけを切り替える(!番号は必須か()));
+  }
   el.saveShiftSlots.addEventListener('click', saveShiftSlots);
   el.saveMemoTags.addEventListener('click', saveShiftMemoTags);
   el.saveLineTexts.addEventListener('click', saveShiftLineTexts);
