@@ -614,6 +614,7 @@ const cashEdit = {
   ocr: null, how: '', busy: false, text: '',
   ms: 0, saveMs: 0, size: 0,   // 何秒かかったか・何KB送ったか（速さを確かめるためのもの）
   gas: '',                     // サーバー（現金売上.gs）の版の印
+  手: {},                      // ★日報の行ごとに、紙を見て手で直した数（日報の行の名前で持ちます）
 };
 
 /**
@@ -822,6 +823,7 @@ async function cashResume() {
       cashEdit.j = job.j || cashEdit.j;
       cashEdit.m = job.m || cashEdit.m;
       cashEdit.sure = job.sure || cashEdit.sure;
+      cashEdit.手 = job.手 || cashEdit.手;
       cashEdit.jok = true;
       render();
       setNippouMsg('前の書き込みが途中でした。続きからやり直します…');
@@ -1377,14 +1379,27 @@ let cashHandTimer = null;
 function cashHandSave(now) {
   const storeId = state.storeId;
   const dateStr = ymd(state.y, state.m, state.d);
+  /* ★★打った**その時の中身**を控えてから、少し待って書きます。
+       前は書く瞬間（700ミリ秒あと）の中身を見ていました。そのあいだに別の日を開くと、
+       **開いた日の数を前の日の書きかけに入れる**ことが起こりえます
+       （自前のテンキーは欄から focus が外れていても打てるので、blur で先に書かれません）。
+       実際に起きたのは見ていません。手で直す数（手）を足したので、
+       よその日の数が「手で直した数」として出てこないよう、先に閉じておきます。 */
+  const 中身 = JSON.parse(JSON.stringify({
+    m: cashEdit.m || {},
+    shiire: cashEdit.shiire || {},
+    jinken: cashEdit.jinken || {},
+    j手: cashEdit.手 || {},
+  }));
   const put = () => {
     cashHandTimer = null;
+    /* ★★前にあった中身を**残したまま**入れかえます（2026-09-16）。
+         前は m・shiire・jinken だけで作り直していたので、1文字打つたびに
+         **「アプリが最後に日報へ書いた数」（wrote）が消えて**いました。
+         そのせいで「日報で直された数を取り込む」が、何も取り込めなくなっていました。
+         ほかの2か所（cashWroteSave・日報から取り込むところ）は残していました。 */
     Store.setItem(storeId, dateStr, CASH_HAND, {
-      value: {
-        m: cashEdit.m || {},
-        shiire: cashEdit.shiire || {},
-        jinken: cashEdit.jinken || {},
-      },
+      value: { ...cashHandOf(storeId, dateStr), ...中身 },
     });
   };
   if (cashHandTimer) clearTimeout(cashHandTimer);
@@ -1425,7 +1440,7 @@ function cashWroteSave(dateStr, values, extra) {
   });
   const 手 = cashHandOf(state.storeId, dateStr);
   Store.setItem(state.storeId, dateStr, CASH_HAND, {
-    value: { ...手, m: cashEdit.m || {}, shiire: cashEdit.shiire || {}, jinken: cashEdit.jinken || {}, wrote: 次 },
+    value: { ...手, m: cashEdit.m || {}, shiire: cashEdit.shiire || {}, jinken: cashEdit.jinken || {}, j手: cashEdit.手 || {}, wrote: 次 },
   });
 }
 
@@ -1503,7 +1518,7 @@ async function cashPullFromNippou(しずかに) {
     }
     const 手 = cashHandOf(state.storeId, dateStr);
     Store.setItem(state.storeId, dateStr, CASH_HAND, {
-      value: { ...手, m: cashEdit.m, shiire: cashEdit.shiire, jinken: cashEdit.jinken, wrote: 次wrote },
+      value: { ...手, m: cashEdit.m, shiire: cashEdit.shiire, jinken: cashEdit.jinken, j手: cashEdit.手 || {}, wrote: 次wrote },
     });
     // ★先に描き直します。render の中で知らせが消えるためです
     render();
@@ -1596,6 +1611,10 @@ function renderCash() {
       : { ...((saved && saved.m) || {}) };
     cashEdit.shiire = { ...(書きかけ.shiire || {}) };
     cashEdit.jinken = { ...(書きかけ.jinken || {}) };
+    // ★手で直した数。書きかけが新しいので、あればそちらを出します（記録した中身は h）
+    cashEdit.手 = 書きかけ.j手 !== undefined
+      ? { ...書きかけ.j手 }
+      : { ...((saved && saved.h) || {}) };
     cashEdit.checks = [];
     cashEdit.sure = saved && saved.j ? Object.keys(saved.j).reduce((o, k) => { o[k] = true; return o; }, {}) : {};
     cashEdit.jok = !!(saved && saved.j);
@@ -1699,7 +1718,10 @@ function renderNippouBox(done) {
   //   ジャーナルを撮る前・撮っている間に入れておけるようにするためです。
   const on = JOURNAL_STORES.includes(state.storeId);
   // 読み取りの5つの表と検算は、写真を読んでからです
-  const yomi = !!cashEdit.j;
+  /* ★読み取りがまるごと失敗した日も、**手で直せるように表を出します**（2026-09-16）。
+       写真がある（撮った・記録した）なら出します。読んでいる最中は出しません。 */
+  const yomi = !!cashEdit.j || journal手あり()
+    || (!!(cashEdit.pending || cashEdit.photo) && !cashEdit.busy);
   el.cashNippouBox.classList.toggle('is-hidden', !on);
   if (!on) {
     // ★隠すときは中身も消します。残しておくと、次に出たときに
@@ -1781,9 +1803,18 @@ function renderNippouBox(done) {
   }
 
   renderNippouTable();
+  renderNippouGate();
+}
 
-  // 5つとも使えるときだけ、日報へ書けます
-  el.cashToNippou.classList.toggle('is-hidden', !cashEdit.jok);
+/**
+ * 日報へ書くボタンと、検算の知らせ
+ *
+ * ★手で直す欄を打つたびに呼びます（表を作り直さずに、ここだけ直します）
+ */
+function renderNippouGate() {
+  const 書ける = journal書ける(state.storeId);
+  // 5つとも使えるとき（または、手で直して埋まったとき）だけ、日報へ書けます
+  el.cashToNippou.classList.toggle('is-hidden', !書ける);
   // ★テスト用の書き先が入っているときは、ひと目で分かるようにします。
   //   本番に書いたつもりでテストに入っていた、が一番こわいためです
   const test = nippouTestFor(state.storeId);
@@ -1795,10 +1826,19 @@ function renderNippouBox(done) {
   const checks = cashEdit.checks || [];
   const bad = checks.filter((c) => !c.ok);
   const ok = cashEdit.jok;
-  el.cashCheckMark.className = 'cash-box__date ' + (ok ? 'is-ok' : 'is-bad');
-  el.cashCheckMark.textContent = ok ? `検算 ${checks.length}つOK` : '★日報には入れません';
+  const 手 = journal手あり();
+  el.cashCheckMark.className = 'cash-box__date ' + (ok || 書ける ? 'is-ok' : 'is-bad');
+  el.cashCheckMark.textContent = ok ? `検算 ${checks.length}つOK`
+    : 書ける ? '手で直した数で書けます' : '★日報には入れません';
 
   const say = [];
+  if (手) {
+    const 名 = journal行の数(state.storeId).filter((x) => x.手入力).map((x) => x.row.name);
+    say.push(`★手で直した数：${名.join('・')}`);
+  }
+  if (!ok && !書ける) {
+    say.push('数がちがう欄や読めなかった欄は、紙を見て左の欄に打ってください（空にすると読み取りに戻ります）');
+  }
   if (ok) {
     say.push(checks.map((c) => c.name).join('　'));
   } else {
@@ -2338,20 +2378,17 @@ function nippouSend() {
  *    ロケットナウはバグるが17行、popo が18行と、店舗でずれているためです。
  */
 function nippouCalc() {
-  const j = cashEdit.j || {};
   const calc = {};
-  cash日報の行(state.storeId).forEach((r) => {
-    const 引く = NIPPOU_MINUS[r.key] || [];
-    if (!引く.length) return;
-    if (j[r.key] === null || j[r.key] === undefined) return;
-    /* ★0円の欄を落とすのを、ここでも見ます。
-         ここが抜けていたため、**画面には「書きません」と出るのに、
-         式として 0 が書かれて**いました（2026-09-13に気づきました）。
-         画面と実際の動きが食いちがうのが、一番たちが悪い形です。 */
-    if (nippouZeroSkip(r.key, j[r.key])) return;
-    calc[NIPPOU_LABELS[r.key]] = {
-      base: j[r.key],                                   // ジャーナルから読めた数
-      minus: 引く.map((k) => NIPPOU_LABELS[k]),          // 引く行の「名前」
+  /* ★数は journal行の数 だけから取ります（表と同じ）。
+       前はここで cashEdit.j をそのまま見ていて、**検算に守られていない数でも式にして**いました。
+     ★0円の欄を落とすのも、そちらで決めています（2026-09-13 に「画面には書きませんと出るのに、
+       式として 0 が書かれていた」ことがあったためです）。 */
+  journal行の数(state.storeId).forEach((x) => {
+    if (!x.引く.length) return;
+    if (x.紙 === null || x.書かない) return;
+    calc[NIPPOU_LABELS[x.row.key]] = {
+      base: x.紙,                                        // 紙の数（手で直した数か、確かめの通った読み取り）
+      minus: x.引く.map((k) => NIPPOU_LABELS[k]),         // 引く行の「名前」
     };
   });
   return calc;
@@ -2579,15 +2616,12 @@ function nippouZeroDrop(values) {
 }
 
 function seisanPartData() {
-  const j = cashEdit.j || {};
-  const sure = cashEdit.sure || {};
   const values = {};
-  Object.keys(SEISAN_TO_NIPPOU).forEach((もと) => {
-    const さき = SEISAN_TO_NIPPOU[もと];
-    if (j[もと] === null || j[もと] === undefined) return;
-    if (!sure[もと]) return;                       // 検算に守られていない数は入れません
-    if (nippouZeroSkip(さき, j[もと])) return;     // ★0円は書きません
-    values[NIPPOU_LABELS[さき]] = j[もと];
+  // ★数は journal行の数 だけから取ります（表と同じ。手で直した数もここに入っています）
+  journal行の数(state.storeId).forEach((x) => {
+    if (x.紙 === null) return;             // 検算に守られていない数は入れません
+    if (x.書かない) return;                // ★0円は書きません
+    values[NIPPOU_LABELS[x.row.key]] = x.紙;
   });
   return { values, calc: {}, extra: [] };
 }
@@ -2597,13 +2631,15 @@ function nippouPartData(part) {
   if (part === 'journal') {
     // ★こじゃれは紙の作りがちがうので、別の道を通ります
     if (journalFormatOf(state.storeId) === 'seisan') return seisanPartData();
-    const n = nippouValues(cashEdit.j || {}, cashEdit.m);
     const values = {};
-    cash日報の行(state.storeId).forEach((r) => {
-      if ((NIPPOU_MINUS[r.key] || []).length) return;      // 式で入れる分は calc へ
-      if (n[r.key] === null || n[r.key] === undefined) return;
-      if (nippouZeroSkip(r.key, n[r.key])) return;         // ★0円は書きません
-      values[NIPPOU_LABELS[r.key]] = n[r.key];
+    /* ★★数は journal行の数 だけから取ります（表と同じ）。
+         前は cashEdit.j をそのまま見ていて、**画面に「—」と出ている数（検算に守られていない数）も
+         書いて**いました（2026-09-16 に気づきました）。 */
+    journal行の数(state.storeId).forEach((x) => {
+      if (x.引く.length) return;                 // 式で入れる分は calc へ
+      if (x.紙 === null) return;
+      if (x.書かない) return;                    // ★0円は書きません
+      values[NIPPOU_LABELS[x.row.key]] = x.入れる;
     });
     return { values, calc: nippouCalc(), extra: [] };
   }
@@ -2677,7 +2713,7 @@ async function nippouWritePart(part, btn) {
     記録も: 組.some((x) => NIPPOU_PARTS[x].記録も),
   };
   if (!決) return;
-  if (組.indexOf('journal') >= 0 && !cashEdit.jok) return;
+  if (組.indexOf('journal') >= 0 && !journal書ける(state.storeId)) return;
 
   const だめ = [].concat(...組.map((x) => nippouPartBad(x)));
   if (だめ.length) {
@@ -2755,10 +2791,16 @@ async function nippouWritePart(part, btn) {
     // ② 並べて確かめてもらいます
     const rows = look.rows || [];
     const 食いちがい = nippouClash(rows);
+    // ★手で直した数は、押す前の確かめの画面でも分かるようにします
+    const 手の名 = 組.indexOf('journal') >= 0
+      ? journal行の数(state.storeId).filter((x) => x.手入力 && x.紙 !== null)
+        .map((x) => NIPPOU_LABELS[x.row.key])
+      : [];
     const ok = await askConfirm({
       // ★書き先の名前を、押す前にも出します。テスト用なら、そう書きます
       item: `${test ? '★テスト用の日報★　' : ''}${look.file}　${look.sheet}日のページ（${決.name}）`,
-      message: rows.map((r) => `${r.name} ${cashShow(r.after)}`).join('／')
+      message: rows.map((r) => `${r.name} ${cashShow(r.after)}`
+        + (手の名.indexOf(r.name) >= 0 ? '（手で直した数）' : '')).join('／')
         + nippouClashText(食いちがい),
       okLabel: '書く',
       danger: 食いちがい.length > 0,
@@ -2772,7 +2814,7 @@ async function nippouWritePart(part, btn) {
       cashJobSave({
         kind: 'send', store: state.storeId, date: dateStr, values, test, folder,
         sales: cashYen(el.cashSales.value), by: el.cashStaff.value,
-        j: cashEdit.j, m: cashEdit.m, sure: cashEdit.sure, extra, calc,
+        j: cashEdit.j, m: cashEdit.m, sure: cashEdit.sure, 手: cashEdit.手, extra, calc,
         at: new Date().toISOString(),
       });
       await nippouSendNow(values, dateStr, test, folder, extra, calc, 見);
@@ -2969,42 +3011,180 @@ function cashNippouRowsFor(storeId) {
   ];
 }
 
-function renderNippouTable() {
+/**
+ * ジャーナルの行ごとに「紙の数」と「日報に入れる数」を決めます
+ *
+ * ★★画面の表も、日報へ送る数も、**ここだけ**から取ります（2026-09-16）。
+ *   それまで表は「検算に守られた数だけ」を見ていたのに、日報へ送る方は
+ *   （こじゃれ以外の5店舗で）それを見ていませんでした。**画面には「—」と出ているのに、
+ *   書くと入る**形です。たとえばリクルートポイントは「そろったか」の判定に入らないので、
+ *   検算が通らなくても、5つがそろえば書かれていました。
+ *   同じ決まりを2か所に書くと、片方だけ直し忘れます（→ journalまとめ）。
+ *
+ *   紙       … 手で直した数があればそれ。無ければ、検算に守られた読み取り。どちらも無ければ null
+ *   入れる   … 紙 − 引き算（出前館など。こじゃれは引きません）
+ *   引く     … 日報に計算式で入れる行なら、引く行の並び
+ *   書かない … 0円なので日報に入れない行。
+ *              ★式で入れる行は**紙の数**で見ます（nippouCalc と同じ）。
+ *                前は表だけ「引いたあと」で見ていて、式が 0 になる日に
+ *                表は「書きません」、実際は式を書く、と食いちがっていました。
+ */
+function journal行の数(storeId) {
+  const seisan = journalFormatOf(storeId) === 'seisan';
   const j = cashEdit.j || {};
-  const n = nippouValues(j, cashEdit.m);
-  const seisan = journalFormatOf(state.storeId) === 'seisan';
-  el.cashNippou.innerHTML = '';
-  cashNippouRowsFor(state.storeId).forEach((row) => {
-    const tr = document.createElement('tr');
-    const th = document.createElement('th');
-    th.textContent = row.name;
-    const from = document.createElement('td');
-    const minus = document.createElement('td');
-    const to = document.createElement('td');
-    to.className = 'is-to';
-
-    // ★こじゃれは紙から読んだ数をそのまま入れます（引き算をしません）
+  const sure = cashEdit.sure || {};
+  const 手 = cashEdit.手 || {};
+  const m = cashEdit.m || {};
+  return cashNippouRowsFor(storeId).map((row) => {
+    // ★こじゃれは紙の欄の名前と日報の行の名前がちがいます（cardId → クレジット など）
     const もと = seisan ? row.もと : row.key;
-    const raw = j[もと];
-    const cut = seisan ? 0
-      : (NIPPOU_MINUS[row.key] || []).reduce((a, k) => a + cashMinusOr0(cashEdit.m[k]), 0);
+    const 読んだ = j[もと];
+    const 読めた = 読んだ !== null && 読んだ !== undefined;
+    const 確か = 読めた && !!sure[もと];
+    const 手入力 = 手[row.key] !== null && 手[row.key] !== undefined;
+    const 紙 = 手入力 ? 手[row.key] : (確か ? 読んだ : null);
+    const 引く = seisan ? [] : (NIPPOU_MINUS[row.key] || []);
+    const 引く額 = 引く.reduce((a, k) => a + cashMinusOr0(m[k]), 0);
+    const 入れる = 紙 === null ? null : 紙 - 引く額;
+    const 書かない = 紙 !== null && nippouZeroSkip(row.key, 引く.length ? 紙 : 入れる);
+    return { row, もと, 読んだ, 読めた, 確か, 手入力, 紙, 引く, 引く額, 入れる, 書かない };
+  });
+}
+
+/** 手で直した数が1つでもあるか */
+function journal手あり() {
+  const 手 = cashEdit.手 || {};
+  return Object.keys(手).some((k) => 手[k] !== null && 手[k] !== undefined);
+}
+
+/**
+ * ジャーナルの数を日報に書いてよいか
+ *
+ * ★読み取りで5つがそろっていれば（jok）、これまでどおり書けます。
+ * ★そろっていなくても、**手で直して**「そろっていないと書けない欄」が全部埋まれば書けます。
+ *   欄の並びは JOURNAL_要る（js/config.js）1か所だけです。
+ * ★★手で1つも直していないときは、これまでとまったく同じです（jok だけで決まります）。
+ *   手で直す仕組みを足したことで、**人が何もしていないのに書ける日が増える**ことはありません。
+ */
+function journal書ける(storeId) {
+  if (cashEdit.jok) return true;
+  if (!journal手あり()) return false;
+  const 要る = JOURNAL_要る[journalFormatOf(storeId)] || [];
+  if (!要る.length) return false;
+  const 行たち = journal行の数(storeId);
+  return 要る.every((k) => {
+    const x = 行たち.find((y) => y.もと === k);
+    return !!x && x.紙 !== null;
+  });
+}
+
+/** 表の1行を作ります（中身は renderNippouTable が入れます） */
+function journal行を作る(row) {
+  const tr = document.createElement('tr');
+  tr.dataset.key = row.key;
+  const th = document.createElement('th');
+  th.textContent = row.name;
+  const from = document.createElement('td');
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.inputMode = 'numeric';
+  input.autocomplete = 'off';
+  input.dataset.te = row.key;
+  input.setAttribute('aria-label', `${row.name}（紙の数を手で直す）`);
+  // ★16px 未満だと、iOS が触ったときに画面を勝手に拡大します。
+  //   css は本部のファイルなので、見た目はここで決めます
+  Object.assign(input.style, {
+    fontSize: '16px', width: '100%', maxWidth: '8.5em', textAlign: 'right',
+    boxSizing: 'border-box', padding: '4px 6px', border: '1px solid #d8d8d8', borderRadius: '6px',
+  });
+  const note = document.createElement('div');
+  note.className = 'te-note';
+  Object.assign(note.style, { fontSize: '11px', color: '#9a6b00', textAlign: 'right' });
+  input.addEventListener('input', () => journal手を入れた(row.key, input));
+  input.addEventListener('blur', () => {
+    cashHandSave(true);                       // 欄から離れたら、待たずにその場で残します
+    // ★離れたら「◯◯◯◯◯」を「◯◯,◯◯◯」の形（カンマ付き）に直します（打っている間は触りません）
+    setTimeout(() => { if (!cashTyping(input)) renderNippouTable(); }, 0);
+  });
+  calcPadBind(input);       // ★自前のテンキーを出します（引き算の欄と同じ）
+  from.append(input, note);
+  const minus = document.createElement('td');
+  const to = document.createElement('td');
+  to.className = 'is-to';
+  tr.append(th, from, minus, to);
+  return tr;
+}
+
+/**
+ * 手で直す欄に打ったとき
+ *
+ * ★打つのは**紙の数**です（日報に入れる答えではありません）。
+ *   読み取りがまちがえたのは紙の数なので、そこを直すのが素直です。
+ *   出前館などの引き算は、これまでどおりアプリがします。
+ * ★空にすると、読み取りに戻ります。
+ */
+function journal手を入れた(key, input) {
+  if (!cashEdit.手) cashEdit.手 = {};
+  const 文字 = String(input.value || '').replace(/[円¥￥\s]/g, '');
+  if (文字 === '') {
+    delete cashEdit.手[key];
+    input.style.borderColor = '#d8d8d8';
+  } else {
+    const n = cashMinusNum(文字);
+    if (n === null || !Number.isInteger(n) || n < 0) {
+      // ★計算できない数・小数・マイナスは入れません。
+      //   打ちかけの前の数も消します（まちがった数を残して書かないため）
+      delete cashEdit.手[key];
+      input.style.borderColor = '#d33';
+    } else {
+      cashEdit.手[key] = n;
+      input.style.borderColor = '#d8d8d8';
+    }
+  }
+  cashHandSave();
+  renderNippouTable();
+  renderNippouGate();
+}
+
+function renderNippouTable() {
+  const 行たち = journal行の数(state.storeId);
+  /* ★行の並びが同じなら、作り直さずに中身だけ入れかえます。
+       手で直す欄を打っている最中に作り直すと、打っている欄が消えて
+       テンキーの行き先がなくなります。 */
+  const 今の並び = [...el.cashNippou.children].map((tr) => tr.dataset.key || '').join(',');
+  const 並び = 行たち.map((x) => x.row.key).join(',');
+  if (今の並び !== 並び) {
+    el.cashNippou.innerHTML = '';
+    行たち.forEach((x) => el.cashNippou.appendChild(journal行を作る(x.row)));
+  }
+  行たち.forEach((x, i) => {
+    const tr = el.cashNippou.children[i];
+    if (!tr) return;
     const fmt = (v) => (v === null || v === undefined ? '—'
-      : row.plain ? String(v) : Number(v).toLocaleString('ja-JP'));
-    const usable = !!(cashEdit.sure || {})[もと];
-    from.textContent = fmt(raw);
-    minus.textContent = cut ? `− ${cut.toLocaleString('ja-JP')}` : '';
-    const 入れる = seisan ? raw : n[row.key];
-    if (!usable) {
+      : x.row.plain ? String(v) : Number(v).toLocaleString('ja-JP'));
+    const input = tr.querySelector('input');
+    const note = tr.querySelector('.te-note');
+    const minus = tr.children[2];
+    const to = tr.children[3];
+    // ★読み取った数は、欄のうすい字（placeholder）で見せます。
+    //   確かめが通らなかった数も出します。何を読んだかが分からないと、直せないためです
+    input.placeholder = x.読めた ? fmt(x.読んだ) : '—';
+    if (!cashTyping(input)) input.value = x.手入力 ? fmt(x.紙) : '';
+    input.style.fontWeight = x.手入力 ? '700' : '';
+    input.style.background = x.手入力 ? '#fff4d6' : '';
+    note.textContent = x.手入力 ? '手で直した数' : '';
+    minus.textContent = x.引く額 ? `− ${x.引く額.toLocaleString('ja-JP')}` : '';
+    to.className = 'is-to';
+    to.style.color = '';
+    if (x.紙 === null) {
       to.textContent = '—';
       to.classList.add('is-ng');
-    } else if (nippouZeroSkip(row.key, 入れる)) {
+    } else if (x.書かない) {
       to.textContent = '書きません';       // ★0円の欄は、日報に何も入れません
       to.style.color = '#888';
     } else {
-      to.textContent = fmt(入れる);
+      to.textContent = fmt(x.入れる);
     }
-    tr.append(th, from, minus, to);
-    el.cashNippou.appendChild(tr);
   });
 }
 
@@ -3728,6 +3908,9 @@ async function saveCash() {
       // ジャーナルから読めた5つと、手で入れた引き算の分。日報へはここから書きます
       j: cashSureValues(),
       m: cashEdit.m && Object.keys(cashEdit.m).length ? cashEdit.m : null,
+      // ★紙を見て手で直した数（日報の行の名前で）。読み取りの j とは分けて残します。
+      //   あとで「読んだ数か、人が直した数か」を見分けられるようにするためです
+      h: journal手あり() ? { ...cashEdit.手 } : null,
     },
   });
   cashUnlocked = false;

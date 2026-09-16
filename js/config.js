@@ -2068,6 +2068,21 @@ function parseJournal(text) {
  *   「日報に書く」のボタンが一度も出ません**でした。読めた数は正しいのに、です。
  *   同じ決まりを2か所に書くと、片方だけ直し忘れます。**ここだけを直してください。**
  */
+/**
+ * 様式ごとに「そろっていないと日報に書けない」欄
+ *
+ * ★`journalまとめ`（読み取りの判定）と、**手で直したあとの判定**（js/app.js の
+ *   `journal書ける`）の両方がここを見ます。書き写さないでください。
+ * ★おいでんテラスの読み取りの決まりは「検算が全部通り、総売上・純売上・消費税・客数が
+ *   読めている」で、欄の並びではありません（journalまとめ の中）。
+ *   ここの `oiden` は**手で直したとき**だけに使います。日報の行にあるのは純売上と客数です。
+ */
+const JOURNAL_要る = {
+  nikkei: ['cash', 'credit', 'emoney', 'net', 'guests'],
+  seisan: ['cash', 'cardId', 'emoney', 'net', 'guests', 'kake', 'uberCard'],
+  oiden: ['net', 'guests'],
+};
+
 function journalまとめ(様, v, sure, checks) {
   const has = (k) => v[k] !== null && v[k] !== undefined;
   if (様 === 'oiden') {
@@ -2075,9 +2090,7 @@ function journalまとめ(様, v, sure, checks) {
     const ct = checks || [];
     return { ok: ct.length > 0 && ct.every((c) => c.ok) && !足りない.length, missing: 足りない };
   }
-  const 要る = 様 === 'seisan'
-    ? ['cash', 'cardId', 'emoney', 'net', 'guests', 'kake', 'uberCard']
-    : ['cash', 'credit', 'emoney', 'net', 'guests'];
+  const 要る = 様 === 'seisan' ? JOURNAL_要る.seisan : JOURNAL_要る.nikkei;
   const 名 = (k) => (様 === 'seisan'
     ? (SEISAN_NAMES[k] || k)
     : ((JOURNAL_FIELDS.find((f) => f.key === k) || {}).name || k));
@@ -3242,6 +3255,15 @@ function oidenPayNameOf(line) {
 }
 
 /**
+ * おいでんテラスの客単価（総売上 ÷ 客数）が、この幅に入っていれば客数を使います
+ *
+ * ★紙に客数を確かめる式が無いので、数字が落ちた読みちがいだけでも止めるためのものです。
+ * ★ko-dai さんに「この幅を外れる日はよっぽどない」と確かめました（2026-09-16）。
+ *   メニューの値段が大きく変わったら、ここを見直してください。
+ */
+const OIDEN_客単価の幅 = [1500, 15000];
+
+/**
  * おいでんテラスの紙を読みます
  *
  * ★返す形は parseSeisan・parseJournal と同じです（呼ぶ側が同じに扱えるように）。
@@ -3578,8 +3600,29 @@ function parseOiden(text) {
   checks.filter((c) => c.ok).forEach((c) => {
     (c.covers || []).forEach((k) => { if (has(k)) sure[k] = true; });
   });
-  // 客数はどの検算にも出てきません。読めたらそのまま使います
-  if (has('guests')) sure.guests = true;
+  /* ★★客数を確かめる式が、おいでんテラスの紙にはありません（客単価が出ていません）。
+       前は「読めたらそのまま使う」にしていましたが、**読みまちがえても止まりません。**
+       実際、すぐ上の「個」の欄は、8月の27枚のうち2枚で崩れていました
+       （8月12日は 136個 を 16個 と、**まん中の数字が落ちて**読みました）。
+       客数で同じことが起きると、36人が6人のまま日報に入ります。
+
+     ★そこで**客単価（総売上 ÷ 客数）が、ありえる幅に入っているか**を見ます。
+       8月の22日分は ◯,◯◯◯円〜◯,◯◯◯円 に収まっていました。
+       幅はゆとりを持たせて OIDEN_客単価の幅 にしてあります
+       （ko-dai さんに「この幅を外れる日は、よっぽどない」と確かめました・2026-09-16）。
+     ★外れたら**客数だけ**使いません（空欄）。別の数を入れることはしません。
+     ★止められるのは「数字が落ちた」読みちがい（10倍ずれる）だけです。
+       36人を38人と読むような1文字のちがいは、この幅では止まりません。
+     ★売上のない日（総売上0円・0人）は、そのまま使います。 */
+  if (has('guests')) {
+    if (v.guests === 0) {
+      sure.guests = v.gross === 0;
+    } else {
+      const 客単価 = has('gross') && v.guests > 0 ? v.gross / v.guests : null;
+      sure.guests = 客単価 !== null
+        && 客単価 >= OIDEN_客単価の幅[0] && 客単価 <= OIDEN_客単価の幅[1];
+    }
+  }
 
   const 判 = journalまとめ('oiden', v, sure, checks);
   const missing = 判.missing;
