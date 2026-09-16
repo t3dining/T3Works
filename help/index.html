@@ -214,7 +214,7 @@
   .help-q, .help-lead, .help-first { box-shadow: none; break-inside: avoid; }
 }
 </style>
-<meta name="app-version" content="bc51c4a0">
+<meta name="app-version" content="d0df0a93">
 </head>
 <body>
 
@@ -638,7 +638,7 @@
       閉店のときにレジから出る<b>ジャーナル（売上の紙）</b>を撮ると、アプリが数を読み取って、<b>日報に書きます。</b>
       毎日やります。
     </p>
-    <p>やることは6つです。撮る、紙と見くらべる、違う数を直す、出前館などを入れる、担当者を選ぶ、日報に書く。</p>
+    <p>やることは6つです。出前館などを入れる、撮る、紙と見くらべる、違う数を直す、担当者を選ぶ、日報に書く。</p>
 
     <!-- ★この章は 2026-09-16 に足しました（ko-dai さんの依頼。ジャーナル部署に画面が変わらないことを確かめて、d4f32921 の画面で書いています）。
          決まったこと：現場が日報まで書く／「手で直す」は書く／「読み取った文字を見る」「今月◯枚目」「テスト用の日報」は書かない／
@@ -664,7 +664,35 @@
       <p class="help-shot__cap">「本日 まだ」なら、今日の分はまだ記録されていません。</p>
     </div>
 
-    <h3>2）ジャーナルを撮る</h3>
+    <h3>2）出前館・ウーバー・ロケットナウ、仕入、人件費を入れる</h3>
+    <p>
+      ジャーナルに出ない分です。<b>写真を撮る前に</b>、写真の下の「日報に入れる」にある欄へ、<b>その日にあった分だけ</b>入れます。無い日は空のままで大丈夫です。
+    </p>
+
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <div class="cash-box" style="margin:0;padding:12px 8px;">
+          <p class="cash-hint">ジャーナルに出ない分だけ入れてください。無い日は空のままで大丈夫です。</p>
+          <div class="cash-minus" style="margin-bottom:0;">
+            <label class="cash-minus__row"><span class="cash-minus__label">出前館現金</span><input type="text" class="cash-minus__input" readonly></label>
+            <label class="cash-minus__row"><span class="cash-minus__label">出前館クレジット</span><input type="text" class="cash-minus__input" readonly></label>
+            <label class="cash-minus__row"><span class="cash-minus__label">ウーバー現金</span><input type="text" class="cash-minus__input" readonly></label>
+            <label class="cash-minus__row"><span class="cash-minus__label">ウーバークレジット</span><input type="text" class="cash-minus__input" readonly></label>
+            <label class="cash-minus__row"><span class="cash-minus__label">ロケットナウ</span><input type="text" class="cash-minus__input" readonly></label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <ul class="help-list">
+      <li>何回かに分かれているときは、<b>「=◯◯◯+◯◯◯」のように式で</b>入れられます。日報にも式のまま入ります</li>
+      <li>スマホでは数字のボタンが出ます。「<b>確定</b>」で次の欄へ、「<b>閉じる</b>」でしまいます</li>
+      <li>数字のボタンの上に、<b>オレンジの枠と「★式の途中に入ります」</b>が出ているときは、打つ場所が式の途中です。最後に打つときは、<b>式の一番うしろ</b>を触ってください</li>
+      <li><b>仕入と人件費</b>は、その下に日報の仕入先が並びます。灰色で「日報が計算」と出ている欄は打てません</li>
+      <li>仕入先が出ていないときは、「<b>日報から仕入先を読む</b>」を押します</li>
+    </ul>
+
+    <h3>3）ジャーナルを撮る</h3>
     <p>「<b>📷 ジャーナルを撮る</b>」を押すと、カメラが開きます。</p>
 
     <div class="help-shot">
@@ -693,7 +721,7 @@
       途中でアプリを閉じてしまっても、<b>次に開いたときに続きからやり直します。</b>
     </div>
 
-    <h3>3）紙と見くらべる</h3>
+    <h3>4）紙と見くらべる</h3>
     <p>
       「<b>日報に入れる</b>」の表に、日報に入る数が並びます。<b>1行ずつ、紙の数と見くらべてください。</b>
     </p>
@@ -731,7 +759,7 @@
       </span></li>
       <li class="help-marks__row"><span class="help-marks__text">
         <span class="help-marks__name" style="display:block;">★日報には入れません</span>
-        <span class="help-marks__desc">読めなかった欄（「—」）か、合わない欄があります。4）で直します。</span>
+        <span class="help-marks__desc">読めなかった欄（「—」）か、合わない欄があります。5）で直します。</span>
       </span></li>
       <li class="help-marks__row"><span class="help-marks__text">
         <span class="help-marks__name" style="display:block;">手で直した数で書けます</span>
@@ -740,7 +768,7 @@
     </ul>
     <p style="margin-top:12px;">「<b>書きません</b>」と出る行は、0円なので日報に書かない行です。</p>
 
-    <h3>4）違う数・読めなかった数を直す</h3>
+    <h3>5）違う数・読めなかった数を直す</h3>
     <p>紙と違う行や「—」の行は、<b>2列目の欄を押して、紙に書いてある数を打ちます。</b></p>
     <ul class="help-list">
       <li>打った欄は黄色くなり、「手で直した数」と出ます</li>
@@ -768,34 +796,6 @@
       <span class="help-important__label">打った数は、アプリが確かめません</span>
       <p>桁をまちがえても、<b>そのまま日報に入ります。</b>打ったら、もう一度紙と見くらべてください。</p>
     </div>
-
-    <h3>5）出前館・ウーバー・ロケットナウ、仕入、人件費を入れる</h3>
-    <p>
-      ジャーナルに出ない分です。表の上の欄に、<b>その日にあった分だけ</b>入れます。無い日は空のままで大丈夫です。
-    </p>
-
-    <div class="help-shot">
-      <div class="help-shot__body">
-        <div class="cash-box" style="margin:0;padding:12px 8px;">
-          <p class="cash-hint">ジャーナルに出ない分だけ入れてください。無い日は空のままで大丈夫です。</p>
-          <div class="cash-minus" style="margin-bottom:0;">
-            <label class="cash-minus__row"><span class="cash-minus__label">出前館現金</span><input type="text" class="cash-minus__input" readonly></label>
-            <label class="cash-minus__row"><span class="cash-minus__label">出前館クレジット</span><input type="text" class="cash-minus__input" readonly></label>
-            <label class="cash-minus__row"><span class="cash-minus__label">ウーバー現金</span><input type="text" class="cash-minus__input" readonly></label>
-            <label class="cash-minus__row"><span class="cash-minus__label">ウーバークレジット</span><input type="text" class="cash-minus__input" readonly></label>
-            <label class="cash-minus__row"><span class="cash-minus__label">ロケットナウ</span><input type="text" class="cash-minus__input" readonly></label>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <ul class="help-list">
-      <li>何回かに分かれているときは、<b>「=◯◯◯+◯◯◯」のように式で</b>入れられます。日報にも式のまま入ります</li>
-      <li>スマホでは数字のボタンが出ます。「<b>確定</b>」で次の欄へ、「<b>閉じる</b>」でしまいます</li>
-      <li>数字のボタンの上に、<b>オレンジの枠と「★式の途中に入ります」</b>が出ているときは、打つ場所が式の途中です。最後に打つときは、<b>式の一番うしろ</b>を触ってください</li>
-      <li><b>仕入と人件費</b>は、その下に日報の仕入先が並びます。灰色で「日報が計算」と出ている欄は打てません</li>
-      <li>仕入先が出ていないときは、「<b>日報から仕入先を読む</b>」を押します</li>
-    </ul>
 
     <h3>6）担当者を選んで、日報に書く</h3>
     <ol class="help-steps">
@@ -859,7 +859,7 @@
     <h3>読み取りがおかしいとき</h3>
     <div class="help-note">
       何度撮り直しても数がおかしいときは、<b>紙の写真と日付を、こうだいに送ってください。</b>読み方を直します。
-      その日の分は、4）のとおり紙を見て手で直せば、日報に書けます。
+      その日の分は、5）のとおり紙を見て手で直せば、日報に書けます。
     </div>
     <div class="help-note">
       「<b>日報フォルダが登録されていません</b>」「<b>日報が見つかりません</b>」などと出て書けないときも、こうだいに知らせてください。
