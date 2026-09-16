@@ -137,6 +137,67 @@
   font-size: 13.5px; color: var(--text-sub); line-height: 1.7;
 }
 
+/* ---- 画面の絵 ----
+   ★写真（PNG）ではなく、**アプリと同じ HTML と CSS で組み立てています。**
+     ../css/style.css をそのまま読んでいるので、見た目は実物と同じです。
+     ★写真にしないのは、**アプリの見た目を直したとき、写真だけが古くなる**からです
+     （シフトの「時刻を説明文に書き写さないこと」と同じ考えです）。
+     拡大しても崩れず、PDFにしても綺麗で、ダークモードにも付いてきます。 */
+.help-shot {
+  margin: 12px 0 14px;
+  border: 1px solid var(--line); border-radius: 14px;
+  background: var(--bg); overflow: hidden;
+}
+.help-shot__bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 11px; background: var(--header-bg); color: var(--header-fg);
+  font-size: 11.5px; font-weight: 700;
+}
+.help-shot__bar .sync-chip { width: 22px; height: 22px; margin-left: auto; }
+.help-shot__bar .sync-chip svg { width: 13px; height: 13px; }
+.help-shot__body { padding: 11px; }
+.help-shot__cap {
+  padding: 7px 11px; background: var(--surface-2);
+  border-top: 1px solid var(--line-2);
+  font-size: 11.5px; color: var(--text-sub); line-height: 1.6;
+}
+/* 絵の中は本物より少し小さく（説明の中に収めるため） */
+.help-shot .store-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.help-shot .store-card { padding: 11px 8px 9px; gap: 6px; }
+.help-shot .logo-chip--card { width: 42px; height: 42px; }
+.help-shot .store-card__name { font-size: 14px; }
+.help-shot .task-card { padding: 12px 8px 10px; gap: 6px; }
+.help-shot .task-card__icon { width: 48px; height: 48px; font-size: 22px; border-radius: 13px; }
+.help-shot .task-card__name { font-size: 14.5px; }
+.help-shot .task-card__sub { font-size: 11px; }
+.help-shot .submit-btn { font-size: 14px; padding: 11px 16px; }
+.help-shot .section { margin-bottom: 0; }
+
+/* 指でどこを押すかの矢印 */
+.help-point {
+  display: flex; align-items: center; gap: 8px;
+  margin: 9px 0 0; font-size: 13.5px; font-weight: 700; line-height: 1.6;
+}
+.help-point::before { content: '👆'; font-size: 17px; flex: 0 0 auto; }
+
+/* 大事なひとこと */
+.help-important {
+  background: color-mix(in srgb, var(--ng) 7%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--ng) 28%, var(--line));
+  border-radius: 10px; padding: 12px 14px; margin: 12px 0;
+}
+.help-important__label {
+  display: block; font-size: 11.5px; font-weight: 800; letter-spacing: .04em;
+  color: var(--ng); margin-bottom: 5px;
+}
+.help-important p { margin: 0; font-size: 14px; line-height: 1.8; font-weight: 700; }
+
+.help-sec p { font-size: 14.5px; line-height: 1.9; margin: 0 0 12px; }
+.help-sec h3 {
+  margin: 24px 0 10px; font-size: 16px; font-weight: 800;
+  padding-left: 11px; border-left: 4px solid var(--accent);
+}
+
 /* ---- 印刷（PDFにするとき） ---- */
 @media print {
   .help-header, .help-toc, .help-back { display: none !important; }
@@ -146,7 +207,7 @@
   .help-q, .help-lead, .help-first { box-shadow: none; break-inside: avoid; }
 }
 </style>
-<meta name="app-version" content="1004b389">
+<meta name="app-version" content="adf332e5">
 </head>
 <body>
 
@@ -178,12 +239,228 @@
 
   <section class="help-sec" id="s1">
     <div class="help-sec__head"><span class="help-sec__n">1</span><h2 class="help-sec__title">はじめに</h2></div>
-    <div class="help-todo">何のアプリか／ホーム画面への入れ方／最初に合言葉（PIN）を入れる。<br>これから書きます。</div>
+    <h3>これは何のアプリですか</h3>
+    <p>
+      お店を閉めるときの確認や、掃除の記録をつけるためのものです。
+      <b>紙のチェック表を、スマホでやるようにしたもの</b>と思ってください。
+    </p>
+    <p>
+      紙とちがうのは、<b>入力したものが、他の人のスマホにも出る</b>ところです。
+      「昨日ちゃんと閉めたか」を、他の店にいても見られます。
+    </p>
+
+    <h3>ホーム画面に置く（はじめの1回だけ）</h3>
+    <p>
+      店長からURLをもらったら、まずホーム画面に置いてください。
+      <b>次からは、アイコンを押すだけで開きます。</b>
+    </p>
+    <p><b>iPhone のとき</b></p>
+    <ol class="help-steps">
+      <li>もらったURLを Safari で開きます</li>
+      <li>画面の一番下にある、四角から矢印が上に出ている印を押します</li>
+      <li>出てきた一覧を指で上にすべらせて、<b>「ホーム画面に追加」</b>を押します</li>
+      <li>右上の<b>「追加」</b>を押します</li>
+    </ol>
+    <p><b>Android のとき</b></p>
+    <ol class="help-steps">
+      <li>もらったURLを Chrome で開きます</li>
+      <li>右上の点が3つ縦に並んだ印を押します</li>
+      <li><b>「ホーム画面に追加」</b>を押します</li>
+    </ol>
+    <div class="help-note">
+      <b>なぜ置くのか。</b>毎回URLを打たなくてよくなります。
+      それに、ホーム画面から開くと<b>画面が広く使えて、文字も大きく見えます。</b>
+    </div>
+
+    <h3>合言葉（PIN）を入れる</h3>
+    <p>
+      はじめて開くと、合言葉を聞かれます。<b>店長に聞いた数字</b>を入れてください。
+    </p>
+
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <div class="modal__panel modal__panel--confirm" style="box-shadow:none;border:1px solid var(--line);">
+          <h2 class="modal__title">合言葉（PIN）を入力してください</h2>
+          <p class="confirm__message">全店舗で共有しているデータを開くために必要です。<br>一度入力すれば、この端末では次回から不要です。</p>
+          <div class="pin-row">
+            <input type="password" class="field__input" id="pinInput" value="0000" readonly>
+            <button type="button" class="pin-reveal">表示</button>
+          </div>
+          <div class="modal__actions modal__actions--confirm" style="margin-top:12px;">
+            <button type="button" class="btn btn--primary">開く</button>
+          </div>
+        </div>
+      </div>
+      <p class="help-shot__cap">この画面が出たら、数字を入れて「開く」を押します。</p>
+    </div>
+
+    <p>
+      <b>入れるのは1回だけです。</b>次からは聞かれません。
+      数字が見えているか不安なときは、右の<b>「表示」</b>を押すと出ます。
+    </p>
+
+    <div class="help-important">
+      <span class="help-important__label">合言葉を入れないと</span>
+      <p>他の人が入力したものが見られません。自分が入力したものも、他の人に届きません。</p>
+    </div>
+
+    <div class="help-note">
+      <b>合言葉が分からない・入れても通らないとき。</b>店長に聞いてください。
+      何度もまちがえると、しばらく開けなくなることがあります。
+      <b>10分ほど待ってから</b>、もう一度ためしてください。
+    </div>
   </section>
 
   <section class="help-sec" id="s2">
     <div class="help-sec__head"><span class="help-sec__n">2</span><h2 class="help-sec__title">クローズ</h2></div>
-    <div class="help-todo">店舗を選ぶ／項目にチェック／担当者／申し送り／提出する。<br>これから書きます。</div>
+    <p>
+      お店を閉めるときの確認です。<b>毎日やります。</b>
+      やることは4つだけです。チェックする、担当者を選ぶ、申し送りを書く、提出する。
+    </p>
+
+    <h3>1）お店を選ぶ</h3>
+    <p>アプリを開くと、お店が並んでいます。<b>自分がいるお店</b>を押してください。</p>
+
+    <div class="help-shot">
+      <div class="help-shot__bar"><span>T3 Works</span></div>
+      <div class="help-shot__body">
+        <ul class="store-grid">
+          <li><button type="button" class="store-card store-card--todo" style="--card-color:#c0392b;">
+            <span class="logo-chip logo-chip--card"><img src="../img/kojare.png?v=c5b494db" alt=""></span>
+            <span class="store-card__name">こじゃれ</span>
+            <span class="store-card__status">未提出</span>
+          </button></li>
+          <li><button type="button" class="store-card store-card--done" style="--card-color:#c14a1e;">
+            <span class="logo-chip logo-chip--card"><img src="../img/chacoru.png?v=3406529b" alt=""></span>
+            <span class="store-card__name">ちゃこる</span>
+            <span class="store-card__status">提出済み</span>
+          </button></li>
+        </ul>
+      </div>
+      <p class="help-shot__cap">
+        名前の下の札で、今日の分が出してあるかが分かります。
+        <b>赤い「未提出」</b>は、まだ出ていません。<b>緑の「提出済み」</b>は、もう出ています。
+      </p>
+    </div>
+
+    <h3>2）「クローズ」を押す</h3>
+    <p>お店を選ぶと、やることが並びます。<b>クローズ</b>を押してください。</p>
+
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <ul class="task-grid" style="grid-template-columns:repeat(2,1fr);">
+          <li><button type="button" class="task-card task-card--todo" style="--card-color:#2b7fd4;">
+            <span class="task-card__icon">🌙</span>
+            <span class="task-card__main">
+              <span class="task-card__name">クローズ</span>
+              <span class="task-card__sub">閉店時の確認作業</span>
+            </span>
+            <span class="task-card__status">未提出</span>
+          </button></li>
+          <li><button type="button" class="task-card" style="--card-color:#5f45d1;">
+            <span class="task-card__icon">🧹</span>
+            <span class="task-card__main">
+              <span class="task-card__name">週間掃除</span>
+              <span class="task-card__sub">2週間ごとに行う掃除リスト</span>
+            </span>
+            <span class="task-card__status">-</span>
+          </button></li>
+        </ul>
+      </div>
+      <p class="help-shot__cap">お店によって、並ぶものが少しちがいます。</p>
+    </div>
+
+    <h3>3）やったものにチェックを入れる</h3>
+    <p>
+      やることが上から並んでいます。<b>終わったものの四角を押してください。</b>
+      緑のチェックが付きます。
+    </p>
+
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <div class="section">
+          <div class="section__head">
+            <span class="section__chevron"></span>
+            <h3 class="section__title" style="margin:0;padding:0;border:0;font-size:15.5px;">ホール</h3>
+            <span class="section__count">1 / 2</span>
+          </div>
+          <div class="item is-done">
+            <input type="checkbox" class="item__check" checked disabled>
+            <div class="item__body">
+              <span class="item__label">テーブルを拭く</span>
+              <p class="item__hint">調味料の下も</p>
+            </div>
+            <span class="item__time">21:40</span>
+          </div>
+          <div class="item">
+            <input type="checkbox" class="item__check" disabled>
+            <div class="item__body">
+              <span class="item__label">床を掃く</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="help-shot__cap">
+        チェックを入れた時刻が、右に小さく出ます。
+        まちがえたときは、もう一度押すと消えます。
+      </p>
+    </div>
+
+    <div class="help-note">
+      <b>押す場所は、四角でも文字でもかまいません。</b>どちらを押してもチェックが入ります。
+      指が少しずれても入るように、四角のまわりは広めにしてあります。
+    </div>
+
+    <h3>4）担当者を選ぶ</h3>
+    <p>
+      日付の下に<b>「担当者」</b>があります。その日やった人の名前を選んでください。
+      <b>選ばないと提出できません。</b>
+    </p>
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <div class="staff-row">
+          <span class="staff-row__label">担当者</span>
+          <select class="staff-row__select is-empty" disabled><option>選んでください</option></select>
+        </div>
+      </div>
+      <p class="help-shot__cap">まだ選んでいないときは、赤い枠になります。</p>
+    </div>
+
+    <h3>5）申し送りを書く（あれば）</h3>
+    <p>
+      次の日の人に伝えたいことがあれば書きます。<b>無ければ空のままでかまいません。</b>
+      「醤油が残り1本」「トイレの電球が切れた」のような、短い一言で足ります。
+    </p>
+
+    <h3>6）提出する</h3>
+    <p>全部チェックが終わったら、一番下の<b>「提出する」</b>を押します。</p>
+
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <div class="submit-card">
+          <div class="submit-card__status">
+            <span class="submit-card__ready">全部そろいました</span>
+          </div>
+          <button type="button" class="submit-btn">提出する</button>
+        </div>
+      </div>
+      <p class="help-shot__cap">押すと「提出済み」に変わります。</p>
+    </div>
+
+    <div class="help-important">
+      <span class="help-important__label">ここが一番大事です</span>
+      <p>
+        チェックを入れただけでは、提出したことになりません。
+        <b>最後に「提出する」を押してください。</b>
+        押さないと、店長の画面では「未提出」のままです。
+      </p>
+    </div>
+
+    <div class="help-note">
+      <b>途中で閉じても消えません。</b>チェックは押したその場で残ります。
+      続きは、あとから開いてやれます。<br>
+      <b>全部チェックしていなくても提出できます。</b>できなかった理由を、申し送りに書いておいてください。
+    </div>
   </section>
 
   <section class="help-sec" id="s3">
