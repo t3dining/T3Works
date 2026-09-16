@@ -3307,7 +3307,17 @@ function cash読めた具合(店, text) {
   if (JOURNAL_STORES.includes(店)) {
     const j = parseJournalFor(店, text || '');
     out.j = j.ok ? 1 : 0;
-    out.n = Object.keys(j.sure || {}).filter((k) => j.sure[k]).length;
+    /* ★★**日報に入る数だけ**を数えます（2026-09-16）。
+         ここは「日報に書ける数がいくつ取れたか」のつもりで書いてありましたが、
+         **中身は読めた数を全部**数えていました。男性・女性・選択なしのような
+         日報に入らない数まで数に入るので、**肝心のちがいが見えません。**
+       ★8月6日の紙で、こう出ました。
+           いまの文字 … 電子マネーが読めず、その金額が商品券に入っている（まちがい）
+           組み直し   … 電子マネーも商品券も正しい。ただし選択なしを読み違えている
+         どちらも11で同点になり、**まちがっている方が選ばれました。**
+         日報に入る数だけで数えれば、正しい方が多くなります。 */
+    const 入る = Object.keys(SEISAN_TO_NIPPOU);
+    out.n = 入る.filter((k) => j.sure[k] && j.v[k] !== null && j.v[k] !== undefined).length;
   }
   return out;
 }
