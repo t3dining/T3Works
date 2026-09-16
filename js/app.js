@@ -3292,11 +3292,54 @@ const cashYomiMachi = {};
  * ★様式は引数の `店` で決めます。`state.storeId` を見てはいけません。
  *   読んでいる間に店舗を移られると、紙の様式を取りちがえます。
  */
+/**
+ * どれくらい読めたかを数にします
+ *
+ *   cash … 現金の金額が読めたか　j … 日報の5つが検算を通ったか
+ *   n    … 日報に書ける数がいくつ取れたか（同点のときの決め手）
+ *
+ * ★送り直したものと見くらべるのと、「いまの文字」と「場所から組み直した文字」を
+ *   見くらべるのと、2か所で使います。**数え方を1つにしておきます。**
+ */
+function cash読めた具合(店, text) {
+  const c = parseCashFor(店, text || '');
+  const out = { cash: c.how === 'ng' ? 0 : 1, j: 0, n: 0 };
+  if (JOURNAL_STORES.includes(店)) {
+    const j = parseJournalFor(店, text || '');
+    out.j = j.ok ? 1 : 0;
+    out.n = Object.keys(j.sure || {}).filter((k) => j.sure[k]).length;
+  }
+  return out;
+}
+
+/**
+ * 「いまの文字」と「場所から組み直した文字」の、**よく読めた方**を選びます
+ *
+ * ★組み直した文字は、紙の1行を1行にそろえたものです（gas/現金売上.gs）。
+ *   実物で見くらべたところ、支払の欄は組み直した方が確かでした
+ *   （8月3日、電子マネーの金額が商品券に入る紙。組み直すと取りちがえません）。
+ * ★★それでも**入れ替えません。両方読んで、よく読めた方を使います。**
+ *   組み直しは本物の写真3枚でしか見ていません。
+ *   「置きかえる」にすると、うまく組めなかった日に**読めていたものまで失います。**
+ * ★同じだけ読めたときは、**いまの文字**を使います。紙169枚で確かめてある方です。
+ */
+function cash読む文を選ぶ(店, いま, 組み) {
+  if (!組み) return { text: いま || '', どちら: '' };
+  const a = cash読めた具合(店, いま);
+  const b = cash読めた具合(店, 組み);
+  const よい = (b.cash > a.cash) || (b.cash === a.cash && b.j > a.j)
+    || (b.cash === a.cash && b.j === a.j && b.n > a.n);
+  return よい ? { text: 組み, どちら: '組み直し' } : { text: いま || '', どちら: '' };
+}
+
 function cashYomiApply(積) {
   const res = 積.res;
   // ★様式ごとに読みます。おいでんテラスの紙には「現金以外おつり」があり、
   //   ふつうの読み方だと、そこを現金の行と取りちがえます
-  const got = parseCashFor(積.店, res.text || '');
+  /* ★「いまの文字」と「場所から組み直した文字」の、よく読めた方を使います（上の説明） */
+  const 選 = cash読む文を選ぶ(積.店, res.text, res.行);
+  const 読む文 = 選.text;
+  const got = parseCashFor(積.店, 読む文);
   cashEdit.ms = 積.ms;
   cashEdit.size = Math.round(積.dataUrl.length * 3 / 4 / 1024);
   cashEdit.gas = res.v || '（分かりません）';
@@ -3313,6 +3356,7 @@ function cashYomiApply(積) {
      ★ocrMs … サーバーの中で読み取りにかかった時間。座標を足す前に押さえておくためです
               （ウェブアプリは6分で打ち切られます） */
   cashEdit.行 = res.行 || '';
+  cashEdit.どちら = 選.どちら;      // '組み直し' なら、組み直した方を使いました
   cashEdit.枚 = res.枚 || 0;
   cashEdit.語数 = res.語数 || 0;
   cashEdit.ocrMs = res.ocrMs || 0;
@@ -3328,7 +3372,7 @@ function cashYomiApply(積) {
   // ★同じ文字から、日報に入れる5つも読みます。
   //   検算が通らなければ使いません（現金だけの読み取りは、これまでどおり動きます）
   if (JOURNAL_STORES.includes(積.店)) {
-    const jr = parseJournalFor(積.店, res.text || '');
+    const jr = parseJournalFor(積.店, 読む文);
     // ★検算が通らなくても入れます。ここを null にすると箱ごと消えてしまい、
     //   うまくいかなかったことすら分からなくなります（実際にそうなりました）
     cashEdit.j = jr.v;
@@ -3381,21 +3425,9 @@ async function cashReadPhoto(dataUrl, dateStr, file) {
     //   見た目では分からない食いちがいが出るためです
     if (!cashGasOk(res, true)) return;      // 読むだけ（ドライブには残しません）
 
-    // ★どれくらい読めたかを数にします。送り直したものと見くらべるためです。
-    //   cash … 現金の金額が読めたか　j … 日報の5つが検算を通ったか
-    //   n    … 日報に書ける数がいくつ取れたか（同点のときの決め手）
-    const 読めた具合 = (text) => {
-      const c = parseCashFor(元の店, text || '');
-      const out = { cash: c.how === 'ng' ? 0 : 1, j: 0, n: 0 };
-      // ★★`state.storeId` ではなく `元の店` です。読んでいる間に店舗を移られると、
-      //   紙の様式を取りちがえます（日計レポートを精算レポートとして読む、など）
-      if (JOURNAL_STORES.includes(元の店)) {
-        const j = parseJournalFor(元の店, text || '');
-        out.j = j.ok ? 1 : 0;
-        out.n = Object.keys(j.sure || {}).filter((k) => j.sure[k]).length;
-      }
-      return out;
-    };
+    // ★★`state.storeId` ではなく `元の店` です。読んでいる間に店舗を移られると、
+    //   紙の様式を取りちがえます（日計レポートを精算レポートとして読む、など）
+    const 読めた具合 = (text) => cash読めた具合(元の店, text);
 
     // ★小さくして送ったせいで読み取れなかったのかもしれません。
     //   そのときだけ、元の画質でもう一度送り直します（ふだんは1回で終わります）
@@ -3522,13 +3554,15 @@ function openOcrText() {
     cashEdit.ocrHow === 'drive' ? '★読み取り ドライブ（Visionが使われていません）' : '',
     cashEdit.ocrMs ? `サーバーの中 ${(cashEdit.ocrMs / 1000).toFixed(1)}秒` : '',
     cashEdit.枚 ? `今月 ${cashEdit.枚}枚め（1か月1000枚まで）` : '',
+    cashEdit.どちら ? '★組み直した方を使いました' : '',
   ].filter(Boolean).join('　');
   /* ★下に「場所から組み直した文字」を並べます。**まだ読み取りには使っていません。**
        本物の紙でうまく組めているかを見くらべるためです。
        うまく組めていれば、紙のとおり「名前　件数　金額」が1行に並んでいるはずです。 */
   const 組み = cashEdit.行
     ? `\n\n────────────────\n★場所から組み直した文字（${cashEdit.語数}語）`
-      + '　※まだ読み取りには使っていません\n────────────────\n' + cashEdit.行
+      + `　${cashEdit.どちら ? '※こちらを使いました' : '※今回はこちらを使っていません'}`
+      + '\n────────────────\n' + cashEdit.行
     : '';
   el.ocrText.textContent = (how ? `（${how}）\n\n` : '')
     + (cashEdit.text || '（何も読み取れませんでした）') + 組み;
