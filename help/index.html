@@ -104,6 +104,9 @@
 .help-first p { margin: 0; font-size: 14px; line-height: 1.75; font-weight: 700; }
 
 /* 手順 */
+/* 点の箇条書き（番号の要らないもの）。字の大きさは .help-steps にそろえます */
+.help-list { margin: 0 0 12px; padding-left: 1.3em; }
+.help-list li { padding: 3px 0; font-size: 14px; line-height: 1.7; }
 .help-steps { margin: 0 0 9px; padding-left: 0; list-style: none; counter-reset: step; }
 .help-steps li {
   position: relative; padding: 7px 0 7px 32px; font-size: 14px; line-height: 1.7;
@@ -211,14 +214,14 @@
   .help-q, .help-lead, .help-first { box-shadow: none; break-inside: avoid; }
 }
 </style>
-<meta name="app-version" content="d4f32921">
+<meta name="app-version" content="7eccd839">
 </head>
 <body>
 
 <header class="help-header">
   <div class="help-header__inner">
     <span class="help-header__title">T3 Works の使い方</span>
-    <a class="help-back" href="../">アプリに戻る</a>
+    <a class="help-back" id="helpBack" href="../">アプリに戻る</a>
   </div>
 </header>
 
@@ -227,18 +230,19 @@
   <p class="help-lead">
     T3 Works は、6店舗の閉店作業・掃除・教育・シフトを、<b>みんなの端末で同じように見るため</b>のアプリです。
     入力したものは、他の人の端末にも届きます。<br>
-    はじめて使う人は <b>1 番</b>から、困ったときは <b>8 番</b>から読んでください。<br><b>数字が3つ出てきます</b>（合言葉・あなたの番号・シフトの番号）。取りちがえやすいので、1番の表で見くらべてください。
+    はじめて使う人は <b>1 番</b>から、困ったときは <b>9 番</b>から読んでください。<br><b>数字が3つ出てきます</b>（合言葉・あなたの番号・シフトの番号）。取りちがえやすいので、1番の表で見くらべてください。
   </p>
 
   <ul class="help-toc">
     <li class="help-toc__item"><a href="#s1"><span class="help-toc__n">1</span>はじめに<span class="help-toc__sub">ホーム画面・合言葉・番号</span></a></li>
     <li class="help-toc__item"><a href="#s2"><span class="help-toc__n">2</span>クローズ<span class="help-toc__sub">毎日やります</span></a></li>
-    <li class="help-toc__item"><a href="#s3"><span class="help-toc__n">3</span>週間掃除<span class="help-toc__sub">2週間ごと</span></a></li>
-    <li class="help-toc__item"><a href="#s4"><span class="help-toc__n">4</span>教育<span class="help-toc__sub">新しく入った人に</span></a></li>
-    <li class="help-toc__item"><a href="#s5"><span class="help-toc__n">5</span>シフト<span class="help-toc__sub">希望を出す・組む</span></a></li>
-    <li class="help-toc__item"><a href="#s6"><span class="help-toc__n">6</span>記録を見る<span class="help-toc__sub">あとから見る</span></a></li>
-    <li class="help-toc__item"><a href="#s7"><span class="help-toc__n">7</span>お金まわり<span class="help-toc__sub">立て替え・キャッチ</span></a></li>
-    <li class="help-toc__item"><a href="#s8"><span class="help-toc__n">8</span>困ったとき<span class="help-toc__sub">よくある3つ</span></a></li>
+    <li class="help-toc__item"><a href="#s3"><span class="help-toc__n">3</span>ジャーナル<span class="help-toc__sub">撮って、日報に書く</span></a></li>
+    <li class="help-toc__item"><a href="#s4"><span class="help-toc__n">4</span>週間掃除<span class="help-toc__sub">2週間ごと</span></a></li>
+    <li class="help-toc__item"><a href="#s5"><span class="help-toc__n">5</span>教育<span class="help-toc__sub">新しく入った人に</span></a></li>
+    <li class="help-toc__item"><a href="#s6"><span class="help-toc__n">6</span>シフト<span class="help-toc__sub">希望を出す・組む</span></a></li>
+    <li class="help-toc__item"><a href="#s7"><span class="help-toc__n">7</span>記録を見る<span class="help-toc__sub">あとから見る</span></a></li>
+    <li class="help-toc__item"><a href="#s8"><span class="help-toc__n">8</span>お金まわり<span class="help-toc__sub">立て替え・キャッチ</span></a></li>
+    <li class="help-toc__item"><a href="#s9"><span class="help-toc__n">9</span>困ったとき<span class="help-toc__sub">よくある3つ</span></a></li>
   </ul>
 
   <section class="help-sec" id="s1">
@@ -434,7 +438,7 @@
       こうだいに聞いてください。<br>
       <b>番号の画面が出ないまま、画面の上の印が赤くなるときは、</b>アプリが古いままです。
       「新しい版があります」と出ていれば押してください。出ていなければ、アプリを一度閉じて開き直します
-      （8番の「困ったとき」にも書いてあります）。
+      （9番の「困ったとき」にも書いてあります）。
     </div>
 
     <h3>数字が3つ出てきます。混ざらないように</h3>
@@ -462,7 +466,7 @@
         </tr>
         <tr>
           <td style="padding:9px 10px;"><b>シフトの番号</b></td>
-          <td style="padding:9px 10px;">シフト提出のページ（5番）</td>
+          <td style="padding:9px 10px;">シフト提出のページ（6番）</td>
           <td style="padding:9px 10px;"><b>1人ずつ違う</b></td>
         </tr>
       </tbody>
@@ -629,7 +633,246 @@
   </section>
 
   <section class="help-sec" id="s3">
-    <div class="help-sec__head"><span class="help-sec__n">3</span><h2 class="help-sec__title">週間掃除</h2></div>
+    <div class="help-sec__head"><span class="help-sec__n">3</span><h2 class="help-sec__title">ジャーナル</h2></div>
+    <p>
+      閉店のときにレジから出る<b>ジャーナル（売上の紙）</b>を撮ると、アプリが数を読み取って、<b>日報に書きます。</b>
+      毎日やります。
+    </p>
+    <p>やることは6つです。撮る、紙と見くらべる、違う数を直す、出前館などを入れる、担当者を選ぶ、日報に書く。</p>
+
+    <!-- ★この章は 2026-09-16 に足しました（ko-dai さんの依頼。ジャーナル部署に画面が変わらないことを確かめて、d4f32921 の画面で書いています）。
+         決まったこと：現場が日報まで書く／「手で直す」は書く／「読み取った文字を見る」「今月◯枚目」「テスト用の日報」は書かない／
+         どの欄が読めるかは書かない（読み取りは日々直しているため）。
+         ★絵の数は全部 ◯ にしてあります。本物の金額を入れないこと -->
+
+    <h3>1）「ジャーナル」を開く</h3>
+    <p>お店を選んで、<b>ジャーナル</b>を押します。<b>今日の日付</b>で開きます。前の日の分は、画面の下の日付を押します。</p>
+
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <ul class="task-grid" style="grid-template-columns:repeat(2,1fr);">
+          <li><button type="button" class="task-card task-card--todo" style="--card-color:#2b7fd4;">
+            <span class="task-card__icon">💴</span>
+            <span class="task-card__main">
+              <span class="task-card__name">ジャーナル</span>
+              <span class="task-card__sub">撮って読み取り、日報へ入れる</span>
+            </span>
+            <span class="task-card__status">本日 まだ</span>
+          </button></li>
+        </ul>
+      </div>
+      <p class="help-shot__cap">「本日 まだ」なら、今日の分はまだ記録されていません。</p>
+    </div>
+
+    <h3>2）ジャーナルを撮る</h3>
+    <p>「<b>📷 ジャーナルを撮る</b>」を押すと、カメラが開きます。</p>
+
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <div class="cash-box" style="margin:0;padding:12px 8px;">
+          <div class="cash-box__head">
+            <h2 class="cash-box__title">ジャーナル</h2>
+            <span class="cash-box__date">◯/◯（◯）</span>
+          </div>
+          <div class="cash-shot is-empty"><span class="cash-shot__empty">まだ撮っていません</span></div>
+          <label class="cash-take"><span>📷 ジャーナルを撮る</span></label>
+        </div>
+      </div>
+      <p class="help-shot__cap">一度撮ると、ボタンは「📷 撮り直す」に変わります。</p>
+    </div>
+
+    <div class="help-important">
+      <span class="help-important__label">撮るときは</span>
+      <p><b>紙の一番下まで、全部写してください。</b>下が切れると、数を確かめられません。</p>
+    </div>
+
+    <p>
+      撮ると、アプリが読み取ります。「<b>文字を読み取っています…</b>」と出ているあいだは、<b>終わるまで待ちます。</b>
+    </p>
+    <div class="help-note">
+      途中でアプリを閉じてしまっても、<b>次に開いたときに続きからやり直します。</b>
+    </div>
+
+    <h3>3）紙と見くらべる</h3>
+    <p>
+      「<b>日報に入れる</b>」の表に、日報に入る数が並びます。<b>1行ずつ、紙の数と見くらべてください。</b>
+    </p>
+
+    <!-- ★表は js/app.js の journal行を作る()・renderNippouTable() と同じ形です。
+         左から、行の名前／紙の数を直す欄（うすい字が読み取った数）／引く分／日報に入る数 -->
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <div class="cash-box" style="margin:0;padding:12px 8px;">
+          <div class="cash-box__head">
+            <h2 class="cash-box__title">日報に入れる</h2>
+            <span class="cash-box__date is-bad">★日報には入れません</span>
+          </div>
+          <table class="cash-nippou"><tbody>
+            <tr><th>現金売上</th><td><input type="text" style="font-size:16px;width:100%;max-width:8.5em;text-align:right;box-sizing:border-box;padding:4px 6px;border:1px solid #d8d8d8;border-radius:6px;" placeholder="◯◯◯" value="" readonly><div class="te-note" style="font-size:11px;color:#9a6b00;text-align:right;"></div></td><td>−◯◯</td><td class="is-to">◯◯,◯◯◯</td></tr>
+            <tr><th>クレジット</th><td><input type="text" style="font-size:16px;width:100%;max-width:8.5em;text-align:right;box-sizing:border-box;padding:4px 6px;border:1px solid #d8d8d8;border-radius:6px;" placeholder="◯◯◯" value="" readonly><div class="te-note" style="font-size:11px;color:#9a6b00;text-align:right;"></div></td><td></td><td class="is-to">◯◯,◯◯◯</td></tr>
+            <tr><th>電子マネー</th><td><input type="text" style="font-size:16px;width:100%;max-width:8.5em;text-align:right;box-sizing:border-box;padding:4px 6px;border:1px solid #d8d8d8;border-radius:6px;" placeholder="0" value="" readonly><div class="te-note" style="font-size:11px;color:#9a6b00;text-align:right;"></div></td><td></td><td class="is-to" style="color:#888;">書きません</td></tr>
+            <tr><th>純売上</th><td><input type="text" style="font-size:16px;width:100%;max-width:8.5em;text-align:right;box-sizing:border-box;padding:4px 6px;border:1px solid #d8d8d8;border-radius:6px;" placeholder="◯◯◯" value="" readonly><div class="te-note" style="font-size:11px;color:#9a6b00;text-align:right;"></div></td><td></td><td class="is-to">◯◯,◯◯◯</td></tr>
+            <tr><th>当日客数</th><td><input type="text" style="font-size:16px;width:100%;max-width:8.5em;text-align:right;box-sizing:border-box;padding:4px 6px;border:1px solid #d8d8d8;border-radius:6px;" placeholder="—" value="" readonly><div class="te-note" style="font-size:11px;color:#9a6b00;text-align:right;"></div></td><td></td><td class="is-to is-ng">—</td></tr>
+          </tbody></table>
+          <p class="cash-checks">数がちがう欄や読めなかった欄は、紙を見て左の欄に打ってください（空にすると読み取りに戻ります）</p>
+        </div>
+      </div>
+      <p class="help-shot__cap">
+        2列目の<b>うすい字が、読み取った数</b>です。一番右の<b>太い字が、日報に入る数</b>です。
+        出前館などを入れた日は、その分を引いた数になります。
+      </p>
+    </div>
+
+    <p>右上の文で、そのまま書けるかが分かります。</p>
+    <ul class="help-marks">
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">検算 ◯つOK</span>
+        <span class="help-marks__desc">読み取った数どうしで、合計が合っています。<b>それでも紙と見くらべてください。</b></span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">★日報には入れません</span>
+        <span class="help-marks__desc">読めなかった欄（「—」）か、合わない欄があります。4）で直します。</span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">手で直した数で書けます</span>
+        <span class="help-marks__desc">直した数で、日報に書けるようになりました。</span>
+      </span></li>
+    </ul>
+    <p style="margin-top:12px;">「<b>書きません</b>」と出る行は、0円なので日報に書かない行です。</p>
+
+    <h3>4）違う数・読めなかった数を直す</h3>
+    <p>紙と違う行や「—」の行は、<b>2列目の欄を押して、紙に書いてある数を打ちます。</b></p>
+    <ul class="help-list">
+      <li>打った欄は黄色くなり、「手で直した数」と出ます</li>
+      <li><b>打つのは紙の数です。</b>出前館などを引くのは、アプリがやります</li>
+      <li>まちがえたときは、欄を空にすると読み取った数に戻ります</li>
+      <li>表の<b>現金売上</b>と、下の「記録」の<b>現金売上</b>は同じ数です。どちらで直しても、もう片方にも入ります</li>
+    </ul>
+
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <div class="cash-box" style="margin:0;padding:12px 8px;">
+          <div class="cash-box__head">
+            <h2 class="cash-box__title">日報に入れる</h2>
+            <span class="cash-box__date is-ok">手で直した数で書けます</span>
+          </div>
+          <table class="cash-nippou"><tbody>
+            <tr><th>当日客数</th><td><input type="text" style="font-size:16px;width:100%;max-width:8.5em;text-align:right;box-sizing:border-box;padding:4px 6px;border:1px solid #d8d8d8;border-radius:6px;font-weight:700;background:#fff4d6;" placeholder="—" value="◯◯" readonly><div class="te-note" style="font-size:11px;color:#9a6b00;text-align:right;">手で直した数</div></td><td></td><td class="is-to">◯◯</td></tr>
+          </tbody></table>
+        </div>
+      </div>
+      <p class="help-shot__cap">読めなかった客数を、紙を見て打ったところです。</p>
+    </div>
+
+    <div class="help-important">
+      <span class="help-important__label">打った数は、アプリが確かめません</span>
+      <p>桁をまちがえても、<b>そのまま日報に入ります。</b>打ったら、もう一度紙と見くらべてください。</p>
+    </div>
+
+    <h3>5）出前館・ウーバー・ロケットナウ、仕入、人件費を入れる</h3>
+    <p>
+      ジャーナルに出ない分です。表の上の欄に、<b>その日にあった分だけ</b>入れます。無い日は空のままで大丈夫です。
+    </p>
+
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <div class="cash-box" style="margin:0;padding:12px 8px;">
+          <p class="cash-hint">ジャーナルに出ない分だけ入れてください。無い日は空のままで大丈夫です。</p>
+          <div class="cash-minus" style="margin-bottom:0;">
+            <label class="cash-minus__row"><span class="cash-minus__label">出前館現金</span><input type="text" class="cash-minus__input" readonly></label>
+            <label class="cash-minus__row"><span class="cash-minus__label">出前館クレジット</span><input type="text" class="cash-minus__input" readonly></label>
+            <label class="cash-minus__row"><span class="cash-minus__label">ウーバー現金</span><input type="text" class="cash-minus__input" readonly></label>
+            <label class="cash-minus__row"><span class="cash-minus__label">ウーバークレジット</span><input type="text" class="cash-minus__input" readonly></label>
+            <label class="cash-minus__row"><span class="cash-minus__label">ロケットナウ</span><input type="text" class="cash-minus__input" readonly></label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <ul class="help-list">
+      <li>何回かに分かれているときは、<b>「=◯◯◯+◯◯◯」のように式で</b>入れられます。日報にも式のまま入ります</li>
+      <li>スマホでは数字のボタンが出ます。「<b>確定</b>」で次の欄へ、「<b>閉じる</b>」でしまいます</li>
+      <li>数字のボタンの上に、<b>オレンジの枠と「★式の途中に入ります」</b>が出ているときは、打つ場所が式の途中です。最後に打つときは、<b>式の一番うしろ</b>を触ってください</li>
+      <li><b>仕入と人件費</b>は、その下に日報の仕入先が並びます。灰色で「日報が計算」と出ている欄は打てません</li>
+      <li>仕入先が出ていないときは、「<b>日報から仕入先を読む</b>」を押します</li>
+    </ul>
+
+    <h3>6）担当者を選んで、日報に書く</h3>
+    <ol class="help-steps">
+      <li>下の「記録」の<b>担当者</b>で、名前を選びます（<b>選ばないと書けません</b>）</li>
+      <li>「<b>ジャーナルの5つを日報に書く</b>」を押します。このボタンは、書ける数がそろうと出ます</li>
+      <li>確かめの画面が出ます。<b>並んだ数を紙と見くらべてから</b>「<b>書く</b>」を押します</li>
+    </ol>
+
+    <!-- ★文の形は js/app.js の nippouWritePart の askConfirm と同じです。ファイル名は伏せています -->
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <div class="modal__panel modal__panel--confirm" style="box-shadow:none;border:1px solid var(--line);">
+          <h2 class="modal__title">確認</h2>
+          <p class="confirm__item">◯◯◯◯_日報　◯日のページ（ジャーナルの5つ・出前館・ウーバー・ロケットナウ・仕入明細・人件費）</p>
+          <p class="confirm__message">現金売上 ◯◯,◯◯◯／クレジット ◯◯,◯◯◯／純売上 ◯◯,◯◯◯／当日客数 ◯◯（手で直した数）</p>
+          <div class="modal__actions modal__actions--confirm">
+            <button type="button" class="btn">キャンセル</button>
+            <button type="button" class="btn btn--primary">書く</button>
+          </div>
+        </div>
+      </div>
+      <p class="help-shot__cap">手で直した数には「（手で直した数）」と付きます。</p>
+    </div>
+
+    <p>
+      このボタン1つで、<b>記録（現金売上と写真）も、出前館など・仕入・人件費も、まとめて</b>日報に書きます。
+    </p>
+
+    <div class="help-note">
+      <b>確かめの画面に「★日報とアプリで数がちがいます」と出て、「書く」が赤いとき</b>は、
+      日報の数が先に直されています。このまま書くと、日報の数が上書きされます。
+      分からないときは「キャンセル」を押して、こうだいに聞いてください。
+    </div>
+
+    <h3>7）書いたあとの知らせを見る</h3>
+    <p>表の下に、結果が出ます。</p>
+
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <p class="cash-msg is-ok" style="margin:0;">記録して、書きました　→ ◯◯◯◯_日報　◯日　検算OK：当日総合計 ◯◯◯,◯◯◯ ＝ ジャーナルの売上</p>
+      </div>
+    </div>
+
+    <ul class="help-marks">
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">検算OK</span>
+        <span class="help-marks__desc">日報の合計と、紙の売上が合っています。<b>これで終わりです。</b></span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">日報には書きましたが、★検算が合いません</span>
+        <span class="help-marks__desc">打ちまちがいか、読みちがいです。<b>日報を開いて、紙と見くらべてください。</b>分からないときは、こうだいに知らせてください。</span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">「記録して、書きました」だけ</span>
+        <span class="help-marks__desc">紙の売上が読めなかった日は、合計の確かめが出ません。<b>日報の当日総合計と、紙の売上を自分で見くらべてください。</b></span>
+      </span></li>
+    </ul>
+
+    <p style="margin-top:12px;">記録の欄が「<b>✓ 記録済み</b>」になっていれば、記録も終わっています。</p>
+
+    <h3>読み取りがおかしいとき</h3>
+    <div class="help-note">
+      何度撮り直しても数がおかしいときは、<b>紙の写真と日付を、こうだいに送ってください。</b>読み方を直します。
+      その日の分は、4）のとおり紙を見て手で直せば、日報に書けます。
+    </div>
+    <div class="help-note">
+      「<b>日報フォルダが登録されていません</b>」「<b>日報が見つかりません</b>」などと出て書けないときも、こうだいに知らせてください。
+    </div>
+
+    <h3>1週間の見かた</h3>
+    <p>
+      上の「<b>1週間</b>」を押すと、1週間分が並びます。<b>撮っていない日は、赤く「まだ」</b>と出ます。
+    </p>
+  </section>
+
+  <section class="help-sec" id="s4">
+    <div class="help-sec__head"><span class="help-sec__n">4</span><h2 class="help-sec__title">週間掃除</h2></div>
     <p>
       クローズが毎日なのに対して、こちらは<b>2週間で1回</b>ずつやる掃除です。
       「今週やる」「来週やる」を、表で見ながら進めます。
@@ -714,8 +957,8 @@
     </div>
   </section>
 
-  <section class="help-sec" id="s4">
-    <div class="help-sec__head"><span class="help-sec__n">4</span><h2 class="help-sec__title">教育</h2></div>
+  <section class="help-sec" id="s5">
+    <div class="help-sec__head"><span class="help-sec__n">5</span><h2 class="help-sec__title">教育</h2></div>
     <p>
       新しく入った人に<b>何を教えたか</b>を記録するページです。
       教える側が、終わったものにチェックを入れていきます。
@@ -760,8 +1003,8 @@
     </p>
   </section>
 
-  <section class="help-sec" id="s5">
-    <div class="help-sec__head"><span class="help-sec__n">5</span><h2 class="help-sec__title">シフト</h2></div>
+  <section class="help-sec" id="s6">
+    <div class="help-sec__head"><span class="help-sec__n">6</span><h2 class="help-sec__title">シフト</h2></div>
     <p>
       シフトには<b>2つの画面</b>があります。まちがえやすいので、先に分けておきます。
     </p>
@@ -825,8 +1068,8 @@
     </ol>
   </section>
 
-  <section class="help-sec" id="s6">
-    <div class="help-sec__head"><span class="help-sec__n">6</span><h2 class="help-sec__title">記録を見る</h2></div>
+  <section class="help-sec" id="s7">
+    <div class="help-sec__head"><span class="help-sec__n">7</span><h2 class="help-sec__title">記録を見る</h2></div>
     <p>
       入れた記録を、あとから見る画面です。<b>店舗を選ぶ画面の下</b>に並んでいます。
       どの店にいても、6店舗分すべてを見られます。
@@ -860,8 +1103,8 @@
     </div>
   </section>
 
-  <section class="help-sec" id="s7">
-    <div class="help-sec__head"><span class="help-sec__n">7</span><h2 class="help-sec__title">お金まわり</h2></div>
+  <section class="help-sec" id="s8">
+    <div class="help-sec__head"><span class="help-sec__n">8</span><h2 class="help-sec__title">お金まわり</h2></div>
     <p>
       お金にかかわる3つです。こちらも<b>店舗を選ぶ画面の下</b>にあります。
       緑の線が付いているものが、お金のページです。
@@ -929,8 +1172,8 @@
        ★秒数は js/sync.js の実物から取っています。書き写した数ではありません。
          `_loop()` … 今日のクローズ 8秒／誰かが入力中 3秒／それ以外 60秒／裏 取りに行かない
        ============================================================ -->
-  <section class="help-sec" id="s8">
-    <div class="help-sec__head"><span class="help-sec__n">8</span><h2 class="help-sec__title">困ったとき</h2></div>
+  <section class="help-sec" id="s9">
+    <div class="help-sec__head"><span class="help-sec__n">9</span><h2 class="help-sec__title">困ったとき</h2></div>
 
     <div class="help-q">
       <p class="help-q__title">他の人が入れたものが、自分の画面に出てこない</p>
@@ -1060,6 +1303,31 @@
   </section>
 
 </div>
+
+<script>
+/* ★「アプリに戻る」は、開いた元のアプリに戻します（2026-09-16、ko-dai さんの指摘）。
+     前は `../`（ワークス）に決め打ちで、**マインから開いてもワークスに戻っていました。**
+     アプリ側の入口（js/app.js の helpLink）は本部の持ち物なので、ここだけで直しています。
+   ・元のページ（document.referrer）が同じサイトの T3Works の中なら、そこへ戻ります
+     （マインなら mine/、ワークスなら T3Works/）
+   ・元が分からないとき（URL を直接開いた・referrer が無い）は、今までどおり `../`（ワークス）
+   ・★元の URL の `?v=` などは付けません。古い版の印を付けて開き直すことになるためです
+   ・★元の `#` （開いていた店舗や画面）は referrer に入らないので、戻ると入口の画面になります */
+(function () {
+  var back = document.getElementById('helpBack');
+  if (!back || !document.referrer) return;
+  try {
+    var from = new URL(document.referrer);
+    var home = new URL('../', location.href);          // T3Works/ の一番上
+    if (from.origin !== location.origin) return;
+    if (from.pathname.indexOf(home.pathname) !== 0) return;
+    if (from.pathname.indexOf(home.pathname + 'help/') === 0) return;
+    back.href = from.pathname;
+  } catch (e) {
+    // 読めないときは、今までどおりワークスへ
+  }
+})();
+</script>
 
 </body>
 </html>
