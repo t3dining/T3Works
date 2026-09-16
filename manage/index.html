@@ -14,7 +14,7 @@
 <title>T3 Works Manage｜T3Dining株式会社</title>
 <link rel="stylesheet" href="../css/style.css?v=871a5653">
 <link rel="stylesheet" href="css/admin.css?v=27e01b9d">
-<meta name="app-version" content="60d21f3d">
+<meta name="app-version" content="2dd6089a">
 </head>
 <body class="no-daytabs">
 
@@ -213,8 +213,11 @@
         過去の記録はそのまま出て、新しい記録のプルダウンには出ません。
       </p>
       <div class="admin-actions">
-        <button type="button" class="btn btn--primary" id="expImportLast">8月だけ取り込む</button>
-        <button type="button" class="btn" id="expImport">1〜8月全部取り込む</button>
+        <!-- ★月の名前は書きません。取り込みファイルに入っている月から
+             admin.js が作ります（決め打ちだと、月を足したときに嘘になります。
+             2026-09-16、9月を足したのに「8月だけ取り込む」のままでした） -->
+        <button type="button" class="btn btn--primary" id="expImportLast">最後の月だけ取り込む</button>
+        <button type="button" class="btn" id="expImport">全部取り込む</button>
       </div>
       <p class="admin-note" id="expImportNote"></p>
     </details>
@@ -730,6 +733,6 @@
 <script src="../js/storage.js?v=f31370dc"></script>
 <script src="../js/sync.js?v=6140ce01"></script>
 <script src="../js/update.js?v=c530219e"></script>
-<script src="js/admin.js?v=619625d4"></script>
+<script src="js/admin.js?v=53498445"></script>
 </body>
 </html>

@@ -2627,6 +2627,35 @@ function saveDrivers() {
  * 「exp-2026-01-0」のように決め打ちにしてあるので、
  * 何度押しても同じところに上書きされ、二重には増えません。
  */
+/**
+ * 取り込みボタンの文字を、取り込みファイルの中身から作ります
+ *
+ * ★決め打ちにしません。月を足したのに文字が古いままだと、
+ *   「8月だけ取り込む」を押して9月が入る、ということが起きます
+ *   （2026年9月16日に実際にそうなっていました）。
+ * ★公開したマネージには取り込みファイルが入っていないので、
+ *   そのときは月を出さずに、使えない理由が分かる文にします。
+ */
+function renderExpenseImport() {
+  if (!el.expImportLast || !el.expImport) return;
+  if (typeof EXPENSE_IMPORT === 'undefined') {
+    el.expImportLast.textContent = '最後の月だけ取り込む';
+    el.expImport.textContent = '全部取り込む';
+    el.expImportNote.textContent =
+      '取り込み用のファイルは、この画面では使えません。'
+      + 'Mac の手元からマネージを開いてください（中身に氏名と金額が入るため、公開していません）。';
+    return;
+  }
+  const months = Object.keys(EXPENSE_IMPORT).sort();
+  if (!months.length) return;
+  const tsuki = (key) => `${Number(key.slice(5, 7))}月`;
+  const last = months[months.length - 1];
+  el.expImportLast.textContent = `${tsuki(last)}だけ取り込む`;
+  el.expImport.textContent = months.length === 1
+    ? `${tsuki(last)}を取り込む`
+    : `${tsuki(months[0])}〜${tsuki(last)}全部取り込む`;
+}
+
 async function importExpenseRecords(only) {
   // ★取り込み用のファイルは**公開していません**（中身が業務データのためです）。
   //   公開先のマネージには入っていないので、ここで止めます
@@ -3029,6 +3058,7 @@ function renderAll() {
     renderCatchStaff();
     renderNippouFolders();
     renderSalesTargets();
+    renderExpenseImport();
     renderSyncStatus();
     return;
   }
