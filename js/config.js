@@ -1613,8 +1613,22 @@ function journalCandidates(lines, field, pairs, seq) {
     if (JOURNAL_PAY.indexOf(field.key) >= 0 && out.indexOf(0) >= 0 && out.indexOf(null) < 0) {
       out.push(null);
     }
-    // 「N件」があるのに金額が読めなかったときは、素直に「読めず」にします
-    if (anchored && !down.length) return [];
+    /* 「N件」があるのに金額が読めなかったときは、素直に「読めず」にします。
+
+       ★ただし**並び順からの答え（seq）だけは残します**（2026年8月5日のバグるの紙）。
+
+           電子マネー / ◯◯件 / 商品券(釣無し) / 0件 / ¥◯◯,◯◯◯ / ¥0
+
+         支払の名前と件数だけ先にまとまって出る紙では、名前のすぐ下に金額がありません。
+         ここで捨てると、**電子マネーが「読めず」のまま**になります（実際になりました）。
+       ★seq は近くの行からの当てずっぽうではなく、「支払の名前の順」と
+         「金額の順」を突き合わせたものです。ずれていれば合計が合わなくなります。
+       ★そのうえで、**件数の検算**（0件なら0円、1件以上なら0円でない）が確かめます。
+       ★「読めず」も候補に残すので、当てはまらなければ、これまでどおり読めずになります。 */
+    if (anchored && !down.length) {
+      const s = seq && seq[field.key] !== undefined ? seq[field.key] : null;
+      return s === null ? [] : [s, null];
+    }
     return out;
   }
   return [];
