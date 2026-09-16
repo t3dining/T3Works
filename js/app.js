@@ -987,7 +987,9 @@ function calcPadMake() {
     'position:fixed', 'left:0', 'right:0', 'bottom:0', 'z-index:99999',
     'display:none', 'grid-template-columns:repeat(4,1fr)', 'gap:6px',
     'padding:8px 8px calc(8px + env(safe-area-inset-bottom))',
-    `background:linear-gradient(180deg, #30241f 0%, ${墨} 42%, #170f0c 100%)`,
+    /* ★「もう少し明るく」（ko-dai さん・2026-09-16）。ロゴの墨の色味は残したまま、
+         明るめの茶灰色にしました。キーの字（白）との差は十分にあります */
+    'background:linear-gradient(180deg, #6e5c54 0%, #5a4a43 45%, #483a34 100%)',
     `border-top:2px solid ${朱}`,
     'box-shadow:0 -6px 18px rgba(0,0,0,.35)', 'overflow:hidden',
     'font-variant-numeric:tabular-nums',
@@ -1000,7 +1002,7 @@ function calcPadMake() {
   透かし.style.cssText = [
     'position:absolute', 'left:0', 'right:0', 'top:0', 'bottom:0', 'z-index:0',
     'pointer-events:none', 'background-repeat:no-repeat',
-    'background-position:center 66%', 'background-size:auto 80%', 'opacity:.14',
+    'background-position:center 66%', 'background-size:auto 80%', 'opacity:.20',
   ].join(';');
   pad.appendChild(透かし);
   calcPad透かしを作る((url) => { 透かし.style.backgroundImage = `url("${url}")`; });
@@ -1014,13 +1016,13 @@ function calcPadMake() {
   窓.style.cssText = [
     // ★透かしより手前に出すため、position と z-index を付けます
     'grid-column:1/-1', 'position:relative', 'z-index:1',
-    'background:rgba(12,7,6,.62)', 'border:1px solid rgba(244,237,228,.12)',
+    'background:rgba(35,25,22,.45)', 'border:1px solid rgba(255,248,240,.20)',
     'border-radius:10px', 'padding:6px 10px', 'margin-bottom:2px',
   ].join(';');
   const 頭 = document.createElement('div');
   頭.style.cssText = [
     'display:flex', 'justify-content:space-between', 'align-items:baseline',
-    'gap:8px', 'font-size:12px', 'color:#b9ada1', 'line-height:1.4',
+    'gap:8px', 'font-size:12px', 'color:#e3d7cb', 'line-height:1.4',
   ].join(';');
   const 欄名 = document.createElement('span');
   欄名.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
@@ -1098,11 +1100,11 @@ function calcPadMake() {
        （押したキーと違う数字が入る、と言われたので）。
        大きさ（transform）は変えません。変えると指の下のキーの形が動き、押し分けが変わります */
   const 形 = {
-    数: { 地: 'rgba(40,28,24,.55)', 線: 'rgba(244,237,228,.18)', 字: 生成り, 押: 'rgba(244,237,228,.30)' },
-    記号: { 地: 'rgba(207,19,28,.30)', 線: 'rgba(207,19,28,.70)', 字: '#fff', 押: 'rgba(207,19,28,.60)' },
-    戻す: { 地: 'rgba(70,56,50,.60)', 線: 'rgba(244,237,228,.26)', 字: 生成り, 押: 'rgba(244,237,228,.36)' },
-    消す: { 地: 'rgba(0,0,0,.25)', 線: 'rgba(207,19,28,.55)', 字: '#ffa3a7', 押: 'rgba(207,19,28,.30)' },
-    閉じる: { 地: 'rgba(0,0,0,.25)', 線: 'rgba(244,237,228,.22)', 字: '#d6cabe', 押: 'rgba(244,237,228,.16)' },
+    数: { 地: 'rgba(255,248,240,.16)', 線: 'rgba(255,248,240,.30)', 字: '#fffaf4', 押: 'rgba(255,248,240,.40)' },
+    記号: { 地: 'rgba(207,19,28,.62)', 線: 'rgba(255,150,150,.60)', 字: '#fff', 押: 'rgba(170,12,20,.90)' },
+    戻す: { 地: 'rgba(255,248,240,.28)', 線: 'rgba(255,248,240,.40)', 字: '#fffaf4', 押: 'rgba(255,248,240,.48)' },
+    消す: { 地: 'rgba(255,248,240,.08)', 線: 'rgba(255,160,160,.70)', 字: '#ffd0d2', 押: 'rgba(207,19,28,.40)' },
+    閉じる: { 地: 'rgba(255,248,240,.08)', 線: 'rgba(255,248,240,.34)', 字: '#f3e9de', 押: 'rgba(255,248,240,.24)' },
     確定: { 地: `linear-gradient(180deg, #e3262e 0%, ${朱} 55%, #a50f17 100%)`, 線: 'rgba(0,0,0,0)', 字: '#fff', 押: '#9a0d14' },
   };
   const キー = (label, どうする, 種類) => {
@@ -1136,16 +1138,16 @@ function calcPadMake() {
        ジャーナルで使うのは「=1000+2000-500」の形だけで、（ ）× ÷ ．は使いません。
        使わないキーがあると、その分キーが細くなり、**隣のキーを押しやすく**なります。
        5列 → 4列にして、1つずつのキーを横に広くしました。
-     ★記号は右の1列に、式を打つ順（＝ → ＋ → −）で上から並べます。
-     ★⌫ は右下（iPhone の数字キーボードと同じ場所）、0 は2つ分の幅です。
+     ★⌫ は右上です（ko-dai さん・2026-09-16）。その下の右の1列に、
+       式を打つ順（＝ → ＋ → −）で記号を並べます。0 は2つ分の幅です。
      ★計算そのもの（cashFormulaEval）は、今までどおり × ÷ （ ） も読めます。
        キーを減らしただけなので、前に入れた式が読めなくなることはありません。
      ★テンキーを使うのはジャーナルの画面の3か所だけです（出前館などの欄・仕入と人件費・手で直す欄）。 */
   [
-    ['7', 数], ['8', 数], ['9', 数], ['=', 記号],
-    ['4', 数], ['5', 数], ['6', 数], ['+', 記号],
-    ['1', 数], ['2', 数], ['3', 数], ['-', 記号],
-    ['0', 数, 2], ['00', 数], ['⌫', '戻す'],
+    ['7', 数], ['8', 数], ['9', 数], ['⌫', '戻す'],
+    ['4', 数], ['5', 数], ['6', 数], ['=', 記号],
+    ['1', 数], ['2', 数], ['3', 数], ['+', 記号],
+    ['0', 数, 2], ['00', 数], ['-', 記号],
   ].forEach(([c, 色, 幅]) => {
     const b = c === '⌫' ? キー(c, calcPadBack, 色) : キー(c, () => calcPadInsert(c), 色);
     if (幅) b.style.gridColumn = `span ${幅}`;
