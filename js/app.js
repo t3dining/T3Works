@@ -980,7 +980,28 @@ function calcPadMake() {
   ].join(';');
   // 窓で打ったら、そのまま入力欄へ写します
   式.addEventListener('input', () => calcPad写す());
-  窓.append(頭, 式);
+  // ★窓でカーソルを動かしたら、すぐ「途中に入ります」と出します（calcPadEcho）
+  ['select', 'keyup', 'pointerup', 'focus', 'blur'].forEach((ev) =>
+    式.addEventListener(ev, () => setTimeout(calcPadEcho, 0)));
+  /* ★★見出し（欄の名前・答え）を、式の**下**に置きます（2026-09-16）。
+
+       前は 見出し → 式 → キー の順で、**式の窓のすぐ下が「7 8 9 ⌫ ＝」の段**でした
+       （窓の字の下端からキーの上端まで14px）。指が少し上にずれると**窓に触れて
+       カーソルが式の途中へ動き**、そのあと押したキーは**全部、式の途中に入ります。**
+
+           打っていた式   =1000+2500+3000+4567+8900
+           「7」のつもりで少し上を押す → カーソルが「=1」のうしろへ
+           「5」を2回       =155000+2500+3000+4567+8900     ← 1000 が 155000 に
+
+       押したキーの字は正しく入っているのに、**画面では違う数字が入ったように見え、
+       金額も大きく変わります**（ko-dai さん「触ったものと違う数字や記号が打たれる」・
+       パソコンの browser をスマホの大きさにして、この形を再現しました）。
+
+     ★見出しの行は触っても何も起きません（テンキーの中は focus を動かさない作りです）。
+       これを式とキーのあいだに置けば、**テンキーの高さを変えずに**、あいだの帯が広がります。
+     ★式の窓で途中を直す使い方（2026-09-13）は、そのまま使えます。 */
+  窓.append(式, 頭);
+  頭.style.marginTop = '4px';
   pad.appendChild(窓);
   pad.窓の中 = { 欄名: 欄名, 答え: 答え, 式: 式 };
 
@@ -1006,7 +1027,11 @@ function calcPadMake() {
     b.style.cssText = [
       'height:46px', 'font-size:20px', 'font-weight:700', 'color:#fff',
       `background:${色 || '#4a4a4a'}`, 'border:0', 'border-radius:8px',
-      'touch-action:manipulation', '-webkit-user-select:none', 'user-select:none',
+      /* ★touch-action は none にします（前は manipulation）。manipulation は**指のずれで
+           ページが動く**のを許します。打つたびにページや iPhone の「ゆり戻し」でテンキーが
+           動くと、次に押す指の下のキーが入れかわります。キーの上では動かさないようにします */
+      'touch-action:none', '-webkit-user-select:none', 'user-select:none',
+      '-webkit-touch-callout:none',
     ].join(';');
     // ★押しても入力欄から離れないように、既定の動きを止めます
     b.addEventListener('pointerdown', (e) => { e.preventDefault(); });
@@ -1052,6 +1077,7 @@ function calcPadMake() {
 function calcPadLabel(i) {
   if (!i || !i.dataset) return '';
   if (i.dataset.k) return (typeof NIPPOU_LABELS === 'object' && NIPPOU_LABELS[i.dataset.k]) || '';
+  if (i.dataset.te) return `${i.dataset.name || ''}（紙の数）`;
   if (i.dataset.grid) {
     const 列 = i.dataset.colname || '';
     return (i.dataset.name || '') + (列 ? '｜' + 列 : '');
@@ -1073,6 +1099,20 @@ function calcPadEcho() {
   const i = calcPadFor;
   const 文字 = i ? String(i.value || '') : '';
   欄名.textContent = calcPadLabel(i);
+  /* ★★打つ場所が**式の途中**のときは、はっきり出します（2026-09-16）。
+       窓に触れてカーソルが途中へ動いても、見た目ではほとんど分かりません。
+       気づかずに打つと、数字が式の途中に入って金額が変わります。 */
+  const 途中へ = (() => {
+    const t = calcPad打つ先();
+    if (!t || typeof t.selectionStart !== 'number') return false;
+    const 長さ = String(t.value || '').length;
+    return t.selectionStart < 長さ || t.selectionEnd < 長さ;
+  })();
+  欄名.style.color = 途中へ ? '#ffb454' : '';
+  欄名.style.fontWeight = 途中へ ? '700' : '';
+  if (途中へ) 欄名.textContent = '★式の途中に入ります　' + 欄名.textContent;
+  式.style.boxShadow = 途中へ ? 'inset 0 0 0 2px #ffb454' : '';
+  式.style.borderRadius = 途中へ ? '4px' : '';
   /* ★窓を触っているあいだは、窓の中身を書きかえません。
        書きかえるとカーソルが末尾へ飛んで、**途中を直せなくなります。**
        （窓で打った分は、すでに入力欄へ写っています） */
@@ -1266,7 +1306,9 @@ function calcPadNext(i) {
       `input[data-grid="${i.dataset.grid}"][data-col="${相手}"]`)].filter(使える);
     return 次の列.length ? 次の列[0] : null;
   }
-  const 並び = [...document.querySelectorAll('input[data-k]')].filter(使える);
+  // ★手で直す欄は、表の中で下へ進みます
+  const 仲間 = i.dataset.te ? 'input[data-te]' : 'input[data-k]';
+  const 並び = [...document.querySelectorAll(仲間)].filter(使える);
   const at = 並び.indexOf(i);
   return (at >= 0 && at + 1 < 並び.length) ? 並び[at + 1] : null;
 }
@@ -1317,7 +1359,8 @@ function calcPadOutside(e) {
   if (!calcPad || calcPad.style.display === 'none') return;
   const t = e.target;
   if (calcPad.contains(t)) return;                 // テンキーの中
-  if (t && t.dataset && (t.dataset.k || t.dataset.grid)) return;   // ほかの入力欄
+  // ほかの入力欄（★手で直す欄 data-te も入れます。入れ忘れると、移るたびに閉じて開きます）
+  if (t && t.dataset && (t.dataset.k || t.dataset.grid || t.dataset.te)) return;
   calcPadClose();
 }
 document.addEventListener('pointerdown', calcPadOutside, true);
@@ -1358,7 +1401,9 @@ function calcPadBind(input) {
         const 窓 = calcPad窓();
         if (窓 && document.activeElement === 窓) return;
         if (calcPadFor === input && calcPadAlive(input) && document.activeElement !== input) {
-          try { input.focus(); } catch (e) { /* 効かなくても打てます */ }
+          /* ★preventScroll を付けます。iPhone は focus で**ページを送る**ので、
+               打っている最中にテンキーの位置と指の位置がずれることがあります */
+          try { input.focus({ preventScroll: true }); } catch (e) { /* 効かなくても打てます */ }
         }
         return;
       }
@@ -3090,6 +3135,7 @@ function journal行を作る(row) {
   input.inputMode = 'numeric';
   input.autocomplete = 'off';
   input.dataset.te = row.key;
+  input.dataset.name = row.name;          // テンキーの窓に出す名前
   input.setAttribute('aria-label', `${row.name}（紙の数を手で直す）`);
   // ★16px 未満だと、iOS が触ったときに画面を勝手に拡大します。
   //   css は本部のファイルなので、見た目はここで決めます
