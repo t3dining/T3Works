@@ -2403,7 +2403,7 @@ async function gasWhichOld() {
 }
 
 const GAS_HARIKATA = 'Apps Script の右上「デプロイ」→「デプロイを管理」→ '
-  + 'いま使っているデプロイの鉛筆 → バージョンを「新バージョン」→「デプロイ」';
+  + '今使っているデプロイの鉛筆 → バージョンを「新バージョン」→「デプロイ」';
 
 /** 食いちがいの知らせの文 */
 function gasChigauText(なに, サーバー, アプリ, どっち) {
@@ -2421,7 +2421,7 @@ function gasChigauText(なに, サーバー, アプリ, どっち) {
       + '★貼り直しでは直りません。まず、アプリをいったん閉じて開き直してください。'
       + 'それでも同じなら、この文をそのまま知らせてください。';
   }
-  const 版 = `（いま動いているGAS ${サーバー} ／ このアプリが待っている ${アプリ}）`;
+  const 版 = `（今動いているGAS ${サーバー} ／ このアプリが待っている ${アプリ}）`;
   if (どっち === 'アプリ') {
     return `${なに} と、この端末のアプリの版が食いちがっています${版}。`
       + '★この端末のアプリが古いままです。アプリをいったん閉じて、開き直してください。'
@@ -2710,7 +2710,7 @@ async function nippouWritePart(part, btn) {
        読み取りの直しが将来ほどけても、ここで止まります。 */
   const 書く先 = `${state.storeId}/${dateStr}`;
   if (組.indexOf('journal') >= 0 && cashEdit.key !== 書く先) {
-    setNippouMsg('★いま出ている数字は、この日の読み取りではありません。'
+    setNippouMsg('★今出ている数字は、この日の読み取りではありません。'
       + 'この日をもう一度開いてから、書いてください', 'warn');
     return;
   }
@@ -3400,7 +3400,7 @@ async function cashReadPhoto(dataUrl, dateStr, file) {
       cashYomiMachi[元のキー] = { res, dataUrl, ms: Date.now() - from, 店: 元の店 };
       const 名 = getStore(元の店) ? getStore(元の店).name : 元の店;
       setCashMsg(`${名}　${dateStr} の読み取りが終わりました。`
-        + 'その日を開くと出ます（いま開いている日には入れていません）', 'ok');
+        + 'その日を開くと出ます（今開いている日には入れていません）', 'ok');
       cashJobClear();
       return;
     }
@@ -7781,7 +7781,7 @@ function renderSyncWarn() {
     el.syncWarn.className = 'sync-warn is-waiting';
     el.syncWarn.textContent = `まだ送れていない入力が ${waiting}件 あります。`
       + '電波の届くところでアプリを開いたままにしてください。'
-      + '送れるまで、ほかの人の画面には出ません。';
+      + '送れるまで、他の人の画面には出ません。';
     return;
   }
 
@@ -7790,8 +7790,8 @@ function renderSyncWarn() {
   el.syncWarn.className = 'sync-warn' + (bad ? '' : ' is-hidden');
   if (!bad) return;
   el.syncWarn.textContent = (Sync.shownError() || 'しばらく同期できていません')
-    + '　ほかの人が提出しても、この画面には出ていないかもしれません。'
-    + 'ヘッダーのしるしを押すと、いま同期します。';
+    + '　他の人が提出しても、この画面には出ていないかもしれません。'
+    + 'ヘッダーの印を押すと、今すぐ同期します。';
 }
 
 /** 提出する人を選ぶまで、週間掃除の提出ボタンは押せません */
@@ -8701,7 +8701,7 @@ function openShiftRecruit() {
   el.shiftOpenWhen.textContent = `${state.y}年 ${label} の募集`;
   el.shiftOpenDue.value = shiftDueOf(shiftRec()) || shiftDueDefault(state.y, state.m, shiftHalf);
   el.shiftOpenNote.textContent = other
-    ? `いま募集中の ${other.label} は締め切られます。始めると、みんなの提出ページには ${label} が出ます。`
+    ? `今募集中の ${other.label} は締め切られます。始めると、みんなの提出ページには ${label} が出ます。`
     : 'みんなの提出ページに、この期間と期限が出るようになります。';
   el.shiftOpenModal.classList.remove('is-hidden');
 }
@@ -8924,7 +8924,7 @@ function renderShiftRoster(組む) {
   note.className = 'card__note';
   note.innerHTML = '1行に1人。保存すると<b>1人ずつに番号</b>が作られます。'
     + 'その番号を本人に送ってください。<br>'
-    + '<b>番号は本人だけのもの</b>です。ほかの人に見せないでください'
+    + '<b>番号は本人だけのもの</b>です。他の人に見せないでください'
     + '（番号を知っていれば、その人として出せてしまいます）。<br>'
     + '名前を消しても、<b>組みおわったシフトはそのまま残ります</b>。<br>'
     + '★<b>消した名前を戻すと、番号は新しくなります。</b>前の番号では入れません。'
@@ -10058,7 +10058,7 @@ function renderShiftPick() {
     };
 
     addGroup('希望を出している人', wish, true);
-    addGroup('そのほかの人', others, false);
+    addGroup('その他の人', others, false);
 
     if (!wish.length && !others.length) {
       el.shiftPickNames.innerHTML = '<p class="modal__note">入れられる人がいません。'
@@ -11370,7 +11370,7 @@ function openModal() {
   // 版の番号。困ったときに「この番号を教えて」と聞くためのものです
   const v = Updater.current();
   el.appVersionText.innerHTML = v
-    ? `いま入っているのは <b>${v}</b> です。`
+    ? `今入っているのは <b>${v}</b> です。`
     : '（手元で開いているため、版の番号はありません）';
   renderStoreUsage();
   el.modal.classList.remove('is-hidden');

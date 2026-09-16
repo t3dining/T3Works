@@ -635,7 +635,7 @@ function renderPastBar() {
   // いまの半月が確定ずみなら、そこへ戻るボタンも並べます
   // ★見本のときは、押した方（希望を入れる／確定後）で決まるので出しません
   if (!me.demo && built && Object.keys(built).length && period) {
-    box.appendChild(pastBtn(`${shiftRangeLabel(period.y, period.m, period.half)}（いま）`,
+    box.appendChild(pastBtn(`${shiftRangeLabel(period.y, period.m, period.half)}（今）`,
       null, !pastPick));
   }
   past.forEach((v) => {

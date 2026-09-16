@@ -156,7 +156,7 @@ const IdbAdapter = {
       };
       req.onsuccess = () => ok(req.result);
       req.onerror = () => ng(req.error || new Error('開けません'));
-      req.onblocked = () => ng(new Error('ほかの画面が開いています'));
+      req.onblocked = () => ng(new Error('他の画面が開いています'));
     });
     // 別の画面が作り直そうとしたら、こちらは閉じて譲ります
     this._db.onversionchange = () => { try { this._db.close(); } catch (e) { /* すでに閉じています */ } };
@@ -347,7 +347,7 @@ const Store = {
     try {
       await IdbAdapter.open();
     } catch (e) {
-      console.warn('新しい保存先を開けませんでした。いままでの場所を使います', e);
+      console.warn('新しい保存先を開けませんでした。今までの場所を使います', e);
       return this.usage();
     }
 
@@ -362,7 +362,7 @@ const Store = {
       if (!done) {
         // 中途半端に入ったものを片づけて、いままでの場所を使い続けます
         try { await IdbAdapter.clearRecs(); } catch (e2) { /* 片づけの失敗は無視します */ }
-        storeFail('保存先の引っ越しに失敗しました。いままでの場所を使い続けます');
+        storeFail('保存先の引っ越しに失敗しました。今までの場所を使い続けます');
         return this.usage();
       }
       this.movedThisTime = true;

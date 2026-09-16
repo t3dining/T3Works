@@ -14,7 +14,7 @@
 <title>T3 Works Manage｜T3Dining株式会社</title>
 <link rel="stylesheet" href="../css/style.css?v=9ad0fcc1">
 <link rel="stylesheet" href="css/admin.css?v=27e01b9d">
-<meta name="app-version" content="e0682efc">
+<meta name="app-version" content="f09921c1">
 </head>
 <body class="no-daytabs">
 
@@ -98,7 +98,7 @@
       その人の端末に残っている記録も、次にネットにつながったときに消えます。<br>
       <b>名前は消さずに残します。</b>過去の記録に名前が出ているためです。<br>
       <b>シフトの「配る番号」とは別の番号です。</b>アルバイトの番号では、ここには入れません。<br>
-      <b class="admin-warn" id="acctNotLive">★いまはまだ、この番号は使われていません。</b>
+      <b class="admin-warn" id="acctNotLive">★今はまだ、この番号は使われていません。</b>
     </p>
     <div class="admin-actions">
       <input id="acctName" class="field__input" type="text" placeholder="名前（例：田中）">
@@ -174,7 +174,7 @@
       <p class="admin-note">
         ここに<b>テスト用の日報のURL</b>を入れておくと、ジャーナルの「日報に書く」が
         <b>本番ではなく、こちらへ書きます</b>。まとめて試すときに使ってください。<br>
-        <b>この端末の中だけの設定です。</b>ほかの端末には広がりません。
+        <b>この端末の中だけの設定です。</b>他の端末には広がりません。
         <b>空にすれば本番に戻ります。</b>試し終わったら必ず空にしてください。
       </p>
       <label class="field">
@@ -225,7 +225,7 @@
     <div class="admin-block__head">
       <h2 class="admin-block__title">バックアップ</h2>
     </div>
-    <p class="admin-note">記録をまとめてファイルに書き出します。取り込むと、いまの内容に上書きされます。</p>
+    <p class="admin-note">記録をまとめてファイルに書き出します。取り込むと、今の内容に上書きされます。</p>
     <div class="admin-actions">
       <button type="button" class="btn" id="exportBtn">書き出す</button>
       <label class="btn">取り込む<input type="file" id="importFile" accept="application/json" hidden></label>
@@ -588,7 +588,7 @@
         <button type="button" class="btn" id="syncNow">今すぐ同期</button>
         <button type="button" class="btn" id="pinChange">PINを入れ直す</button>
       </div>
-      <p class="sync-legend__head">ヘッダーのしるしの見かた</p>
+      <p class="sync-legend__head">ヘッダーの印の見かた</p>
       <ul class="sync-legend" id="syncLegend"></ul>
       <!-- ★赤になった記録。中身は Sync.logHtml() が入れます。
            跳ねるのは「ときどき」なので、その瞬間に画面を見ていないと捕まりません。
@@ -727,9 +727,9 @@
      現場のアプリ（ワークス・マイン）には持たせません。番号は合言葉だからです -->
 <script>window.T3_ADMIN_PAGE = true;</script>
 <script src="../js/config.js?v=e401fb52"></script>
-<script src="../js/storage.js?v=6533b295"></script>
-<script src="../js/sync.js?v=1978f3f9"></script>
+<script src="../js/storage.js?v=f31370dc"></script>
+<script src="../js/sync.js?v=6926e7b6"></script>
 <script src="../js/update.js?v=c530219e"></script>
-<script src="js/admin.js?v=39c9bede"></script>
+<script src="js/admin.js?v=619625d4"></script>
 </body>
 </html>

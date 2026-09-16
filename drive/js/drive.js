@@ -712,14 +712,14 @@ function renderSyncWarn() {
     //   「入力は消えません」はあちらが言うので、ここでは重ねません
     el.syncWarn.textContent = Sync.shownError()
       + (未送信 ? `　未送信 ${未送信}件。` : '　')
-      + 'ヘッダーのしるしを押すと、いま送り直します';
+      + 'ヘッダーの印を押すと、今すぐ送り直します';
     return;
   }
   if (未送信) {
     el.syncWarn.className = 'sync-warn is-waiting';
     el.syncWarn.textContent = `まだ送れていない記録が ${未送信}件 あります。`
       + '電波の届くところでアプリを開いたままにしてください。'
-      + '送れるまで、ほかの人の画面には出ません';
+      + '送れるまで、他の人の画面には出ません';
     return;
   }
   el.syncWarn.className = 'sync-warn is-hidden';
@@ -778,7 +778,7 @@ function bindEvents() {
     el.syncLegend.innerHTML = Sync.legendHtml();
     const v = Updater.current();
     el.appVersionText.innerHTML = v
-      ? `いま入っているのは <b>${v}</b> です。`
+      ? `今入っているのは <b>${v}</b> です。`
       : '（手元で開いているため、版の番号はありません）';
     el.modal.classList.remove('is-hidden');
   });

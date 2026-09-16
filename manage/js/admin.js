@@ -1416,8 +1416,8 @@ function renderDowPick() {
   });
 
   el.dowHint.textContent = on.length
-    ? `いまは ${on.map((d) => DOW[d]).join('・')}曜だけ出ます`
-    : 'いまは毎日出ます';
+    ? `今は ${on.map((d) => DOW[d]).join('・')}曜だけ出ます`
+    : '今は毎日出ます';
 }
 
 /** 出す曜日を書き換えて保存する */
@@ -1500,8 +1500,8 @@ function renderMonPick() {
   }
 
   el.monHint.textContent = on.length
-    ? `いまは${monthsText(on)}だけ出ます`
-    : 'いまは毎月出ます';
+    ? `今は${monthsText(on)}だけ出ます`
+    : '今は毎月出ます';
 }
 
 /** 出す月を書き換えて保存する */
@@ -1743,7 +1743,7 @@ function renderShiftCodes() {
     //   2つまでは名前、それより多ければ「ほか◯」にして、全部は title に入れます
     link.textContent = よそ名.length === 0 ? '他店舗にも所属'
       : (よそ名.length <= 2 ? `他店舗：${よそ名.join('・')}`
-        : `他店舗：${よそ名.slice(0, 2).join('・')} ほか${よそ名.length - 2}`);
+        : `他店舗：${よそ名.slice(0, 2).join('・')} 他${よそ名.length - 2}`);
     link.title = よそ名.length ? `他店舗にも所属：${よそ名.join('・')}`
       : 'この人が入っている店舗を選びます';
     link.addEventListener('click', () => {
@@ -2045,7 +2045,7 @@ function saveShiftMemoTags() {
   //   ここで先に止めます。**「開いて保存を押しただけで消えた」と同じ形の穴です
   if (list.length > SHIFT_MEMO_TAGS_MAX) {
     window.alert(`決まり文句は ${SHIFT_MEMO_TAGS_MAX} こまでです。`
-      + `\nいま ${list.length} こ入っています。`
+      + `\n今 ${list.length} こ入っています。`
       + `\n${list.length - SHIFT_MEMO_TAGS_MAX} こ減らしてから、もう一度押してください。`
       + '\n\n（このまま保存すると、あふれた分が黙って消えてしまいます）');
     return;
@@ -2063,7 +2063,7 @@ function saveShiftMemoTags() {
   if (!list.length && ShiftMemoTags.get(state.storeId) === null && !決めてある) {
     if (!window.confirm(`${getStore(state.storeId).name} は、この端末では「まだ登録なし」です。\n`
       + '空のまま保存すると、この店舗はボタンを1つも出さない設定になります。\n\n'
-      + '★ほかの端末で登録してある場合、それを消してしまいます。\n'
+      + '★他の端末で登録してある場合、それを消してしまいます。\n'
       + '　同期が届いていないだけかもしれません。\n\n'
       + 'それでも空で登録しますか。')) return;
   }
@@ -2204,7 +2204,7 @@ function saveShiftHelp() {
   }
   if (!文) {
     if (!window.confirm('空のまま保存すると、枠の設定から組み立てたものに戻ります。\n'
-      + 'いま書いてあった文は消えます。\n\nよろしいですか。')) return;
+      + '今書いてあった文は消えます。\n\nよろしいですか。')) return;
   }
   Store.setItem(SHIFT_SET_STORE, state.storeId, SHIFT_HELP_KEY, 文 || null);
   renderShiftHelp();
@@ -2565,13 +2565,13 @@ function 日報に書く店舗() {
 /** いまの設定を、そのまま読める文にします */
 function nippouTestStoresNote() {
   const url = NippouTest.get();
-  if (!url) return 'いまは全店舗が、本番の日報に書きます。';
+  if (!url) return '今は全店舗が、本番の日報に書きます。';
   const 選ばれ = NippouTestStores.all();
   /* ★1つも選んでいないときは、**どこにも書けません**（上の説明のとおり）。
        ここが「全店舗がテスト用」のままになっていました。画面が古い動きを
        説明していると、読んだ人はそのとおりだと思って書いてしまいます。 */
   if (!選ばれ.length) {
-    return '★★いまは【どこにも書けません】。テスト用のURLが入っているのに、'
+    return '★★今は【どこにも書けません】。テスト用のURLが入っているのに、'
       + '店舗が1つも選ばれていないためです。テスト用にする店舗を選ぶか、'
       + '上のURLを空にしてください。';
   }
@@ -3104,7 +3104,7 @@ function renderSyncWarn() {
     el.syncWarn.textContent = `${Sync.shownError()}`
       + (n ? `（未保存 ${n}件）` : '')
       + '　直した内容は、まだ現場の端末に届いていません。'
-      + 'ヘッダーのしるしを押すと、いま送ります。';
+      + 'ヘッダーの印を押すと、今すぐ送ります。';
     return;
   }
   if (n) {
@@ -3160,7 +3160,7 @@ function openSettings() {
   // 版の番号。困ったときに「この番号を教えて」と聞くためのものです
   const v = Updater.current();
   el.appVersionText.innerHTML = v
-    ? `いま入っているのは <b>${v}</b> です。`
+    ? `今入っているのは <b>${v}</b> です。`
     : '（手元で開いているため、版の番号はありません）';
   renderStoreUsage();
 
@@ -3280,7 +3280,7 @@ function importJson(file) {
   reader.onload = async () => {
     const ok = await askConfirm({
       item: file.name,
-      message: 'いまの内容に上書きします。よろしいですか？',
+      message: '今の内容に上書きします。よろしいですか？',
     });
     if (!ok) return;
     try {
