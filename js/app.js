@@ -4422,8 +4422,8 @@ function expenseRec() {
  *
  * ★これは「測るだけ」です。上限は動きません。
  *   区切りを足すかどうかは、**実際の数字を見てから**決めます
- *   （9月から「渡した相手」が入るので、1件が何件に分かれるかは
- *     使ってみないと分かりません。2026-09-07 の時点では推測でした）。
+ *   （「渡した相手」が入ると1件が何件に分かれるかは、使ってみないと分かりません。
+ *     2026-09-07 の時点では推測でした。入りはじめるのは 2026年10月分からです）。
  *
  * ★数え方はGASと同じです。あちらは記録まるごとを `JSON.stringify` して
  *   1マスに書くので、こちらも同じものを数えます。
@@ -4913,7 +4913,9 @@ function renderExpenseForm() {
     b.classList.toggle('is-on', b.dataset.store === expStore);
   });
 
-  /* 渡した相手は9月分から。8月までは人数と金額だけで記録できます */
+  /* 渡した相手が要るかは日付で決まります（config.js の CATCH_WHO_FROM）。
+     それより前の分は欄を出さず、人数と金額だけで記録できます。
+     ★ここに月の名前を書かないこと。設定を動かしたとき、ここだけ古く残ります */
   const whoOn = isCatch && catchWhoNeeded(el.expDate.value);
   el.expStoreField.classList.toggle('is-hidden', !(kind && kind.store));
   el.expPeopleField.classList.toggle('is-hidden', !(kind && kind.people));
@@ -4945,7 +4947,7 @@ function saveExpense() {
   if (!kind) { el.expenseError.textContent = '支払い項目を選んでください。'; return; }
   if (kind.store && !expStore) { el.expenseError.textContent = 'どの店舗かを選んでください。'; return; }
   if (kind.people && (!people || people <= 0)) { el.expenseError.textContent = '人数を入れてください。'; return; }
-  // 渡した相手は9月分から。8月までは人数と金額だけで記録できます
+  // 渡した相手が要るかは日付で決まります（config.js の CATCH_WHO_FROM）
   if (kind.who && catchWhoNeeded(d) && !who) {
     el.expenseError.textContent = '渡した相手を選んでください。';
     return;
@@ -11785,7 +11787,7 @@ function bindEvents() {
   });
   /* 渡した相手で「その他」を選んだら、名前を書く欄を出す */
   el.expWho.addEventListener('change', renderExpenseForm);
-  /* 日付を動かすと「渡した相手」の要る・要らないが変わります（9月分から） */
+  /* 日付を動かすと「渡した相手」の要る・要らないが変わります（CATCH_WHO_FROM） */
   el.expDate.addEventListener('change', renderExpenseForm);
   el.expDate.addEventListener('input', renderExpenseForm);
   /* まとめた行を開いた「キャッチの明細」 */
