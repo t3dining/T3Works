@@ -1846,11 +1846,23 @@ function 番号は必須か() {
  *   アプリ側は、その返事を受けたら番号を聞く画面を出します（js/app.js）。
  * ★**全員に番号を配り終えてから**押してください。配る前に押すと、全員が止まります。
  */
-function 締めつけを切り替える(する) {
+async function 締めつけを切り替える(する) {
   const 生きている = StaffAccounts.ordered().filter((v) => !v.off).length;
   if (する && !生きている) {
     alert('番号がまだ1つもありません。先に「追加して番号を作る」で作ってください。');
     return;
+  }
+  /* ★必須にする前に、**この端末（このマネージ）に、登録ずみの番号が入っているか**を確かめます。
+       入っていないまま押すと、次の同期からこのマネージが断られ、**「やめる」も送れません**
+       （2026-09-16、マニュアル部署の指摘。本部の手順にこの一歩が抜けていました）。 */
+  if (する) {
+    const r = await Sync.ping();
+    if (!(r.ok && r.who)) {
+      const 通った = await 番号を聞く(
+        '必須にする前に、この端末にあなたの番号を入れます。\n'
+        + '入れないまま必須にすると、このマネージも断られて「やめる」を送れなくなります。');
+      if (!通った) return;
+    }
   }
   const 文 = する
     ? `番号を必須にします。\n\nいま使える番号は ${生きている}人分です。\n`
@@ -3267,6 +3279,32 @@ function openPinModal() {
   setTimeout(() => el.pinInput.focus(), 50);
 }
 
+/**
+ * この端末に、あなたの番号（社員のアカウント）を入れます
+ *
+ * ★マネージには番号の欄がありません。**番号を必須にしたあと、マネージが断られて
+ *   「番号の必須をやめる」も送れなくなるところでした**（2026-09-16、マニュアル部署の指摘）。
+ *   サーバーは**管理用PINでも**、番号が無ければ `need_staff_code` で断ります（gas/コード.gs）。
+ * ★「マインで入れてあれば使える」は当てになりません。iPhone のホーム画面のアプリは、
+ *   **アプリごとに保存場所が分かれる**ことがあります。
+ * ★入れた番号はサーバーで確かめます（`Sync.ping()`）。**登録されていない番号は覚えません。**
+ * 返り値 … 通ったら true
+ */
+async function 番号を聞く(前置き) {
+  const 文 = (前置き ? 前置き + '\n\n' : '')
+    + 'あなたの番号（6桁）を入れてください。\n社員のアカウントで作った、あなたの番号です。';
+  const 入れた = prompt(文, '');
+  if (入れた === null) return false;
+  const code = toHalfWidth(String(入れた)).trim();
+  if (!code) return false;
+  Sync.setCode(code);
+  const r = await Sync.ping();
+  if (r.ok && r.who) return true;
+  if (r.ok) Sync.clearCode();
+  alert(r.error || 'この番号は登録されていません。社員のアカウントの一覧で確かめてください。');
+  return false;
+}
+
 async function submitPin() {
   // 全角で入れても通るように、半角に直してから確かめます
   const pin = toHalfWidth(el.pinInput.value).trim();
@@ -3281,7 +3319,19 @@ async function submitPin() {
     return;
   }
   // 現場用PINで入られると設定を変えられないので、ここで弾いておく
-  const check = await Sync.probeAdmin();
+  let check = await Sync.probeAdmin();
+  /* ★番号が要ると言われたときは、**PINを消しません。**PINは合っています。
+       前は下の「現場用PIN」と同じ扱いでPINを消していたので、番号を必須にしたあと
+       **マネージに入れなくなるところでした**（2026-09-16）。 */
+  if (!check.admin && check.code === 'need_staff_code') {
+    el.pinError.textContent = 'あなたの番号を確かめています…';
+    if (await 番号を聞く('番号を必須にしてあるので、マネージでも番号が要ります。')) {
+      check = await Sync.probeAdmin();
+    } else {
+      el.pinError.textContent = 'あなたの番号を入れると開けます。もう一度「開く」を押してください。';
+      return;
+    }
+  }
   if (!check.admin) {
     Sync.clearPin();
     el.pinError.textContent = check.error || 'これは現場用のPINです。管理用PINを入力してください。';
@@ -3486,7 +3536,19 @@ async function init() {
     return;
   }
   // 同期で最新を受け取ったら、あとから決まった項目を足します
-  Sync.onChange = () => { renderSyncStatus(); addLaterItems(); };
+  /* ★番号が要ると言われたら、1回だけ聞きます（js/app.js と同じ考え。2026-09-16） */
+  let 番号を聞いた = false;
+  Sync.onChange = () => {
+    renderSyncStatus();
+    addLaterItems();
+    if (Sync.needStaffCode && !番号を聞いた && Sync.pin()) {
+      番号を聞いた = true;
+      番号を聞く('番号を必須にしてあるので、マネージでも番号が要ります。').then((ok) => {
+        if (ok) Sync.scheduleFlush(0);
+      });
+    }
+    if (!Sync.needStaffCode) 番号を聞いた = false;
+  };
   if (!Sync.pin()) openPinModal();
   else Sync.start();
 }

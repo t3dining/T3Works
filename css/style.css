@@ -2940,6 +2940,9 @@ body.is-wide .page { max-width: 1700px; }
 .modal__note { font-size: 12.5px; color: var(--text-sub); margin: 0 0 12px; }
 .field { display: block; margin-bottom: 14px; }
 .field__label { display: block; font-size: 12.5px; color: var(--text-sub); margin-bottom: 5px; }
+/* ★入力欄の下の小さな説明（番号の欄など）。2026-09-16 まで見た目の決まりが無く、
+     ふつうの大きさの黒い字で出ていました（マニュアル部署の報告） */
+.field__hint { margin: 6px 0 0; font-size: 12px; color: var(--text-sub); line-height: 1.6; }
 .field__input {
   width: 100%; border: 1px solid var(--line); border-radius: 9px;
   background: var(--surface-2); color: var(--text); font: inherit; font-size: 15px; padding: 9px 11px;

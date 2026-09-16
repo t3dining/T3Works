@@ -11478,10 +11478,19 @@ async function submitPin() {
     el.pinError.textContent = '確認中…';
     Sync.setCode(code);
     const res = await Sync.ping();
-    if (Sync.code() && !res.error) {
+    if (res.ok && res.who) {
       el.pinModal.classList.add('is-hidden');
       renderWho();
       Sync.start(); render();
+      // ★たまっている分をすぐ送ります（番号が要ると言われて止まっていた分です）
+      Sync.scheduleFlush(0);
+    } else if (res.ok) {
+      /* ★通ったのに「誰か」が返ってこない＝**登録されていない番号**です。
+           番号を必須にする前は、サーバーが止めないので通ってしまいます。
+           前はそのまま閉じていたので、**違う番号でも入れたように見えました**（2026-09-16）。 */
+      Sync.clearCode();
+      renderWho();
+      el.pinError.textContent = 'この番号は登録されていません。渡された6桁を確かめてください。';
     } else {
       // ★番号がまちがっていても、PINは消しません
       el.pinError.textContent = res.error || 'この番号は使えません。';

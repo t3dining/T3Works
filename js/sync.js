@@ -228,10 +228,21 @@ const Sync = {
   myName() {
     return localStorage.getItem(this._nameKey) || '';
   },
-  /** サーバーの返事から、自分の名前を覚えます（判定はサーバーがしています） */
+  /**
+   * サーバーの返事から、自分の名前を覚えます（判定はサーバーがしています）
+   *
+   * ★**通ったのに「誰か」が無いときは、覚えていた名前を消します**（2026-09-16）。
+   *   番号が無いか、登録されていない番号です。前は足すだけで消さなかったので、
+   *   一度正しく入れた端末で違う番号を入れ直すと、**前の人の名前がヘッダーに残りました**
+   *   （マニュアル部署の報告）。使い方の「名前が出ていれば正しく入っています」が崩れていました。
+   * ★呼ぶのは `ok` の返事のときだけです。サーバーは ok のとき、番号が合っていれば必ず `who` を付けます。
+   */
   _rememberWho(json) {
-    if (json && json.who && json.who.name) {
+    if (!json || !json.ok) return;
+    if (json.who && json.who.name) {
       localStorage.setItem(this._nameKey, String(json.who.name));
+    } else {
+      localStorage.removeItem(this._nameKey);
     }
   },
   setPin(pin) {
@@ -409,6 +420,10 @@ const Sync = {
     const 上限 = ops.length ? this.hangMs : this.readHangMs;
     this._送り直せる = false;
 
+    /* ★送った番号を覚えておきます。返事を待つあいだに人が番号を入れ直すと、
+         **古い返事の「番号が要る」で、入れたばかりの番号を消してしまう**ためです（2026-09-16）。 */
+    const 送った番号 = this.code();
+
     try {
       // 返事が返ってこないまま止まらないよう、時間を切ります。
       // iPhone はアプリを裏に回した拍子に、通信が返ってこないことがあります
@@ -460,7 +475,7 @@ const Sync = {
                ここでPINまで消すと、番号を直したい人がPINからやり直しになります。
              ★送信箱も捨てません。番号を入れれば、そのまま送られます。 */
         if (json.code === 'need_staff_code') {
-          this.clearCode();
+          if (this.code() === 送った番号) this.clearCode();
           this.needStaffCode = true;
         }
         return;
@@ -623,25 +638,47 @@ const Sync = {
     }
   },
 
-  /** いま覚えているPINが管理用かどうかを確かめる（管理アプリで使います） */
-  async probeAdmin() {
+  /**
+   * 合言葉と番号が通るかだけを確かめます（記録は動かしません）
+   *
+   * ★★2026-09-16 まで、**この関数はありませんでした。**`js/app.js` の submitPin は、
+   *   番号だけを入れる画面（「PINを入れ直す」／番号を求められたとき）でこれを呼んでいて、
+   *   **`Sync.ping is not a function` で止まり、「確認中…」のまま閉じられませんでした。**
+   *   番号は止まる前に覚えるので、裏の同期で名前は出ます。**画面だけが残ります。**
+   *   ★番号を必須にしたあとは「番号はあとで」も出ないので、**全員がそこで止まるところでした。**
+   *   マニュアル部署が「違う番号でも通る」と報告してきたのを本部で追って、実物で再現しました。
+   * ★サーバーの `ping` は何も書かず、外への呼び出しもありません（`gas/コード.gs` の `handle_` の先頭）。
+   * 返り値 { ok, error, code, who, admin }
+   */
+  async ping() {
+    const 送った番号 = this.code();
     try {
       const res = await fetch(APP.syncUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ pin: this.pin(), code: this.code(), action: 'ping' }),
+        body: JSON.stringify({ pin: this.pin(), code: 送った番号, action: 'ping' }),
       });
-      const json = await res.json();
+      const json = await 返事を読む(res);
       if (!json.ok) {
-        if (json.code === 'need_staff_code') { this.clearCode(); this.needStaffCode = true; }
-        return { admin: false, error: json.error || '', code: json.code || '' };
+        if (json.code === 'need_staff_code') {
+          if (this.code() === 送った番号) this.clearCode();
+          this.needStaffCode = true;
+        }
+        return { ok: false, error: json.error || '', code: json.code || '', who: null, admin: false };
       }
       this.needStaffCode = false;
       this._rememberWho(json);
-      return { admin: !!json.admin, error: '' };
+      return { ok: true, error: '', code: '', who: json.who || null, admin: !!json.admin };
     } catch (e) {
-      return { admin: false, error: '通信できませんでした。電波の良いところでもう一度お試しください。' };
+      return { ok: false, error: '通信できませんでした。電波の良いところでもう一度お試しください。',
+               code: '', who: null, admin: false };
     }
+  },
+
+  /** いま覚えているPINが管理用かどうかを確かめる（管理アプリで使います） */
+  async probeAdmin() {
+    const r = await this.ping();
+    return r.ok ? { admin: r.admin, error: '' } : { admin: false, error: r.error, code: r.code };
   },
 
   /**
