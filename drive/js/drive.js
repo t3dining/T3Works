@@ -38,6 +38,8 @@ const el = {
   modal: $('modal'), syncChip: $('syncChip'), syncInfo: $('syncInfo'), syncLegend: $('syncLegend'),
   syncWarn: $('syncWarn'),
   pinModal: $('pinModal'), pinInput: $('pinInput'), pinError: $('pinError'),
+  pinMessage: $('pinMessage'), codeInput: $('codeInput'), codeLater: $('codeLater'),
+  codeInfo: $('codeInfo'),
   appVersionText: $('appVersionText'),
   confirmDialog: $('confirmDialog'), confirmItem: $('confirmItem'),
   confirmMessage: $('confirmMessage'), confirmOk: $('confirmOk'),
@@ -725,19 +727,69 @@ function renderSyncWarn() {
   el.syncWarn.className = 'sync-warn is-hidden';
 }
 
+/* ★番号まわりは、ワークス（js/app.js の openPinModal・submitPin）と同じ作りです。
+     `js/sync.js` を共有しているので、マネージで「番号を必須にする」を押すと
+     **配達記録もサーバーに止められます。**前は合言葉の画面しかなく、
+     バグるのタブレットが赤いまま何もできなくなるところでした（2026-09-16、本部）。 */
 function openPinModal(message) {
   el.pinInput.value = '';
   el.pinError.textContent = message || '';
+  // ★PINが入っているなら、聞くのは番号だけです
+  const pin済み = !!Sync.pin();
+  el.pinInput.closest('.pin-row').classList.toggle('is-hidden', pin済み);
+  $('pinTitle').textContent = pin済み
+    ? '番号を入れてください' : '合言葉（PIN）を入力してください';
+  el.pinMessage.innerHTML = pin済み
+    ? 'この端末から記録を送るための番号です。<br>一度入れれば、この端末では次回から不要です。'
+    : '記録を全員で共有するために必要です。<br>一度入力すれば、この端末では次回から不要です。';
+  el.codeInput.value = Sync.code();
+  /* 「あとで」は、PINが通っていて、**サーバーがまだ番号を求めていない**あいだだけ出します。
+     求められたあとに閉じても、同期できずに赤いままになるためです */
+  el.codeLater.classList.toggle('is-hidden', !pin済み || !!Sync.needStaffCode);
   el.pinModal.classList.remove('is-hidden');
-  setTimeout(() => el.pinInput.focus(), 50);
+  setTimeout(() => (pin済み ? el.codeInput : el.pinInput).focus(), 50);
+}
+
+/** 設定の「番号」の行 */
+function renderCodeInfo() {
+  const 名 = Sync.myName();
+  el.codeInfo.textContent = 名
+    ? `「${名}」の番号が入っています。`
+    : Sync.code()
+      ? '番号は入っていますが、まだ確かめられていません。「今すぐ同期」を押してください。'
+      : '番号は入っていません。';
 }
 
 async function submitPin() {
   // 全角で入れても通るように、半角に直してから確かめます
+  if (Sync.pin()) {
+    // PINは通っています。番号だけ確かめます
+    const code = toHalfWidth(el.codeInput.value).trim();
+    if (!code) { el.pinError.textContent = '番号を入れてください。'; return; }
+    el.pinError.textContent = '確認中…';
+    Sync.setCode(code);
+    const res = await Sync.ping();
+    if (res.ok && res.who) {
+      el.pinModal.classList.add('is-hidden');
+      Sync.start(); render();
+      // ★番号が要ると言われて止まっていた分を、すぐ送ります
+      Sync.scheduleFlush(0);
+    } else if (res.ok) {
+      // ★通ったのに「誰か」が返ってこない＝登録されていない番号です（必須にする前は止められません）
+      Sync.clearCode();
+      el.pinError.textContent = 'この番号は登録されていません。渡された6桁を確かめてください。';
+    } else {
+      // ★番号がまちがっていても、PINは消しません
+      el.pinError.textContent = res.error || 'この番号は使えません。';
+    }
+    return;
+  }
   const pin = toHalfWidth(el.pinInput.value).trim();
   if (!pin) { el.pinError.textContent = 'PINを入力してください。'; return; }
   el.pinError.textContent = '確認中…';
   Sync.setPin(pin);
+  const code = toHalfWidth(el.codeInput.value).trim();
+  if (code) Sync.setCode(code);
   await Sync.flush();
   if (Sync.pin()) {
     el.pinModal.classList.add('is-hidden');
@@ -774,6 +826,7 @@ function bindEvents() {
   /* 設定 */
   $('settingsBtn').addEventListener('click', () => {
     renderSyncStatus();
+    renderCodeInfo();
     // ヘッダーのしるしが何を表しているかの一覧（実物と同じ絵を並べます）
     el.syncLegend.innerHTML = Sync.legendHtml();
     const v = Updater.current();
@@ -790,6 +843,10 @@ function bindEvents() {
     el.modal.classList.add('is-hidden');
     openPinModal();
   });
+  $('codeChange').addEventListener('click', () => {
+    el.modal.classList.add('is-hidden');
+    openPinModal();
+  });
   $('forceUpdate').addEventListener('click', () => Updater.force());
 
   /* PIN */
@@ -801,6 +858,13 @@ function bindEvents() {
   });
   el.pinInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitPin(); });
   bindHalfWidthInput(el.pinInput, 'code');
+  el.codeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !imeEnter(e)) submitPin(); });
+  bindHalfWidthInput(el.codeInput, 'code');
+  // ★「番号はあとで」。必須にする前だけの逃げ道です（必須のあとはサーバーが止めるので効きません）
+  el.codeLater.addEventListener('click', () => {
+    el.pinModal.classList.add('is-hidden');
+    Sync.start(); render();
+  });
 
   el.syncChip.addEventListener('click', () => Sync.flush());
 
@@ -850,7 +914,17 @@ function bindEvents() {
   render();
 
   Updater.start();
-  Sync.onChange = renderSyncStatus;
+  /* ★使っている最中に「番号が要る」と言われたら、1回だけ番号を聞きます。
+       何度も開くと入力の邪魔になるので、閉じたあとは設定の「番号を入れる」から開きます */
+  let 番号を聞いた = false;
+  Sync.onChange = () => {
+    renderSyncStatus();
+    if (Sync.needStaffCode && !番号を聞いた && el.pinModal.classList.contains('is-hidden')) {
+      番号を聞いた = true;
+      openPinModal(Sync.lastError || '番号を入れてください。');
+    }
+    if (!Sync.needStaffCode) 番号を聞いた = false;
+  };
   if (Sync.enabled()) {
     if (!Sync.pin()) openPinModal();
     else Sync.start();
