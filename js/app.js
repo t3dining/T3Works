@@ -918,12 +918,68 @@ let calcPad = null;
 let calcPadFor = null;      // いま打っている入力欄
 let calcPadHold = 0;        // テンキーの中を触った時刻（閉じないようにするため）
 
+/**
+ * テンキーの色（会社のロゴから測った色）
+ *
+ * ★★ko-dai さんの依頼で、会社のロゴでそろえました（2026-09-16）。
+ *   img/t3dining-mark.png の画素を数えて測った色です。
+ *     墨   #231916 … ロゴの黒。テンキーの地
+ *     朱   #cf131c … ロゴの赤。＝ ＋ − と「確定」、上のふちの線
+ *     生成り #f4ede4 … 数字の字と、ロゴの黒い線を明るくした色（暗い地で見えるように）
+ * ★キーの字の読みやすさを先に決めてあります。ロゴは打つ邪魔をしない濃さです。
+ */
+const CALC_色 = { 墨: '#231916', 朱: '#cf131c', 生成り: '#f4ede4' };
+
+/** 作った透かし（data URL）。1回だけ作って使い回します */
+let calcPad透かし = null;
+
+/**
+ * 会社のロゴを、テンキーの地に敷く形に作りかえます
+ *
+ * ★ロゴの画像は**背景が白で塗られていて、透明ではありません**（512×512の全部が不透明）。
+ *   そのまま敷くと白い四角が出るので、「白い紙に刷ったインク」とみなして抜きます。
+ *     白 … 透明
+ *     黒 … 生成り（暗い地で見えるように明るくします）
+ *     赤 … 赤のまま
+ *   インクの濃さは緑の値から戻します（黒 #231916 も赤 #cf131c も、緑が小さいため）。
+ *   線のふちのぼかしも、そのまま残ります。
+ * ★作れなくても（画像が読めない・古い端末）、打つのには困りません。透かしが出ないだけです。
+ */
+function calcPad透かしを作る(できたら) {
+  if (calcPad透かし) { できたら(calcPad透かし); return; }
+  const img = new Image();
+  img.onload = () => {
+    try {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth;
+      c.height = img.naturalHeight;
+      const g = c.getContext('2d');
+      g.drawImage(img, 0, 0);
+      const d = g.getImageData(0, 0, c.width, c.height);
+      const px = d.data;
+      for (let k = 0; k < px.length; k += 4) {
+        const r = px[k], gr = px[k + 1];
+        const 赤 = r - gr > 60;                       // 赤いインクか（ふちのぼかしも含めて）
+        const 濃さ = Math.max(0, Math.min(1, (255 - gr) / (赤 ? 236 : 230)));
+        if (赤) { px[k] = 207; px[k + 1] = 19; px[k + 2] = 28; }
+        else { px[k] = 244; px[k + 1] = 237; px[k + 2] = 228; }
+        px[k + 3] = Math.round(px[k + 3] * 濃さ);
+      }
+      g.putImageData(d, 0, 0);
+      calcPad透かし = c.toDataURL('image/png');
+      できたら(calcPad透かし);
+    } catch (e) { /* 出せなくても、打つのに困りません */ }
+  };
+  img.src = ASSET_BASE + 'img/t3dining-mark.png';
+}
+
 /** テンキーを作ります（1つだけ作って、使い回します） */
 function calcPadMake() {
   // ★DOMに付いているかまで見ます。変数だけを見ていると、
   //   何かの拍子に外れたとき、二度と出てこなくなります
   if (calcPad && document.body && document.body.contains(calcPad)) return calcPad;
   calcPad = null;
+  const { 墨, 朱, 生成り } = CALC_色;
 
   const pad = document.createElement('div');
   pad.id = 'calcPad';
@@ -931,8 +987,23 @@ function calcPadMake() {
     'position:fixed', 'left:0', 'right:0', 'bottom:0', 'z-index:99999',
     'display:none', 'grid-template-columns:repeat(4,1fr)', 'gap:6px',
     'padding:8px 8px calc(8px + env(safe-area-inset-bottom))',
-    'background:#2b2b2b', 'box-shadow:0 -2px 12px rgba(0,0,0,.35)',
+    `background:linear-gradient(180deg, #30241f 0%, ${墨} 42%, #170f0c 100%)`,
+    `border-top:2px solid ${朱}`,
+    'box-shadow:0 -6px 18px rgba(0,0,0,.35)', 'overflow:hidden',
+    'font-variant-numeric:tabular-nums',
   ].join(';');
+
+  /* ★会社のロゴを、キーの奥にうっすら敷きます（上の calcPad透かしを作る）。
+       触っても何も起きません（pointer-events:none）。キーの押し分けには関わりません。 */
+  const 透かし = document.createElement('div');
+  透かし.setAttribute('aria-hidden', 'true');
+  透かし.style.cssText = [
+    'position:absolute', 'left:0', 'right:0', 'top:0', 'bottom:0', 'z-index:0',
+    'pointer-events:none', 'background-repeat:no-repeat',
+    'background-position:center 66%', 'background-size:auto 80%', 'opacity:.14',
+  ].join(';');
+  pad.appendChild(透かし);
+  calcPad透かしを作る((url) => { 透かし.style.backgroundImage = `url("${url}")`; });
 
   /* ★いま打っている式を見せる窓（テンキーの一番上）
        入力欄は細いので「=1000+2000+3000+…」と長くなると**後ろが見えません。**
@@ -941,18 +1012,20 @@ function calcPadMake() {
        ここに**式そのもの**と**その答え**を出します。 */
   const 窓 = document.createElement('div');
   窓.style.cssText = [
-    'grid-column:1/-1', 'background:#1c1c1c', 'border-radius:8px',
-    'padding:6px 9px', 'margin-bottom:2px',
+    // ★透かしより手前に出すため、position と z-index を付けます
+    'grid-column:1/-1', 'position:relative', 'z-index:1',
+    'background:rgba(12,7,6,.62)', 'border:1px solid rgba(244,237,228,.12)',
+    'border-radius:10px', 'padding:6px 10px', 'margin-bottom:2px',
   ].join(';');
   const 頭 = document.createElement('div');
   頭.style.cssText = [
     'display:flex', 'justify-content:space-between', 'align-items:baseline',
-    'gap:8px', 'font-size:12px', 'color:#9a9a9a', 'line-height:1.4',
+    'gap:8px', 'font-size:12px', 'color:#b9ada1', 'line-height:1.4',
   ].join(';');
   const 欄名 = document.createElement('span');
   欄名.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
   const 答え = document.createElement('span');
-  答え.style.cssText = 'flex:0 0 auto;font-weight:700;font-size:13px;color:#7fd39b';
+  答え.style.cssText = 'flex:0 0 auto;font-weight:700;font-size:13px;color:#a6dfb4';
   頭.append(欄名, 答え);
   /* ★★窓の中で**式を直せます**（ko-dai さん・2026-09-13）。
 
@@ -976,7 +1049,7 @@ function calcPadMake() {
     'min-height:1.35em', '-webkit-overflow-scrolling:touch',
     'width:100%', 'box-sizing:border-box', 'display:block',
     'background:transparent', 'border:0', 'outline:none', 'padding:0',
-    'resize:none', 'caret-color:#7fd39b',
+    'resize:none', 'caret-color:#ff7a7f',
   ].join(';');
   // 窓で打ったら、そのまま入力欄へ写します
   式.addEventListener('input', () => calcPad写す());
@@ -1020,13 +1093,29 @@ function calcPadMake() {
     if (e.target !== 式 && !式.contains(e.target)) e.preventDefault();
   }, true);
 
-  const キー = (label, どうする, 色) => {
+  /* ★キーの見た目の種類。地・ふち・字と、押している間の地です。
+       ★押している間だけ色を変えます。**どのキーに指が当たったか**が見えるようにするためです
+       （押したキーと違う数字が入る、と言われたので）。
+       大きさ（transform）は変えません。変えると指の下のキーの形が動き、押し分けが変わります */
+  const 形 = {
+    数: { 地: 'rgba(40,28,24,.55)', 線: 'rgba(244,237,228,.18)', 字: 生成り, 押: 'rgba(244,237,228,.30)' },
+    記号: { 地: 'rgba(207,19,28,.30)', 線: 'rgba(207,19,28,.70)', 字: '#fff', 押: 'rgba(207,19,28,.60)' },
+    戻す: { 地: 'rgba(70,56,50,.60)', 線: 'rgba(244,237,228,.26)', 字: 生成り, 押: 'rgba(244,237,228,.36)' },
+    消す: { 地: 'rgba(0,0,0,.25)', 線: 'rgba(207,19,28,.55)', 字: '#ffa3a7', 押: 'rgba(207,19,28,.30)' },
+    閉じる: { 地: 'rgba(0,0,0,.25)', 線: 'rgba(244,237,228,.22)', 字: '#d6cabe', 押: 'rgba(244,237,228,.16)' },
+    確定: { 地: `linear-gradient(180deg, #e3262e 0%, ${朱} 55%, #a50f17 100%)`, 線: 'rgba(0,0,0,0)', 字: '#fff', 押: '#9a0d14' },
+  };
+  const キー = (label, どうする, 種類) => {
+    const f = 形[種類] || 形.数;
     const b = document.createElement('button');
     b.type = 'button';
-    b.textContent = label;
+    // ★「-」は見やすい「−」で見せます（入る字は「-」のまま。計算はどちらも読めます）
+    b.textContent = label === '-' ? '−' : label;
     b.style.cssText = [
-      'height:46px', 'font-size:20px', 'font-weight:700', 'color:#fff',
-      `background:${色 || '#4a4a4a'}`, 'border:0', 'border-radius:8px',
+      'position:relative', 'z-index:1', 'box-sizing:border-box',
+      'height:46px', 'font-size:20px', 'font-weight:700', `color:${f.字}`,
+      `background:${f.地}`, `border:1px solid ${f.線}`, 'border-radius:10px',
+      'transition:background .08s ease',
       /* ★touch-action は none にします（前は manipulation）。manipulation は**指のずれで
            ページが動く**のを許します。打つたびにページや iPhone の「ゆり戻し」でテンキーが
            動くと、次に押す指の下のキーが入れかわります。キーの上では動かさないようにします */
@@ -1034,13 +1123,15 @@ function calcPadMake() {
       '-webkit-touch-callout:none',
     ].join(';');
     // ★押しても入力欄から離れないように、既定の動きを止めます
-    b.addEventListener('pointerdown', (e) => { e.preventDefault(); });
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); b.style.background = f.押; });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) =>
+      b.addEventListener(ev, () => { b.style.background = f.地; }));
     b.addEventListener('click', (e) => { e.preventDefault(); どうする(); });
     return b;
   };
 
-  const 数 = '#555';
-  const 記号 = '#3d5a80';
+  const 数 = '数';
+  const 記号 = '記号';
   /* ★★記号は「＝ ＋ −」の3つだけにしました（ko-dai さん・2026-09-16）。
        ジャーナルで使うのは「=1000+2000-500」の形だけで、（ ）× ÷ ．は使いません。
        使わないキーがあると、その分キーが細くなり、**隣のキーを押しやすく**なります。
@@ -1054,27 +1145,28 @@ function calcPadMake() {
     ['7', 数], ['8', 数], ['9', 数], ['=', 記号],
     ['4', 数], ['5', 数], ['6', 数], ['+', 記号],
     ['1', 数], ['2', 数], ['3', 数], ['-', 記号],
-    ['0', 数, 2], ['00', 数], ['⌫', '#8a4a4a'],
+    ['0', 数, 2], ['00', 数], ['⌫', '戻す'],
   ].forEach(([c, 色, 幅]) => {
     const b = c === '⌫' ? キー(c, calcPadBack, 色) : キー(c, () => calcPadInsert(c), 色);
     if (幅) b.style.gridColumn = `span ${幅}`;
+    if (色 === 記号) b.style.fontSize = '24px';
     pad.appendChild(b);
   });
 
   // 下の段：全部消す ／ 閉じる ／ 確定（右下）
-  const 消 = キー('全部消す', calcPadClear, '#5a3a3a');
+  const 消 = キー('全部消す', calcPadClear, '消す');
   消.style.fontSize = '13px';
   消.style.gridColumn = 'span 1';
   pad.appendChild(消);
 
-  const 閉 = キー('閉じる', calcPadClose, '#3a3a3a');
+  const 閉 = キー('閉じる', calcPadClose, '閉じる');
   閉.style.fontSize = '13px';
   閉.style.gridColumn = 'span 1';     // 全部消す 1 ＋ 閉じる 1 ＋ 確定 2 ＝ 4列
   pad.appendChild(閉);
 
   // ★確定は右下です。押すと、その場で残して次の欄へ進みます。
   //   仕入先が20行あるので、1つ入れるたびに閉じずに進めるようにしました
-  const 確 = キー('確定', calcPadDone, '#2f6b3f');
+  const 確 = キー('確定', calcPadDone, '確定');
   確.style.fontSize = '15px';
   確.style.gridColumn = 'span 2';
   pad.appendChild(確);
@@ -1140,13 +1232,13 @@ function calcPadEcho() {
     const 途中 = /[=＝+＋\-ー−*×/÷(（.．]\s*$/.test(文字.trim());
     if (n === null && 途中) {
       答え.textContent = '…';
-      答え.style.color = '#6a6a6a';
+      答え.style.color = '#8f8379';
     } else if (n === null) {
       答え.textContent = 式か ? '計算できません' : '数になりません';
-      答え.style.color = '#ff8f8f';
+      答え.style.color = '#ffa3a7';
     } else {
       答え.textContent = '＝ ' + n.toLocaleString('ja-JP');
-      答え.style.color = '#7fd39b';
+      答え.style.color = '#a6dfb4';
     }
   }
   /* ★中身に合わせて高さを変えます（textarea は放っておくと1行のままです）。
@@ -1380,10 +1472,31 @@ document.addEventListener('pointerdown', calcPadOutside, true);
 function calcPadBind(input) {
   if (!calcTouch()) return;                 // パソコンは本物のキーボードで
   input.inputMode = 'none';                 // ★システムのキーボードを出しません
+  /* ★★欄を触ったら、打つ場所は**いつも一番うしろ**にします（2026-09-16）。
+
+       数の入っている欄を指で押すと、**押した場所にカーソルが置かれます。**
+       欄は細く（幅88pxほど）、押した場所が字の途中なら、続けて打った字が全部途中に入ります。
+
+           欄に「=12800+3450-500」が入っている
+           「=12」のあたりを押す → カーソルが「=12」のうしろへ
+           続けて打つ         → =12=12800+3450-500800+3450-500
+
+       押したキーの字は正しいのに、**違う数字が入ったように見えます**
+       （確認用の画面で、書きかけの残った欄を押したときに実際にこうなりました）。
+     ★途中を直したいときは、テンキーの上の式の窓を使います（字が全部見え、そこで触れます）。
+     ★iPhone は指を離したあとでカーソルを置くので、click のあとに少し待ってから動かします。 */
+  const 一番うしろへ = () => setTimeout(() => {
+    if (calcPadFor !== input || !calcPadAlive(input)) return;
+    const 長さ = String(input.value || '').length;
+    try { input.setSelectionRange(長さ, 長さ); } catch (e) { /* 効かない欄もあります */ }
+    calcPadEcho();
+  }, 0);
   input.addEventListener('focus', () => {
     calcPadFor = input;
     calcPadShow(input);
+    一番うしろへ();
   });
+  input.addEventListener('click', 一番うしろへ);
   // ★テンキーで打っても、パソコンのキーボードで打っても input が出ます
   input.addEventListener('input', () => { if (calcPadFor === input) calcPadEcho(); });
   input.addEventListener('blur', () => {
