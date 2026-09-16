@@ -1,9 +1,10 @@
 {
   "name": "配達記録｜バグる",
+  "id": "/T3Works/drive/",
   "short_name": "配達記録",
   "description": "デリバリーで走った距離を入れて、交通費を計算する（バグる）",
   "lang": "ja",
-  "start_url": "./",
+  "start_url": "/T3Works/drive/",
   "scope": "../",
   "display": "standalone",
   "orientation": "portrait",

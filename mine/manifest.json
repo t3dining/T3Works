@@ -1,9 +1,10 @@
 {
   "name": "T3 Works Mine｜T3Dining株式会社",
+  "id": "/T3Works/mine/",
   "short_name": "T3 Works Mine",
   "description": "T3 Works と同じ内容に、設定への切り替えを足したもの（管理者用）",
   "lang": "ja",
-  "start_url": "./",
+  "start_url": "/T3Works/mine/",
   "scope": "../",
   "display": "standalone",
   "orientation": "portrait",

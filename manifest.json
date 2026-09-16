@@ -1,9 +1,10 @@
 {
   "name": "T3 Works｜T3Dining株式会社",
+  "id": "/T3Works/",
   "short_name": "T3 Works",
   "description": "店舗ごとの毎日の業務をチェックするアプリ",
   "lang": "ja",
-  "start_url": "./",
+  "start_url": "/T3Works/",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",

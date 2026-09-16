@@ -1,9 +1,10 @@
 {
   "name": "T3 Owner｜T3Dining株式会社",
+  "id": "/T3Works/owner/",
   "short_name": "T3 Owner",
   "description": "T3 Works Mine と T3 Works Manage の入口",
   "lang": "ja",
-  "start_url": "./",
+  "start_url": "/T3Works/owner/",
   "scope": "../",
   "display": "standalone",
   "orientation": "portrait",

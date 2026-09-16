@@ -1,9 +1,10 @@
 {
   "name": "シフト提出",
+  "id": "/T3Works/shift/",
   "short_name": "シフト提出",
   "description": "シフトの希望を出すアプリ",
   "lang": "ja",
-  "start_url": "./",
+  "start_url": "/T3Works/shift/",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",

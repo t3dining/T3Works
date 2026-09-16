@@ -1,9 +1,10 @@
 {
   "name": "T3 Works Manage｜T3Dining株式会社",
+  "id": "/T3Works/manage/",
   "short_name": "T3 Works Manage",
   "description": "チェック項目・担当者・定休日を設定する",
   "lang": "ja",
-  "start_url": "./",
+  "start_url": "/T3Works/manage/",
   "scope": "../",
   "display": "standalone",
   "orientation": "portrait",
