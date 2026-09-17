@@ -236,16 +236,38 @@
   padding-left: 11px; border-left: 4px solid var(--accent);
 }
 
-/* ---- 印刷（PDFにするとき） ---- */
+/* ---- 印刷（PDFにするとき） ----
+   ★PDF は公開のたびに作り直し、T3Works フォルダーの一番上の「使い方.pdf」に置きます（2026-09-17、ko-dai さん）。
+     作るのは公開の道具（本部の持ち物）です。ここは見た目だけを決めます。
+   ★前は「章の途中で切らない」（.help-sec に break-inside: avoid）にしていました。
+     章はどれも1ページより長いので、**章がまるごと次のページへ送られ、ページの下半分が白く**なっていました。
+     いまは「章は新しいページから始める」にして、切らないのは絵・注意の箱・手順の1つずつだけにしています */
+.help-print-title { display: none; }
+@page { size: A4; margin: 14mm 12mm; }
 @media print {
-  .help-header, .help-toc, .help-sec-toc, .help-back { display: none !important; }
-  body { background: #fff; font-size: 11pt; }
+  body { background: #fff; font-size: 11pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .help-header, .help-back { display: none !important; }
   .help-page { max-width: none; padding: 0; }
-  .help-sec { break-inside: avoid; margin-bottom: 18pt; }
-  .help-q, .help-lead, .help-first { box-shadow: none; break-inside: avoid; }
+
+  /* 1ページ目の題名（画面では出しません。日付と版は下の <script> が入れます） */
+  .help-print-title {
+    display: block; margin: 0 0 14pt; padding-bottom: 8pt;
+    border-bottom: 3px solid var(--accent);
+  }
+  .help-print-title__main { font-size: 22pt; font-weight: 800; }
+  .help-print-title__sub { margin-top: 4pt; font-size: 9pt; color: var(--text-sub); }
+
+  /* 目次は PDF にも出します（押すとその章へ飛べます） */
+  .help-toc__item, .help-sec-toc__list li { break-inside: avoid; }
+  .help-sec-toc__list a { min-height: 0; padding: 6pt 12pt; }
+
+  .help-sec { break-before: page; margin-bottom: 0; }
+  .help-sec__head, .help-sec h3, .help-q__title { break-after: avoid; }
+  .help-shot, .help-important, .help-note, .help-first, .help-marks__row, .help-steps li { break-inside: avoid; }
+  .help-q, .help-lead, .help-first, .help-sec__head { box-shadow: none; }
 }
 </style>
-<meta name="app-version" content="0bd41be1">
+<meta name="app-version" content="d911a27b">
 </head>
 <body>
 
@@ -257,6 +279,12 @@
 </header>
 
 <div class="help-page">
+
+  <!-- 印刷（PDF）のときだけ出る題名。画面では隠れています -->
+  <div class="help-print-title">
+    <div class="help-print-title__main">T3 Works の使い方</div>
+    <div class="help-print-title__sub" id="helpPrintSub">現場スタッフ向け</div>
+  </div>
 
   <p class="help-lead">
     T3 Works は、6店舗の閉店作業・掃除・教育・シフトを、<b>みんなの端末で同じように見るため</b>のアプリです。
@@ -1357,6 +1385,17 @@
   } catch (e) {
     // 読めないときは、今までどおりワークスへ
   }
+})();
+
+/* 印刷（PDF）の題名の下に、作った日と版を入れます。
+   版は公開の道具が入れる <meta name="app-version">。手元のファイル（まだ公開していないもの）には無いので、日付だけになります */
+(function () {
+  var sub = document.getElementById('helpPrintSub');
+  if (!sub) return;
+  var d = new Date();
+  var meta = document.querySelector('meta[name="app-version"]');
+  sub.textContent = '現場スタッフ向け　' + d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日 時点'
+    + (meta && meta.content ? '（版 ' + meta.content + '）' : '');
 })();
 
 /* ★各章の目次（2026-09-16、ko-dai さん「その章に何が書かれているか分かるように、押すとそこまで飛べるように」）。
