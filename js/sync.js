@@ -722,12 +722,25 @@ const Sync = {
 
   /** サーバーから届いた内容を端末に取り込む */
   _applyPulled(records, settings) {
+    /* ★**本当に中身が変わったもの**を数えます（2026-09-18）。
+         マネージは開いたままだと、届いた変更を画面に出し直しません。古い画面のまま保存すると、
+         そのあいだにほかの端末で直した分（お店で足したシフトの名簿・教育を受ける人など）を**丸ごと上書き**します。
+         マネージはこの数（`変わった回数`）を見て、描き直すか、打ちかけがあれば帯で知らせます（manage/js/admin.js）。
+         ★サーバーは自分が送った行もそのまま返すので、「届いた」だけでは変わったことになりません。
+           取り込む**前**と、まだ送っていない分を貼り直した**あと**を見くらべます */
+    const 変わった = { records: [], settings: [] };
     if (records.length) {
       // ★書き先は Store.adapter です。LocalAdapter を名指しにすると、
       //   保存先が IndexedDB に変わったときに、
       //   ほかの端末から届いた変更だけ別の場所へ入り、画面に出なくなります
       const all = Store.adapter.dump();
+      // 送っていない自分の直しがある行は、自分の直しが勝つので数えません
+      const 送っていない = new Set(this.outbox().map((op) => op.k).filter(Boolean));
       records.forEach((row) => {
+        if (!送っていない.has(row.k)
+            && JSON.stringify(all[row.k] === undefined ? null : all[row.k]) !== JSON.stringify(row.r)) {
+          変わった.records.push(row.k);
+        }
         all[row.k] = row.r;
       });
       Store.adapter.load(all);
@@ -766,6 +779,15 @@ const Sync = {
         closedDows: Closed._dowsKey,
         closedExceptions: Closed._exKey,
       };
+      // 取り込む**前**の中身（見くらべるため。★マネージだけの書き込みより前に取ります。社員のアカウントと番号の締めつけはマネージだけが持ちます）
+      const 見る箱 = { ...設定の入れ先 };
+      if (window.T3_ADMIN_PAGE) {
+        見る箱.staffAccounts = StaffAccounts._key;
+        見る箱.staffCodeRequired = APP.storageKey + ':staffCodeRequired';
+      }
+      const 前 = {};
+      Object.keys(見る箱).forEach((n) => { 前[n] = localStorage.getItem(見る箱[n]); });
+
       /* ★社員のアカウント（番号）だけは、**マネージにしか入れません。**
            番号は合言葉です。ふつうの設定と同じに配ると、**6店舗全部の端末に
            全員分の合言葉の写しが置かれます。**
@@ -809,9 +831,17 @@ const Sync = {
         const 箱 = 設定の入れ先[op.n];
         if (箱) localStorage.setItem(箱, JSON.stringify(op.v));
       });
+
+      Object.keys(見る箱).forEach((n) => {
+        if (localStorage.getItem(見る箱[n]) !== 前[n]) 変わった.settings.push(n);
+      });
     } catch (e) {
       // 設定はまだ localStorage に置いています。ここが満杯でも黙って落とさず知らせます
       storeFail('設定を端末に保存できませんでした', e);
+    }
+    if (変わった.records.length || 変わった.settings.length) {
+      this.変わった回数 = (this.変わった回数 || 0) + 1;
+      this.最後に変わった = 変わった;
     }
   },
 

@@ -3101,7 +3101,76 @@ function goMenu() {
   window.scrollTo(0, 0);
 }
 
+/* ============================================================
+ *  別の端末で変わったとき（2026-09-18、本部）
+ *
+ *  ★マネージは開いたままだと、同期で届いた変更を画面に出し直していませんでした
+ *    （描き直すのは URL の # が変わったときだけ）。文字の欄にまとめて打って保存する画面
+ *    （担当者・シフトの名簿・配達する人・キャッチをする人…）は、**古い欄のまま保存すると、
+ *    そのあいだにほかの端末で直した分を丸ごと上書きします。**
+ *    シフトの名簿と教育を受ける人は、ワークス・マインからも足せるので、実際に起きうる形でした。
+ *  ★`Sync.変わった回数`（js/sync.js。**本当に中身が変わったときだけ**増える）を見て、
+ *      打ちかけが無ければ … その場で描き直します
+ *      打ちかけがあれば … 描き直しません（打った分が消えるので）。帯で知らせて「最新を読み込む」を出します
+ *  ★打ちかけは、欄に何か打ったら立ち、描き直したら下ろします。**保存しても下ろしません**
+ *    （同じ画面のほかの欄に、保存していない分が残っていることがあるので、安全な方に倒します）
+ *  ★どの画面の設定が変わったかは見分けません。打ちかけがあれば必ず知らせます（見分け方の表を作ると、
+ *    表に無い設定のときに黙ってしまうため）
+ * ============================================================ */
+let 打ちかけ = false;
+let 見た変化 = 0;
+
+function 打ちかけを見張る() {
+  document.addEventListener('input', (e) => {
+    const t = e.target;
+    if (!t || !t.matches || !t.matches('input, textarea, select')) return;
+    // 押したらすぐ保存するもの・合言葉や確認の画面は数えません
+    if (t.readOnly || ['checkbox', 'radio', 'file'].includes(t.type) || t.closest('.modal')) return;
+    // 面接マニュアルの欄は js/interview.js が自分で見張っています（描き直しても消えません）
+    if (t.id === 'interviewInput') return;
+    打ちかけ = true;
+  }, true);
+}
+
+function 古い画面の帯(出す) {
+  let b = document.getElementById('staleWarn');
+  if (!b && !出す) return;
+  if (!b) {
+    b = document.createElement('div');
+    b.id = 'staleWarn';
+    b.className = 'sync-warn is-waiting stale-warn';
+    b.innerHTML = '<b>別の端末で、設定が変わりました。</b>この画面は古いままです。'
+      + '今のまま保存すると、ほかの端末で直した分を上書きすることがあります。<br>'
+      + '<button type="button" class="btn stale-warn__btn" id="staleReload">最新を読み込む</button>'
+      + '<span class="stale-warn__note">（打ちかけで、まだ保存していない分は消えます）</span>';
+    el.syncWarn.insertAdjacentElement('afterend', b);
+    b.querySelector('#staleReload').addEventListener('click', 描き直す);
+  }
+  b.classList.toggle('is-hidden', !出す);
+}
+
+/** 今の画面のまま、最新の中身で描き直します（どこまで下に送っていたかは残します） */
+function 描き直す() {
+  const y = window.scrollY;
+  renderAll();
+  window.scrollTo(0, y);
+}
+
+/** 同期のたびに呼びます（init の Sync.onChange） */
+function よそで変わったら() {
+  const n = Sync.変わった回数 || 0;
+  if (n === 見た変化) return;
+  見た変化 = n;
+  if (!打ちかけ) { 描き直す(); return; }
+  古い画面の帯(true);
+}
+
 function renderAll() {
+  // ★描き直したら、画面は最新です（打ちかけも帯も下ろします）
+  打ちかけ = false;
+  見た変化 = Sync.変わった回数 || 0;
+  古い画面の帯(false);
+
   const isStores = state.view === 'stores';
   const isMenu = state.view === 'menu';
   const page = getPage(state.view, state.storeId);
@@ -3538,9 +3607,11 @@ async function init() {
   // 同期で最新を受け取ったら、あとから決まった項目を足します
   /* ★番号が要ると言われたら、1回だけ聞きます（js/app.js と同じ考え。2026-09-16） */
   let 番号を聞いた = false;
+  打ちかけを見張る();
   Sync.onChange = () => {
     renderSyncStatus();
     addLaterItems();
+    よそで変わったら();
     if (Sync.needStaffCode && !番号を聞いた && Sync.pin()) {
       番号を聞いた = true;
       番号を聞く('番号を必須にしてあるので、マネージでも番号が要ります。').then((ok) => {
