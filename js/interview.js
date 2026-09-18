@@ -24,8 +24,8 @@
  *     記号なし    ふつうの文
  *    PDF の記号（❖ ➢ ■）のまま貼っても読めるようにしてあります。
  *
- *  ★✓ は**この端末の中だけ**で、保存しません。面接のたびに「チェックを消す」で戻します。
- *    アプリを閉じても消えます（1人の面接のあいだだけ使う印です）。
+ *  ★✓ は**この端末の中だけ**で、保存しません。面接が終わったら、一番下の「チェックを全て外す」
+ *    （上の「チェックを消す」も同じ）で戻します。アプリを閉じても消えます（1人の面接のあいだだけ使う印です）。
  * ============================================================ */
 const InterviewView = (() => {
   const 記号 = {
@@ -146,6 +146,8 @@ const InterviewView = (() => {
     const body = document.getElementById('interviewBody');
     const lead = document.getElementById('interviewLead');
     const reset = document.getElementById('interviewReset');
+    const foot = document.getElementById('interviewFoot');
+    const resetAll = document.getElementById('interviewResetAll');
     if (!body) return;
     const v = 今の文();
     const 前の印 = 見ている印;
@@ -164,9 +166,14 @@ const InterviewView = (() => {
           （合言葉と番号が入っている端末にだけ届きます）。</p>
       </div>`;
       reset.classList.add('is-hidden');
+      foot.classList.add('is-hidden');
       return;
     }
     reset.classList.toggle('is-hidden', 済み.size === 0);
+    // ★一番下のボタンは、項目があればいつも出します（✓ が無いあいだは押せないだけ）。
+    //   出たり消えたりすると「どこにあったか」を毎回探すことになるためです
+    foot.classList.toggle('is-hidden', !全部);
+    resetAll.disabled = 済み.size === 0;
     lead.innerHTML = 全部
       ? `上から順に聞いていきます。済んだら左の丸を押すと <b>✓</b> が付きます。
          <span class="interview__progress">済み <b>${済み.size}</b> / ${全部}</span>`
@@ -222,6 +229,18 @@ const InterviewView = (() => {
     document.getElementById('interviewReset').addEventListener('click', () => {
       済み = new Set();
       出す();
+    });
+    // ★一番下の「チェックを全て外す」。外したら一番上に戻して、次の人の面接をすぐ始められるようにします
+    const note = document.getElementById('interviewFootNote');
+    const 元の案内 = note.textContent;
+    let 案内を戻す = null;
+    document.getElementById('interviewResetAll').addEventListener('click', () => {
+      済み = new Set();
+      出す();
+      note.textContent = '✓ を全て外しました。';
+      clearTimeout(案内を戻す);
+      案内を戻す = setTimeout(() => { note.textContent = 元の案内; }, 4000);
+      panel.querySelector('.interview__scroll').scrollTo({ top: 0, behavior: 'smooth' });
     });
     document.getElementById('interviewBody').addEventListener('click', 押した);
     document.addEventListener('keydown', (e) => {

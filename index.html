@@ -13,8 +13,8 @@
 <link rel="icon" type="image/png" sizes="512x512" href="img/works-icon-512.png?v=dddd764f">
 <link rel="icon" type="image/png" sizes="64x64" href="img/works-icon-64.png?v=0f9cbed2">
 <title>T3 Works｜T3Dining株式会社</title>
-<link rel="stylesheet" href="css/style.css?v=8f3a5281">
-<meta name="app-version" content="045290a8">
+<link rel="stylesheet" href="css/style.css?v=94b0469b">
+<meta name="app-version" content="bd31032c">
 </head>
 <body>
 
@@ -1550,6 +1550,12 @@
   <div class="interview__scroll">
     <p class="interview__lead" id="interviewLead"></p>
     <div class="interview__body" id="interviewBody"></div>
+    <!-- ★面接が終わったら押すボタン（2026-09-18、ko-dai さんの指示）。
+         一番下まで聞き終えた手の位置に置きます。上の「チェックを消す」と同じ動きです -->
+    <div class="interview__foot is-hidden" id="interviewFoot">
+      <button type="button" class="interview__reset-all" id="interviewResetAll">チェックを全て外す</button>
+      <p class="interview__foot-note" id="interviewFootNote">面接が終わったら押してください。次の人のときに ✓ が残りません。</p>
+    </div>
   </div>
 </div>
 
@@ -1561,6 +1567,6 @@
 <!-- シフト表を絵に描くところ。提出ページ（shift/）でも同じものを使います -->
 <script src="js/shift-sheet.js?v=2b29c50a"></script>
 <script src="js/app.js?v=324cb605"></script>
-<script src="js/interview.js?v=00c613a5"></script>
+<script src="js/interview.js?v=a0114594"></script>
 </body>
 </html>

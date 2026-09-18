@@ -3278,6 +3278,20 @@ html.is-interview-open, html.is-interview-open body { overflow: hidden; }
 .interview-empty p { margin: 0 0 6px; }
 .interview-empty__title { font-size: 15px; font-weight: 800; color: var(--text); }
 
+/* 一番下の「チェックを全て外す」（面接が終わったら押す）。指で押しやすい大きさにします */
+.interview__foot { max-width: 720px; margin: 6px auto 0; text-align: center; }
+.interview__foot.is-hidden { display: none; }
+.interview__reset-all {
+  display: block; width: 100%; min-height: 50px; padding: 12px 16px; cursor: pointer;
+  border: 0; border-radius: var(--radius); background: #a95c13; color: #fff;   /* 白い字が読める濃さ（--people のままだと薄い） */
+  font-size: 16px; font-weight: 800;
+}
+.interview__reset-all:active { filter: brightness(.92); }
+.interview__reset-all:disabled {
+  cursor: default; background: var(--surface-2); color: var(--text-weak); border: 1px solid var(--line);
+}
+.interview__foot-note { margin: 8px 0 0; font-size: 12.5px; line-height: 1.7; color: var(--text-sub); }
+
 /* マネージの「見え方を確かめる」 */
 .interview-preview { margin-top: 10px; padding: 12px; border-radius: var(--radius); background: var(--bg); }
 .interview-preview .interview-sec:last-child { margin-bottom: 0; }
