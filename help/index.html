@@ -268,7 +268,7 @@
   .help-q, .help-lead, .help-first, .help-sec__head { box-shadow: none; }
 }
 </style>
-<meta name="app-version" content="4a752755">
+<meta name="app-version" content="9e7a15c3">
 </head>
 <body>
 
@@ -810,6 +810,7 @@
 
     <p>
       撮ると、アプリが読み取ります。「<b>文字を読み取っています…</b>」と出ているあいだは、<b>終わるまで待ちます。</b>
+      15秒を超えると「Google が混み合っています。このまま待ってください」と出ますが、そのまま待ってください。
     </p>
     <div class="help-note">
       途中でアプリを閉じてしまっても、<b>次に開いたときに続きからやり直します。</b>
@@ -898,13 +899,13 @@
       <li>確かめの画面が出ます。<b>並んだ数を紙と見くらべてから</b>「<b>書く</b>」を押します</li>
     </ol>
 
-    <!-- ★文の形は js/app.js の nippouWritePart の askConfirm と同じです。ファイル名は伏せています -->
+    <!-- ★文の形は js/app.js の nippouWritePart の askConfirm と同じです（2026-09-19 から、見出しはお店の名前。日報を見に行く前に出ます） -->
     <div class="help-shot">
       <div class="help-shot__body">
         <div class="modal__panel modal__panel--confirm" style="box-shadow:none;border:1px solid var(--line);">
           <h2 class="modal__title">確認</h2>
-          <p class="confirm__item">◯◯◯◯_日報　◯日のページ（ジャーナルの5つ・出前館・ウーバー・ロケットナウ・仕入明細・人件費）</p>
-          <p class="confirm__message">現金売上 ◯◯,◯◯◯／クレジット ◯◯,◯◯◯／純売上 ◯◯,◯◯◯／当日客数 ◯◯（手で直した数）</p>
+          <p class="confirm__item">◯◯◯　◯日のページ（ジャーナルの5つ・出前館・ウーバー・ロケットナウ・仕入明細・人件費）</p>
+          <p class="confirm__message">現金売上 ◯◯,◯◯◯／クレジット ◯◯,◯◯◯／純売上 ◯◯,◯◯◯／当日客数 ◯◯（手で直した数）　※日報にすでにちがう数が入っていれば、書く前にもう一度聞きます</p>
           <div class="modal__actions modal__actions--confirm">
             <button type="button" class="btn">キャンセル</button>
             <button type="button" class="btn btn--primary">書く</button>
@@ -915,12 +916,14 @@
     </div>
 
     <p>
-      このボタン1つで、<b>記録（現金売上と写真）も、出前館など・仕入・人件費も、まとめて</b>日報に書きます。
+      このボタン1つで、<b>記録（現金売上）も、出前館など・仕入・人件費も、まとめて</b>日報に書きます。<br>
+      書いているあいだは「<b>日報に書いています…（◯秒）</b>」と秒が数えられます。
+      15秒を超えると「<b>Google が混み合っています。このまま待ってください</b>」と出ますが、<b>閉じずにそのまま待ってください。</b>
     </p>
 
     <div class="help-note">
-      <b>確かめの画面に「★日報とアプリで数がちがいます」と出て、「書く」が赤いとき</b>は、
-      日報の数が先に直されています。このまま書くと、日報の数が上書きされます。
+      <b>書いている途中で「★日報とアプリで数がちがいます」と、赤い「上書きして書く」の画面が出たとき</b>は、
+      日報の数が先に直されています。押すと、日報の数がアプリの数に上書きされます。
       分からないときは「キャンセル」を押して、こうだいに聞いてください。
     </div>
 
