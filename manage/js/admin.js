@@ -1980,8 +1980,8 @@ function renderAccounts() {
       const 戻す = v.off;
       const 文 = 戻す
         ? `${v.n}さんを、また使えるようにします。`
-        : `${v.n}さんは、この番号で入れなくなります。\n`
-          + 'その人の端末に残っている記録も、次にネットにつながったときに消えます。';
+        : `${v.n}さんは、番号を必須にしているあいだ、この番号で入れなくなります。\n`
+          + 'その人の端末に残っている記録は消えません。';
       if (!window.confirm(文)) return;
       const map = StaffAccounts.all();
       map[code].off = !戻す;
@@ -2912,7 +2912,9 @@ function renderStorePicker() {
 function openStore(storeId) {
   state.storeId = storeId;
   // 店舗タブから切り替えたときは、同じ設定を開いたままにする
-  if (!getPage(state.view)) state.view = 'menu';
+  // ★その店舗で使える設定かを、**店舗を渡して**確かめます。2026-09-18 まで店舗を渡しておらず、
+  //   バグるの「交通費」を開いたまま他の店舗を押すと、使えない設定のまま描いて page.name で止まっていました
+  if (!getPage(state.view, storeId)) state.view = 'menu';
   writeHash();
   renderAll();
   window.scrollTo(0, 0);
@@ -3504,7 +3506,9 @@ function importJson(file) {
   reader.onload = async () => {
     const ok = await askConfirm({
       item: file.name,
-      message: '今の内容に上書きします。よろしいですか？',
+      // ★「上書き」ではなく、同じ記録だけを置きかえて混ぜます。ほかの端末には送りません
+      message: 'ファイルの中の記録で、この端末の同じ記録を置きかえます（ほかはそのまま）。'
+        + 'ほかの端末には送りません。よろしいですか？',
     });
     if (!ok) return;
     try {

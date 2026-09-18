@@ -14,7 +14,7 @@
 <title>T3 Works Manage｜T3Dining株式会社</title>
 <link rel="stylesheet" href="../css/style.css?v=07178534">
 <link rel="stylesheet" href="css/admin.css?v=8b3eac9e">
-<meta name="app-version" content="9bf78dc7">
+<meta name="app-version" content="17fa61ec">
 </head>
 <body class="no-daytabs">
 
@@ -65,7 +65,9 @@
 
   <p class="admin-lead">
     ここでの変更は、保存した時点で<b>全店舗の端末に配られます</b>。
-    現場のアプリからは変更できません。
+    <!-- ★2026-09-18 まで「現場のアプリからは変更できません」でした。臨時休業・教育を受ける人・
+         シフトに入る人は、ワークス・マインからも変えられます（マニュアルが見つけました） -->
+    臨時休業・教育を受ける人・シフトに入る人は、現場のアプリ（ワークス・マイン）からも変えられます。
   </p>
 
   <!-- ===== 担当者（全店舗で共通） ===== -->
@@ -94,8 +96,10 @@
     </div>
     <p class="admin-note">
       アプリのPINを入れたあと、<b>1人ずつの番号</b>を入れて使う形にするための一覧です。<br>
-      <b>辞めた人は「使えなくする」を押してください。</b>その番号では入れなくなり、
-      その人の端末に残っている記録も、次にネットにつながったときに消えます。<br>
+      <b>辞めた人は「使えなくする」を押してください。</b>番号を必須にしているあいだは、その番号では入れなくなります。
+      その人の端末に残っている記録は消えません。<br>
+      <!-- ★2026-09-18 まで「端末に残っている記録も…消えます」と書いていましたが、そうする処理はありません。
+           「入れなくなる」も、番号を必須にしているときだけ本当です（マニュアルが見つけました） -->
       <b>名前は消さずに残します。</b>過去の記録に名前が出ているためです。<br>
       <b>シフトの「配る番号」とは別の番号です。</b>アルバイトの番号では、ここには入れません。<br>
       <b class="admin-warn" id="acctNotLive">★今はまだ、この番号は使われていません。</b>
@@ -273,7 +277,11 @@
     <div class="admin-block__head">
       <h2 class="admin-block__title">バックアップ</h2>
     </div>
-    <p class="admin-note">記録をまとめてファイルに書き出します。取り込むと、今の内容に上書きされます。</p>
+    <!-- ★取り込みは「上書き」ではなく「混ぜる」です（js/storage.js の importJson）。
+         しかも Store.adapter.load だけなので、送信箱に乗らず、ほかの端末には届きません（2026-09-18 に書き直しました） -->
+    <p class="admin-note">記録をまとめてファイルに書き出します。<br>
+      取り込むと、ファイルの中の記録で<b>この端末の同じ記録を置きかえます</b>（ファイルに無い記録はそのまま残ります）。
+      取り込んだ分は<b>この端末の中だけ</b>で、ほかの端末やスプレッドシートには送りません。</p>
     <div class="admin-actions">
       <button type="button" class="btn" id="exportBtn">書き出す</button>
       <label class="btn">取り込む<input type="file" id="importFile" accept="application/json" hidden></label>
@@ -778,7 +786,7 @@
 <script src="../js/storage.js?v=0d89917e"></script>
 <script src="../js/sync.js?v=53495f7e"></script>
 <script src="../js/update.js?v=c530219e"></script>
-<script src="js/admin.js?v=8914f077"></script>
+<script src="js/admin.js?v=4b0b30a3"></script>
 <script src="../js/interview.js?v=a0114594"></script>
 </body>
 </html>
