@@ -95,6 +95,57 @@ async function 返事を読む(res) {
   }
 }
 
+/**
+ * 1本目が遅ければ同じ体をもう1本重ね、先に JSON で届いた返事を取ります（`Sync.重ねるまで` を見てください）
+ *
+ *   送る(重ねか) … fetch して 返事を読む() まで済ませる関数。2本目には true が渡ります
+ *   重ねるまで   … 1本目の返事をこれだけ待ってから2本目を出す（ミリ秒）
+ *
+ * ★JSON なら ok でなくても「届いた」です（PIN ちがい・番号が要る、などは何本送っても同じ答えです）。
+ * ★1本目が重ねる前に落ちたら、重ねずにその失敗をそのまま投げます（静かな送り直しに任せます）。
+ * ★重ねたあとは、両方落ちたときだけ、あとに落ちた方の失敗を投げます。
+ * ★先に届いたあとの片割れは呼び出し側が AbortController で切ります。ここでは無視するだけです。
+ *   ★ただし**書く同期で重ねたときは切りません**（`Sync._片割れ` を見てください）。
+ */
+function 先に届いた返事(送る, 重ねるまで) {
+  let 重ねた = false;
+  let 全部済んだ;
+  const 全部 = new Promise((r) => { 全部済んだ = r; });
+  const 出 = new Promise((resolve, reject) => {
+    let 終わり = false;
+    let 走っている = 1;
+    let timer = null;
+    const 受ける = (p) => p.then(
+      (json) => {
+        走っている -= 1;
+        if (走っている === 0) 全部済んだ();
+        if (終わり) return;
+        終わり = true;
+        clearTimeout(timer);
+        resolve(json);
+      },
+      (e) => {
+        走っている -= 1;
+        if (走っている === 0) 全部済んだ();
+        if (終わり) return;
+        if (!重ねた) { clearTimeout(timer); 終わり = true; reject(e); return; }
+        if (走っている === 0) { 終わり = true; reject(e); }
+      }
+    );
+    受ける(送る(false));
+    timer = setTimeout(() => {
+      if (終わり) return;
+      重ねた = true;
+      走っている += 1;
+      受ける(送る(true));
+    }, 重ねるまで);
+  });
+  /* ★重ねたか／2本とも終わったか。書く同期（flush）が、片割れの終わりを待つのに使います */
+  出.重ねた = () => 重ねた;
+  出.全部 = 全部;
+  return 出;
+}
+
 const Sync = {
   _outboxKey: APP.storageKey + ':outbox',
   /* ★赤になった記録。**この端末の分だけ**です。
@@ -158,10 +209,39 @@ const Sync = {
    * 読むだけの同期（送るものが無いとき）の上限
    *
    * ★2026-09-15 から、読むだけの同期はサーバーで鍵を取りません（`gas/コード.gs`）。
-   *   だから25秒の順番待ちは無く、スクリプトは2〜4秒で終わります。それより長いのは
-   *   Google が結果を渡す段が止まっているときで、待つより送り直す方が早く通ります。
+   *   だから25秒の順番待ちは無く、スクリプトは2〜4秒で終わります。
+   * ★2026-09-18 に 20秒 → 30秒。悪い夜は、**通る返事にも 12〜23秒かかる**ことが分かりました
+   *   （Mac から測った21回のうち5回。スクリプトが動き出すまでに 10〜21秒）。20秒で切ると、
+   *   通る返事を捨てて「返事なし 20秒」にしていました。落ちた分を待たない役目は、切るのではなく
+   *   `重ねるまで`（同じ体をもう1本重ねる）に移しました。
    */
-  readHangMs: 20000,
+  readHangMs: 30000,
+  /**
+   * 返事が無いまま、これだけたったら同じ体をもう1本重ねて送ります（先に JSON で届いた方を取る）
+   *
+   * ★2026-09-18 の夜。Google の渡す口は3回に1回落ち（10〜33秒たってから 404）、通る返事にも 12〜23秒かかる
+   *   ものがありました。**落ちる返事と通る返事は、待った秒数では見分けられません。**上限を縮めると通る返事を捨てます。
+   *   だから縮めずに、8秒たっても返事が無ければ**同じ体をもう1本送り、先に JSON で返った方を取ります**
+   *   （片方が渡す口で落ちても、もう片方が通ります。渡す口の URL は1回きりで、落ちた分だけの取り直しはできません）。
+   * ★2本走っても困らない根拠は `_fails` の②と同じです：ops は「この値にする」形で、`doPost` に外への呼び出しが無い。
+   *   ★写真の読み取りのように「2本走ると2枚数えられる」頼みごとには使えません（`ask()` の hedge を付けないこと）。
+   * ★普段（2〜4秒で返る）は1本のままです。重なるのは遅い夜だけ。
+   * ★1本目が8秒より前に落ちた（404 がすぐ返った）ときは重ねません。今までどおり静かな送り直しに任せます。
+   */
+  重ねるまで: 8000,
+  /**
+   * 書く同期で重ねたとき、まだ終わっていない片割れ（終わると空に戻る Promise）
+   *
+   * ★先に届いた方で緑にしたあと、遅れている片割れが**あとからサーバーで走る**ことがあります
+   *   （悪い夜は、スクリプトが動き出すまでに 10〜21秒かかっていました）。その間に人が同じ項目を
+   *   付け直して次の同期を出すと、**新しい値を書いたあとに、片割れが古い値で上書きします。**
+   *   `applyOps_` は届いた順に「この値にする」だけなので、順番が入れ替わると古い方が残ります。
+   * ★だから書く同期で重ねたときは片割れを切らず、**終わる（返事が来る＝スクリプトが終わった）か、
+   *   上限（35秒）であきらめるまで、次の書く同期を出しません。**読むだけの同期は待ちません。
+   * ★1本で送っていたころも、返事を待つあいだ次の書く同期は出ませんでした。待つ長さは今までと同じです。
+   * ★裏に回した瞬間の送り切り（`flushNow`）も待ちます。送信箱は端末に残るので、次に開いたときに送られます。
+   */
+  _片割れ: null,
   lastError: '',
   lastSyncAt: null,
   /**
@@ -408,6 +488,12 @@ const Sync = {
       if (!stuck) return;
       this.lastError = '前の同期が返ってこなかったので、やり直します';
     }
+    /* ★前の書く同期で重ねた片割れが、まだサーバーで走っているかもしれません（`_片割れ` を見てください）。
+         送るものがあるときだけ、終わるのを待ってから出します。読むだけの同期は待ちません */
+    if (this._片割れ && this.outbox().length) {
+      await this._片割れ;
+      if (this.running) return;
+    }
 
     this.running = true;
     this.runningSince = Date.now();
@@ -438,7 +524,7 @@ const Sync = {
         settingsAll: !this._settingsPulled,
         ops,
       });
-      const res = await fetch(APP.syncUrl, {
+      const 送る = (重ね) => fetch(APP.syncUrl, {
         method: 'POST',
         signal: stop.signal,
         // ★アプリを閉じても、送りかけたものを最後まで送り切ってもらいます。
@@ -447,13 +533,27 @@ const Sync = {
         //   （設定をまるごと送るときだけ大きくなります）
         //   ★文字数ではなく中身の大きさで見ます。日本語は1文字3バイトあるので、
         //     文字数で見ると64KBを超えていても通してしまいます
-        keepalive: new Blob([body]).size < 60000,
+        //   ★重ねた2本目には付けません。keepalive は送りかけの合計が 64KB までなので、2本目で超えることがあります
+        keepalive: !重ね && new Blob([body]).size < 60000,
         // text/plain にしないと CORS の事前確認が入り、Apps Script が応答できません
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body,
-      });
-      clearTimeout(timer);
-      const json = await 返事を読む(res);
+      }).then(返事を読む);
+      let json;
+      // ★8秒たっても返事が無ければ、同じ体をもう1本重ねます（`重ねるまで` を見てください）
+      const 出 = 先に届いた返事(送る, this.重ねるまで);
+      try {
+        json = await 出;
+      } finally {
+        if (ops.length && 出.重ねた()) {
+          // ★書く同期で重ねたとき：片割れは切らずに、終わる（または上限であきらめる）まで次の書く同期を待たせます
+          this._片割れ = 出.全部.then(() => { clearTimeout(timer); this._片割れ = null; });
+        } else {
+          clearTimeout(timer);
+          // ★届いた方はもう読み終えています。遅れている片割れを切って、つなぎっぱなしにしません
+          stop.abort();
+        }
+      }
 
       if (!json.ok) {
         this.lastError = json.error || '同期に失敗しました';
@@ -689,27 +789,38 @@ const Sync = {
   /** 返事を待つ上限。写真の読み取りは5〜8秒かかるので、長めに取ります */
   askMs: 60000,
 
-  async ask(action, extra = {}) {
+  /**
+   * 決め … { ms, hedge }（省けます。2026-09-18、ジャーナルの頼み）
+   *   ms    … この頼みごとだけの上限（ミリ秒）。省くと `askMs`（60秒）
+   *   hedge … true なら、`重ねるまで`（8秒）たっても返事が無いとき同じ体をもう1本重ね、先に JSON で届いた方を取ります
+   *           ★★**やり直しても同じ答えになる頼みごとだけ**に付けること（日報の見る／書く＝可）。
+   *             写真の読み取り・残すには付けない（2本走ると Cloud Vision が2枚数えます）
+   */
+  async ask(action, extra = {}, 決め = {}) {
     if (!this.enabled()) return { ok: false, error: '共有の設定がされていません' };
     if (!this.pin()) return { ok: false, error: 'PINが入っていません' };
+    const 上限 = (決め && 決め.ms > 0) ? 決め.ms : this.askMs;
     // ★時間切れを入れます。これが無いと、サーバーが詰まったときに
     //   いつまでも待たされ、しかも「オフライン」と出て原因を取りちがえます
     const stop = new AbortController();
-    const timer = setTimeout(() => stop.abort(), this.askMs);
+    const timer = setTimeout(() => stop.abort(), 上限);
+    const body = JSON.stringify({ pin: this.pin(), code: this.code(), action, ...extra });
+    const 送る = () => fetch(APP.syncUrl, {
+      method: 'POST',
+      signal: stop.signal,
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body,
+    }).then(返事を読む);
     try {
-      const res = await fetch(APP.syncUrl, {
-        method: 'POST',
-        signal: stop.signal,
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ pin: this.pin(), code: this.code(), action, ...extra }),
-      });
-      return await 返事を読む(res);
+      if (決め && 決め.hedge) return await 先に届いた返事(送る, this.重ねるまで);
+      return await 送る();
     } catch (e) {
       // ★切り分けは この失敗はなにか() 1か所です。
       //   ここに書き写すと、片方だけ直った状態が必ずできます
-      return { ok: false, error: この失敗はなにか(e, this.askMs), kind: この失敗のたぐい(e) };
+      return { ok: false, error: この失敗はなにか(e, 上限), kind: この失敗のたぐい(e) };
     } finally {
       clearTimeout(timer);
+      stop.abort();   // ★重ねた片割れが遅れていれば切ります（1本のときは何もしません）
     }
   },
 
