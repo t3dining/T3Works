@@ -2408,7 +2408,18 @@ function renderShiftSlots() {
     // ★時刻を入れる店舗（popo）では、枠ごとの時刻は使いません。
     //   アルバイトが出した出勤・退勤がそのまま入り、どの行に入るかは
     //   出勤時刻で決まるためです。出すと「ここで決まる」と読めてしまいます
-    if (!時刻で入れる) {
+    if (!時刻で入れる && base.every) {
+      // ★こじゃれ・炭まろ・ちゃこる・おいでんテラス（2026-09-18、ko-dai さんの指示）。
+      //   選べる時刻は「はじめ〜おわり・きざみ」で持ち、時と分を回して選びます。
+      //   **普段の時刻は持ちません**（欄も出しません）。
+      //   前に保存した「選べる時刻」「普段の時刻」は、もう読みません（shiftMergeSlots）
+      const e = shiftEveryTimes(v.every) ? v.every : base.every;
+      const 分 = (x) => String(Math.round(Number(x) * 60));
+      add('選べる時刻：はじめ', 'from', shiftTimeText(e.from), shiftTimeText(base.every.from));
+      add('選べる時刻：おわり', 'to', shiftTimeText(e.to), shiftTimeText(base.every.to));
+      add('選べる時刻：きざみ（分）', 'step', 分(e.step), 分(base.every.step));
+      row.dataset.every = '1';
+    } else if (!時刻で入れる) {
       add('選べる時刻', 'times',
         (Array.isArray(v.times) && v.times.length ? v.times : base.times).join(','),
         base.times.join(','));
@@ -2495,6 +2506,22 @@ function saveShiftSlots() {
     const 枠名 = get('name') || row.dataset.slot;
     // ★use は書きません。どの枠を使うかはコードで決まります
     const 直す = { name: get('name'), hint: get('hint') };
+    // ★4店舗（はじめ〜おわり・きざみ）。15分・30分・60分きざみだけ受け付けます
+    if (row.dataset.every) {
+      const from = shiftTimeFrom(get('from'));
+      const to = shiftTimeFrom(get('to'));
+      const 分 = Math.floor(Number(toHalfWidthNumber(get('step'))));
+      const every = { from, to, step: 分 / 60 };
+      if (from === null) だめ.push(`${枠名}の「はじめ」：${get('from') || '（空）'}`);
+      if (to === null) だめ.push(`${枠名}の「おわり」：${get('to') || '（空）'}`);
+      if (![15, 30, 60].includes(分)) だめ.push(`${枠名}の「きざみ」：${get('step') || '（空）'}（15・30・60 のどれか）`);
+      if (from !== null && to !== null && [15, 30, 60].includes(分)) {
+        if (!shiftEveryTimes(every)) だめ.push(`${枠名}：はじめ（${shiftTimeText(from)}）が、おわり（${shiftTimeText(to)}）より前になっていません`);
+        // はじめとおわりがきざみに乗っていないと、おわりの時刻が選べなくなります
+        else if (!shiftEveryTimes(every).includes(to)) だめ.push(`${枠名}：おわり（${shiftTimeText(to)}）が、はじめから${分}分おきの時刻に乗っていません`);
+      }
+      直す.every = every;
+    }
     // ★時刻の欄は、時刻を入れる店舗では出していません。
     //   出していない欄を空で書くと、前に入れてあった時刻を消してしまいます
     if (row.querySelector('[data-k="times"]')) {

@@ -4825,12 +4825,40 @@ const SHIFT_SLOTS_2 = {
   // 仕込み … 時刻は聞きません（open は askTime: false）。
   //          そのまま営業まで続けて入る人が多いので、押すと営業も一緒に入ります
   //          （→ shiftAfterOpen）
-  'slot:open':   { name: '仕込み', hint: '仕込みから入る' },
+  // ★時刻は `every`（はじめ〜おわり・きざみ）で持ちます（2026-09-18、ko-dai さんの指示）。
+  //   仕込み 12:00〜16:00 を30分おき、営業 17:00〜22:00 を15分おき。
+  //   `every` がある枠は、**時と分を別々に回して選ぶ**（→ shiftWheel）、
+  //   **普段の時刻を持たない**（→ shiftDefaultTime は空）、の2つが変わります。
+  //   バグると popo は今までどおり（ボタンで選ぶ・普段の時刻あり）。
+  'slot:open':   { name: '仕込み', hint: '仕込みから入る', every: { from: '12', to: '16', step: 0.5 } },
   // ランチの枠は使いません。F（通し）も、ランチが無いので出ません
   //  （→ shiftWishSlots）
   'slot:lunch':  { use: false },
-  'slot:dinner': { name: '営業',   hint: '営業から入る' },
+  'slot:dinner': { name: '営業',   hint: '営業から入る', every: { from: '17', to: '22', step: 0.25 } },
 };
+
+/**
+ * `every`（はじめ〜おわり・きざみ）から、選べる時刻の並びを作る
+ *
+ *   { from: '17', to: '22', step: 0.25 } → ['17', '17.25', …, '21.75', '22']
+ *
+ * ★読めない形なら null（呼ぶ側は今までの `times` を使います）。
+ *   きざみは 5分〜1時間、はじめ＜おわり、0時〜29時の中だけ受け付けます。
+ */
+function shiftEveryTimes(every) {
+  if (!every || typeof every !== 'object') return null;
+  const a = Number(every.from);
+  const b = Number(every.to);
+  const st = Number(every.step);
+  if (![a, b, st].every(isFinite) || st < 5 / 60 - 1e-9 || st > 1 + 1e-9 || a < 0 || b > 29 || a >= b) return null;
+  const out = [];
+  for (let i = 0; i <= 200; i += 1) {
+    const t = a + st * i;
+    if (t > b + 1e-9) break;
+    out.push(shiftTimeKey(t));
+  }
+  return out.length ? out : null;
+}
 
 const SHIFT_SLOTS_STORES = {
   kojare:   SHIFT_SLOTS_2,
@@ -4902,6 +4930,23 @@ function shiftMergeSlots(items, storeId) {
     //   （2026-09-07 ko-dai の指示。「切り替える場面がない」ため画面から外しました）。
     //   前に保存された `use` は読みません。残っていても効きません
     if (b.use === false) return;
+    // ★`every`（はじめ〜おわり・きざみ）がある枠は、時刻をそこから作ります。
+    //   マネージで直した `every` → その店舗の初めの形 の順です。
+    //   **前に保存された `times` と `pick` は読みません**（2026-09-18。4店舗の時刻を
+    //   ko-dai さんの指定どおりにするため。残っていても効きません）
+    const every = shiftEveryTimes(v.every) ? v.every : (shiftEveryTimes(b.every) ? b.every : null);
+    if (every) {
+      out.push({
+        ...slot,
+        name: v.name || b.name || slot.name,
+        hint: v.hint !== undefined ? v.hint
+          : (b.hint !== undefined ? b.hint : slot.hint),
+        every,
+        times: shiftEveryTimes(every),
+        pick: '',
+      });
+      return;
+    }
     out.push({
       ...slot,
       name: v.name || b.name || slot.name,
@@ -4967,13 +5012,16 @@ function shiftBaseSlots(storeId) {
   const mine = SHIFT_SLOTS_STORES[storeId] || {};
   return SHIFT_SLOTS_DEFAULT.map((slot) => {
     const b = mine[shiftSlotSetKey(slot.id)] || {};
+    const every = shiftEveryTimes(b.every) ? b.every : null;
     return {
       ...slot,
       use: b.use !== false,
       name: b.name || slot.name,
       hint: b.hint !== undefined ? b.hint : slot.hint,
-      times: Array.isArray(b.times) && b.times.length ? b.times : slot.times,
-      pick: b.pick || slot.pick,
+      every,
+      times: every ? shiftEveryTimes(every)
+        : (Array.isArray(b.times) && b.times.length ? b.times : slot.times),
+      pick: every ? '' : (b.pick || slot.pick),
     };
   });
 }
@@ -6023,7 +6071,102 @@ function shiftClashes(slotId) {
 function shiftDefaultTime(storeId, slotId) {
   const slot = getShiftSlot(storeId, slotId);
   if (!slot || !slot.times.length) return '';
+  // ★`every` の枠（こじゃれ・炭まろ・ちゃこる・おいでんテラス）は、普段の時刻を
+  //   持ちません（2026-09-18、ko-dai さんの指示）。**空のまま**にして、選んでもらいます。
+  //   時刻の入っていない人は、表では名前だけで出ます（時刻順の一番下）
+  if (slot.every) return '';
   return slot.pick && slot.times.includes(slot.pick) ? slot.pick : slot.times[0];
+}
+
+/**
+ * 時と分を**別々に回して**選ぶ（`every` の枠。2026-09-18、ko-dai さんの指示）
+ *
+ * ★iPhone では select が回して選ぶ形（ホイール）で出ます。15分おきの営業は
+ *   17:00〜22:00 で21個あり、ボタンで並べると選びにくいためです。
+ * ★時を選ぶと、分はいまの分がその時にあればそのまま、無ければ一番早い分にします
+ *   （22時は 00分 しか無い、など）。時を「—」にすると空（選んでいない）です。
+ * ★いまの値が並びに無いとき（前の時刻のまま残っている人など）も、消さずに出します。
+ *
+ *   times  … 選べる時刻（'17' '17.25' …）
+ *   value  … いまの時刻（空なら「—」）
+ *   onPick … 選び直したら、新しい時刻（または空）で呼びます
+ *   selClass … select に付ける見た目（画面ごとに違うため）
+ */
+function shiftWheel(times, value, onPick, selClass) {
+  const 並び = (times || []).slice();
+  const いま = value === undefined || value === null ? '' : String(value);
+  if (いま !== '' && !並び.includes(いま)) 並び.push(いま);
+  const 時の = {};
+  並び.forEach((t) => {
+    const h = Math.floor(Number(t));
+    if (!isFinite(h)) return;
+    (時の[h] = 時の[h] || []).push(t);
+  });
+  Object.keys(時の).forEach((h) => 時の[h].sort((a, b) => Number(a) - Number(b)));
+  const 時一覧 = Object.keys(時の).map(Number).sort((a, b) => a - b);
+  const 分の字 = (t) => String(Math.round((Number(t) - Math.floor(Number(t))) * 60)).padStart(2, '0');
+
+  const wrap = document.createElement('div');
+  wrap.className = 'shift-wheel';
+  wrap.style.cssText = 'display:flex;align-items:center;gap:6px;';
+  const 時sel = document.createElement('select');
+  const 分sel = document.createElement('select');
+  [時sel, 分sel].forEach((x) => {
+    x.className = selClass || '';
+    x.style.flex = '1 1 0';
+    x.style.minWidth = '0';
+  });
+  時sel.setAttribute('aria-label', '時');
+  分sel.setAttribute('aria-label', '分');
+
+  const いまの時 = いま === '' ? '' : String(Math.floor(Number(いま)));
+  const 空 = document.createElement('option');
+  空.value = '';
+  空.textContent = '—';
+  時sel.appendChild(空);
+  時一覧.forEach((h) => {
+    const o = document.createElement('option');
+    o.value = String(h);
+    o.textContent = `${h}時`;
+    if (String(h) === いまの時) o.selected = true;
+    時sel.appendChild(o);
+  });
+  const 分を並べる = (h, 選ぶ) => {
+    分sel.innerHTML = '';
+    if (h === '') {
+      const o = document.createElement('option');
+      o.value = '';
+      o.textContent = '—';
+      分sel.appendChild(o);
+      分sel.disabled = true;
+      return;
+    }
+    分sel.disabled = false;
+    (時の[h] || []).forEach((t) => {
+      const o = document.createElement('option');
+      o.value = t;
+      o.textContent = `${分の字(t)}分`;
+      if (t === 選ぶ) o.selected = true;
+      分sel.appendChild(o);
+    });
+  };
+  分を並べる(いまの時, いま);
+
+  時sel.addEventListener('change', () => {
+    const h = 時sel.value;
+    if (h === '') { 分を並べる('', ''); onPick(''); return; }
+    const 前の分 = 分sel.value ? 分の字(分sel.value) : '';
+    const その時 = 時の[h] || [];
+    const t = その時.find((x) => 分の字(x) === 前の分) || その時[0] || '';
+    分を並べる(h, t);
+    onPick(t);
+  });
+  分sel.addEventListener('change', () => onPick(分sel.value));
+
+  const コロン = document.createElement('span');
+  コロン.textContent = '：';
+  wrap.append(時sel, コロン, 分sel);
+  return wrap;
 }
 
 /**

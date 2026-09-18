@@ -1084,14 +1084,21 @@ function dayCard(dateStr) {
 
     const btns = document.createElement('div');
     btns.className = 'times__btns';
-    slot.times.forEach((t) => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'time' + (String(entry.t) === t ? ' is-on' : '');
-      b.textContent = shiftTimeText(t);
-      b.addEventListener('click', () => setTime(dateStr, slot.id, t));
-      btns.appendChild(b);
-    });
+    if (slot.every) {
+      // ★こじゃれ・炭まろ・ちゃこる・おいでんテラスは、時と分を回して選びます
+      //   （→ shiftWheel。2026-09-18、ko-dai さんの指示）。普段の時刻が無いので、
+      //   はじめは「—」です。選ばないまま出そうとすると止めます（→ timeMissing）
+      btns.appendChild(shiftWheel(slot.times, entry.t, (t) => setTime(dateStr, slot.id, t), 'range__sel'));
+    } else {
+      slot.times.forEach((t) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'time' + (String(entry.t) === t ? ' is-on' : '');
+        b.textContent = shiftTimeText(t);
+        b.addEventListener('click', () => setTime(dateStr, slot.id, t));
+        btns.appendChild(b);
+      });
+    }
     row.appendChild(btns);
     card.appendChild(row);
   });
@@ -1312,8 +1319,38 @@ function closeHelp() {
 }
 
 /* -------- 出す -------- */
+/**
+ * 時刻を選んでいない日（回して選ぶ枠だけ）
+ *
+ * ★4店舗の営業は普段の時刻が無いので、選ばないと時刻が空のまま届きます。
+ *   お店の側で時刻が分からなくなるので、出す前に止めます。
+ * ★聞いていない枠（仕込み＝時刻はお店が決める）と、仕込みから続けて入る営業は数えません。
+ *   画面に「何時から？」が出ている枠だけです（renderDay と同じ決まり）。
+ */
+function timeMissing() {
+  const out = [];
+  Object.keys(picked).sort().forEach((dateStr) => {
+    const mine = picked[dateStr] || [];
+    const main = mine.some((e) => e.s === 'open') ? 'open' : ((mine[0] || {}).s || '');
+    if (main === 'open') return;
+    mine.forEach((entry) => {
+      const slot = getShiftSlot(me.store, entry.s);
+      if (!slot || !slot.every || slot.askTime === false || !slot.times.length) return;
+      if (entry.t === '' || entry.t === undefined || entry.t === null) {
+        const [, m, d] = dateStr.split('-').map(Number);
+        out.push(`${m}/${d}の${slot.name}`);
+      }
+    });
+  });
+  return out;
+}
+
 async function send() {
   setErr('sendErr', '');
+  const 空 = timeMissing();
+  if (空.length) {
+    return setErr('sendErr', `時刻を選んでいない日があります：${空.join('、')}。何時から入れるかを選んでください。`);
+  }
   el('send').disabled = true;
 
   const res = await call({ mode: 'put', days: picked, notes });
