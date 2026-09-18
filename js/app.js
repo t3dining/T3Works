@@ -327,7 +327,7 @@ function sectionItemsForDay(sec, storeId, d, ignoreClosed = false) {
 /**
  * 下の日タブや「今日へ」で日を選んだときの行き先
  *
- * ★ふだんはクローズを開きます。ただし**現金売上を見ているあいだは、
+ * ★普段はクローズを開きます。ただし**現金売上を見ているあいだは、
  *   その日の現金売上**を開きます。日を選ぶたびにクローズへ飛ばされると、
  *   何日分かをまとめて見るときに戻る手間がかかるためです。
  */
@@ -1280,7 +1280,7 @@ function calcPadEcho() {
  * テンキーの高さに合わせて、ページの下の余白を付け直します
  *
  * ★窓が伸びるとテンキーが高くなるので、打っている欄が**下から隠れます。**
- *   隠れたときだけ、隠れない位置まで送ります（ふだんは何もしません）。
+ *   隠れたときだけ、隠れない位置まで送ります（普段は何もしません）。
  *   毎回まん中へ送ると、打つたびに画面が跳ねて読めなくなります。
  */
 function calcPadFit() {
@@ -3934,7 +3934,7 @@ async function cashReadPhoto(dataUrl, dateStr, file) {
     const 読めた具合 = (text) => cash読めた具合(元の店, text);
 
     // ★小さくして送ったせいで読み取れなかったのかもしれません。
-    //   そのときだけ、元の画質でもう一度送り直します（ふだんは1回で終わります）
+    //   そのときだけ、元の画質でもう一度送り直します（普段は1回で終わります）
     // ★file が無いのは、続きからやり直しているときです。控えには小さくした
     //   写真しか残っていないので、送り直しても同じ結果にしかなりません。
     //   ここで file を見ずに送り直そうとして、画面に
@@ -4604,7 +4604,7 @@ function submitDay() {
 /**
  * 提出を送り切るまで「送信中…」を出す
  *
- * ★ふだんのチェックは待たせません（裏で送ります）。提出だけは、
+ * ★普段のチェックは待たせません（裏で送ります）。提出だけは、
  *   みんなの画面に出たことを見届けてから終わりにします。
  */
 async function sendSubmit(key) {
@@ -6747,7 +6747,7 @@ function renderMeetingCum() {
  *
  *  ブラウザからスプレッドシートは読めないので、GAS（バックエンド）に
  *  「このフォルダの、この年月のファイルの、このセルを読んで」と頼みます。
- *  返ってきた数字は _meeting/YYYY-MM に入れるので、ふだんの同期で
+ *  返ってきた数字は _meeting/YYYY-MM に入れるので、普段の同期で
  *  みんなの端末にも届きます。光熱費とキャッチは日報にないので触りません。
  * ---------------------------------------------------------- */
 let nippouBusy = false;
@@ -8979,7 +8979,7 @@ function shiftRec() {
  */
 function shiftDayOf(rec, dateStr) {
   const v = (rec.items || {})[shiftDayKey(dateStr)] || {};
-  // 時刻の入っていない人は、その枠のふだんの時刻として読みます
+  // 時刻の入っていない人は、その枠の普段の時刻として読みます
   // （時刻なしで入れていたころの分が残っていても、表が空白になりません）
   // ★見本（テスト用）の人は、組んだ表にも出しません
   const arr = (id, x) => shiftSort((Array.isArray(x) ? x : [])
@@ -9242,7 +9242,7 @@ function shiftTake() {
         if (taken.has(mark)) return;
         taken.add(mark);
         if (day[slot.id].some((e) => e.n === w.name)) return;
-        // ★マネージで決めてある「ふだんの持ち場」に入れます。
+        // ★マネージで決めてある「普段の持ち場」に入れます。
         //   決めていない人は、ひとまず左の持ち場（キッチン）です
         const entry = {
           n: w.name,
@@ -9389,7 +9389,7 @@ let shiftLinkOpen = '';
 /**
  * 名簿を出している店舗（空なら出していません）
  *
- * ★名前も番号も、**ふだんは出しません。**ワークスはお店の端末で開きっぱなしに
+ * ★名前も番号も、**普段は出しません。**ワークスはお店の端末で開きっぱなしに
  *   なることがあり、誰がいつ見るか分からないためです。押したときだけ出します。
  * ★店舗を変えたら閉じます（別の店舗の名簿が、そのまま出たままにならないように）。
  * ★アプリを裏に回したときも閉じます（置いたまま離れたとき用）。
@@ -10093,6 +10093,24 @@ function shiftHelpRow(days) {
       });
       td.appendChild(list);
     }
+    // ヘルプに出した人（ほかの店舗の表から数え直します → helpSentFrom）。押すと取り消せます
+    const 送った = helpSentFrom(state.storeId, dateStr);
+    if (送った.length) {
+      const list = document.createElement('div');
+      list.className = 'memo-tags';
+      送った.forEach((x) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'memo-tag is-on';
+        b.style.borderColor = HELP_SEND_COLOR;
+        b.style.color = HELP_SEND_COLOR;
+        b.style.background = `color-mix(in srgb, ${HELP_SEND_COLOR} 12%, transparent)`;
+        b.textContent = helpSentText(x);
+        b.addEventListener('click', () => helpSendCancel(dateStr, x));
+        list.appendChild(b);
+      });
+      td.appendChild(list);
+    }
     // 「ヘルプ要請」「人員過多」
     const acts = document.createElement('div');
     acts.className = 'patty-box';
@@ -10105,6 +10123,16 @@ function shiftHelpRow(days) {
       acts.appendChild(b);
     });
     td.appendChild(acts);
+    // 「ヘルプに出す」（段を分けます。3つ並べるとスマホで字が詰まるため）
+    const acts2 = document.createElement('div');
+    acts2.className = 'patty-box';
+    const send = document.createElement('button');
+    send.type = 'button';
+    send.className = 'shift-patty';
+    send.textContent = 'ヘルプに出す';
+    send.addEventListener('click', () => openHelpSend(dateStr));
+    acts2.appendChild(send);
+    td.appendChild(acts2);
     tr.appendChild(td);
   });
   return tr;
@@ -10193,6 +10221,184 @@ function openHelpReq(dateStr, kindId, laneId) {
   const now = laneId ? helpReqCount(state.storeId, dateStr, kindId, laneId) : 0;
   m.querySelector('#helpReqCount').value = now ? String(now) : '';
   描く();
+  m.classList.remove('is-hidden');
+}
+
+/* -------- ヘルプに出す（2026-09-18、ko-dai さんの指示） --------
+ *
+ * 誰を・どの店舗に・キッチンかホールか・仕込みか営業か・何時から、を選ぶと、
+ * **受け入れる店舗のシフトに直接入ります**（記録の決まりは js/config.js の
+ * 「ヘルプに出す」）。送り元の表には「アアア→炭まろ 営業17:00〜」の札が出て、
+ * 押すと取り消せます（受け入れる店舗の表からも消えます）。
+ */
+const HELP_SEND_COLOR = 'var(--accent)';
+
+/** その日の、受け入れる店舗の記録（生のまま。直すときに他の項目を1つも変えないため） */
+function helpDayRaw(storeId, dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const key = shiftKey(storeId, y, m, shiftHalfOf(d));
+  const raw = (Store.getDay(SHIFT_STORE, key).items || {})[shiftDayKey(dateStr)] || {};
+  return { key, raw };
+}
+
+/**
+ * その店舗がその日に「ヘルプに出した」人（ほかの店舗の表から数え直します）
+ *
+ * ★送り元には持っていません（→ js/config.js「ヘルプに出す」）。
+ * ★並びは 受け入れる店舗（SHIFT_HELP_STORES の順）→ 時刻 → 名前。
+ */
+function helpSentFrom(fromStore, dateStr) {
+  const out = [];
+  SHIFT_HELP_STORES.forEach((to) => {
+    if (to === fromStore) return;
+    const { raw } = helpDayRaw(to, dateStr);
+    ['open', 'lunch', 'dinner'].forEach((slot) => {
+      (Array.isArray(raw[slot]) ? raw[slot] : []).forEach((e) => {
+        if (e && e[HELP_FROM_KEY] === fromStore) {
+          out.push({ n: e.n, to, slot, t: e.t, p: e.p || '' });
+        }
+      });
+    });
+  });
+  const 店の順 = (id) => SHIFT_HELP_STORES.indexOf(id);
+  return out.sort((a, b) => 店の順(a.to) - 店の順(b.to)
+    || (Number(a.t) || 0) - (Number(b.t) || 0) || String(a.n).localeCompare(String(b.n), 'ja'));
+}
+
+/** 受け入れる店舗の表に、1人足す／外す（ほかの人・メモ・パティ・足りない数は1つも変えません） */
+function helpSendWrite(to, dateStr, slot, entry, remove) {
+  const { key, raw } = helpDayRaw(to, dateStr);
+  const list = (Array.isArray(raw[slot]) ? raw[slot] : []).slice();
+  if (remove) {
+    const at = list.findIndex((e) => e && e.n === entry.n && e[HELP_FROM_KEY] === entry.h
+      && String(e.t) === String(entry.t) && (e.p || '') === (entry.p || ''));
+    if (at < 0) return false;
+    list.splice(at, 1);
+  } else {
+    list.push({ n: entry.n, t: entry.t, p: entry.p || '', [HELP_FROM_KEY]: entry.h });
+  }
+  // ★setItem は「いまの中身＋直した分」を1項目として書きます。直すのはこの枠だけです
+  Store.setItem(SHIFT_STORE, key, shiftDayKey(dateStr), { [slot]: list });
+  return true;
+}
+
+function helpSendCancel(dateStr, sent) {
+  const 店 = (getStore(sent.to) || {}).name || sent.to;
+  if (!window.confirm(`${helpSentText(sent)} を取り消します。\n${店}のシフトからも外れます。`)) return;
+  helpSendWrite(sent.to, dateStr, sent.slot, { n: sent.n, t: sent.t, p: sent.p, h: state.storeId }, true);
+  renderKeepScroll();
+}
+
+/** 「ヘルプに出す」の小窓 */
+function openHelpSend(dateStr) {
+  let m = document.getElementById('helpSendModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'helpSendModal';
+    m.className = 'modal is-hidden';
+    m.innerHTML = `
+      <div class="modal__backdrop" data-help-send-close></div>
+      <div class="modal__panel modal__panel--wide" role="dialog" aria-modal="true" aria-labelledby="helpSendTitle">
+        <h2 class="modal__title" id="helpSendTitle" style="color:${HELP_SEND_COLOR};"></h2>
+        <div class="field"><span class="field__label">誰を</span><div class="seg" id="helpSendWho" style="flex-wrap:wrap;"></div></div>
+        <div class="field"><span class="field__label">どの店舗に</span><div class="seg" id="helpSendTo"></div>
+          <p class="modal__note" id="helpSendAsk" style="margin:6px 0 0;"></p></div>
+        <div class="field"><span class="field__label">キッチンかホールか</span><div class="seg" id="helpSendLane"></div></div>
+        <div class="field"><span class="field__label" id="helpSendSlotLabel">どの枠か</span><div class="seg" id="helpSendSlot"></div></div>
+        <div class="field"><span class="field__label">何時から</span>
+          <div class="seg" id="helpSendTimes" style="flex-wrap:wrap;"></div>
+          <div class="free-time" style="margin-top:6px;">
+            <input type="text" class="field__input" id="helpSendFree" inputmode="numeric" autocomplete="off"
+              autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="ほかの時刻（例 17:30）">
+          </div></div>
+        <p class="modal__note">決めると、向こうの店舗のシフトのその日・その時刻に入ります（名簿に名前が無くても出ます）。</p>
+        <div class="modal__actions modal__actions--confirm">
+          <button type="button" class="btn" data-help-send-close>やめる</button>
+          <button type="button" class="btn btn--primary" id="helpSendGo">決める</button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+    m.querySelectorAll('[data-help-send-close]').forEach((x) => {
+      x.addEventListener('click', () => m.classList.add('is-hidden'));
+    });
+    m.querySelector('#helpSendFree').addEventListener('input', () => {
+      const t = shiftTimeFrom(m.querySelector('#helpSendFree').value);
+      if (t !== null) { m._at.t = t; m._draw(false); }
+    });
+    m.querySelector('#helpSendGo').addEventListener('click', () => {
+      const at = m._at;
+      // 手で打った時刻は、読めたときだけ使います（読めなければ止めます）
+      const free = m.querySelector('#helpSendFree').value.trim();
+      if (free) {
+        const t = shiftTimeFrom(free);
+        if (t === null) { window.alert(`「${free}」は時刻として読めません。17:30 のように打ってください。`); return; }
+        at.t = t;
+      }
+      if (!at.n || !at.to || !at.lane || !at.slot || at.t === '') return;
+      helpSendWrite(at.to, at.d, at.slot, { n: at.n, t: at.t, p: at.lane, h: at.from });
+      m.classList.add('is-hidden');
+      renderKeepScroll();
+    });
+  }
+  const 名簿 = shiftBuildNames(state.storeId);
+  const 人の持ち場 = (n) => ((ShiftStaff.all()[state.storeId] || []).find((p) => p.n === n) || {}).p || '';
+  const ほか = SHIFT_HELP_STORES.filter((id) => id !== state.storeId);
+  // ★送り元は開いたときのものを控えます。小窓を開いたまま店舗を移っても、取りちがえません
+  m._at = { from: state.storeId, d: dateStr, n: '', to: ほか.length === 1 ? ほか[0] : '', lane: '', slot: '', t: '' };
+  m.querySelector('#helpSendFree').value = '';
+
+  const ボタン = (box, list, now, pick) => {
+    box.innerHTML = '';
+    list.forEach(({ id, name }) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'seg__btn' + (now === id ? ' is-on' : '');
+      b.textContent = name;
+      b.addEventListener('click', () => pick(id));
+      box.appendChild(b);
+    });
+  };
+  m._draw = (枠から) => {
+    const at = m._at;
+    m.querySelector('#helpSendTitle').textContent = `${shiftDayLabel(at.d, DOW)}　ヘルプに出す`;
+    ボタン(m.querySelector('#helpSendWho'), 名簿.map((n) => ({ id: n, name: n })), at.n, (n) => {
+      at.n = n;
+      // 普段の持ち場が決まっている人は、それを先に選んでおきます
+      if (!at.lane && 人の持ち場(n)) at.lane = 人の持ち場(n);
+      m._draw(false);
+    });
+    if (!名簿.length) m.querySelector('#helpSendWho').textContent = 'シフトに入る人が、まだ登録されていません。';
+    ボタン(m.querySelector('#helpSendTo'), ほか.map((id) => ({ id, name: (getStore(id) || {}).short || id })), at.to, (id) => {
+      at.to = id; at.slot = ''; at.t = '';
+      m._draw(true);
+    });
+    // 向こうが出しているヘルプ要請を、選ぶときの目安に出します
+    const 要請 = at.to ? helpReqOf(at.to, at.d).filter((r) => r.kind === 'help') : [];
+    m.querySelector('#helpSendAsk').textContent = !at.to ? ''
+      : 要請.length ? `${(getStore(at.to) || {}).short}のヘルプ要請：${要請.map((r) => `${helpReqLaneName(r.lane)}${shiftZen(r.n)}人`).join('、')}`
+        : `${(getStore(at.to) || {}).short}からは、この日のヘルプ要請は出ていません。`;
+    ボタン(m.querySelector('#helpSendLane'), SHIFT_LANES.map((l) => ({ id: l.id, name: l.name })), at.lane, (id) => {
+      at.lane = id;
+      m._draw(false);
+    });
+    // 枠と時刻は**受け入れる店舗の**設定から出します（店舗ごとに時刻がちがうため）
+    const 枠 = at.to ? shiftSlotsOf(at.to) : [];
+    if (枠から && 枠.length && !at.slot) at.slot = 枠[枠.length - 1].id;   // 普段は営業から
+    ボタン(m.querySelector('#helpSendSlot'), 枠.map((sl) => ({ id: sl.id, name: sl.name })), at.slot, (id) => {
+      at.slot = id; at.t = '';
+      m._draw(true);
+    });
+    if (!at.to) m.querySelector('#helpSendSlot').textContent = '先に店舗を選んでください';
+    const 今の枠 = 枠.find((sl) => sl.id === at.slot);
+    if (枠から && 今の枠 && at.t === '') at.t = 今の枠.pick || (今の枠.times || [])[0] || '';
+    ボタン(m.querySelector('#helpSendTimes'), (今の枠 ? 今の枠.times || [] : []).map((t) => ({ id: t, name: shiftTimeText(t) })), at.t, (t) => {
+      at.t = t;
+      m.querySelector('#helpSendFree').value = '';
+      m._draw(false);
+    });
+    m.querySelector('#helpSendGo').disabled = !(at.n && at.to && at.lane && at.slot && at.t !== '');
+  };
+  m._draw(true);
   m.classList.remove('is-hidden');
 }
 
@@ -10448,7 +10654,7 @@ function shiftPattyBox(day, dateStr) {
  *
  *  ★iPhone・iPadでは、ブラウザに元からある「ドラッグ」の仕組みが効きません。
  *    なので、指の位置を自分で追いかけています（マネージの並べ替えと同じ作りです）。
- *  ★枠が変わるときは、時刻をその枠のふだんの時刻に入れかえます。
+ *  ★枠が変わるときは、時刻をその枠の普段の時刻に入れかえます。
  *    ランチの11:00をディナーに持っていっても、そのままでは意味が通らないためです。
  * ============================================================ */
 const shiftDrag = {
@@ -10672,7 +10878,7 @@ function moveShiftChip(from, to) {
   if (!entry) return;   // 動かすあいだに、その人が消えていた
 
   const moved = { ...entry, p: to.lane };
-  // 枠が変わったら、時刻はその枠のふだんの時刻に入れかえます
+  // 枠が変わったら、時刻はその枠の普段の時刻に入れかえます
   if (from.slot !== to.slot) moved.t = shiftDefaultTime(state.storeId, to.slot);
 
   if (from.date === to.date) {
@@ -11181,7 +11387,7 @@ function shiftLineMessage(kindId, list) {
  *   ★名指しにすると、マネージで定休日を変えたときに**黙って合わなくなります**
  *     （定休日はマネージの「⚙ 設定 → 定休日」で変えられます）。
  * ★ただ例外が入っているだけでは出しません。**その曜日が定休日のときだけ**です。
- *   ふだん営業している日に「営業する」と入れても、知らせることがありません。
+ *   普段営業している日に「営業する」と入れても、知らせることがありません。
  * ★過ぎた日も外しません。募集は先の半月にかけるものなので、
  *   この文を出す時点では全部これからの日です（足りない日の方は、
  *   もう入れられないので過ぎた日を外しています）。
@@ -11217,7 +11423,7 @@ function shiftOpenMessage() {
 /* -------- 提出ページの QR と URL（2026-09-18、ko-dai さんの指示） --------
  *
  * ★組む画面の**店舗名の横**に「QR・URL」のボタンを置きます。
- *   ふだんは出さず、**押したときだけ** QR と URL を出します（コピーのボタン付き）。
+ *   普段は出さず、**押したときだけ** QR と URL を出します（コピーのボタン付き）。
  *   アルバイトに配るとき、この画面からそのまま見せたり送ったりできます。
  * ★`index.html` は本部のファイルなので、ボタンも中身もここで作って差し込みます。
  *   見た目は、すでにある `.today-btn` と `.modal` をそのまま使います（CSS は足していません）。
@@ -11599,7 +11805,14 @@ function shiftSheetModel(pageIndex) {
       }),
     }));
 
-    const memo = part.map((s) => (shiftClosedOn(s) ? '' : shiftMemoOf(rec, s)));
+    // ★ヘルプに出した人は、その日のメモの行に「ヘルプ：…」で足します（送り元の店舗の紙にも
+    //   いつ・誰を・どこへ出したか分かるように。2026-09-18）。記録のメモは変えません
+    const memo = part.map((s) => {
+      if (shiftClosedOn(s)) return '';
+      const 送った = shiftHelpOn(state.storeId) ? helpSentFrom(state.storeId, s) : [];
+      const 足す = 送った.length ? `ヘルプ：${送った.map(helpSentText).join('、')}` : '';
+      return [shiftMemoOf(rec, s), 足す].filter(Boolean).join('　');
+    });
     blocks.push({ head, rows, memo });
   }
 
@@ -11895,7 +12108,7 @@ function saveShiftPdf() {
  *  パソコン … 保存先を選ぶ画面が出ます。Finder のどこにでも置けます
  *             （前に保存した場所を覚えているので、2回目からは1回押すだけです）
  *  iPhone   … 共有の画面が出ます。そのままLINEに送るか、ファイルに保存できます
- *  それ以外 … ふだんのダウンロードになります
+ *  それ以外 … 普段のダウンロードになります
  *
  *  ★保存先を選ぶ画面は、押したその場で開きます。
  *    先に絵を作ってから開くと、ブラウザが「押した流れ」と見なさなくなり、
@@ -11981,7 +12194,7 @@ function shiftFileName(ext) {
  * できたファイルを渡す（保存先を選ぶ画面が使えない端末むけ）
  *
  * iPhone では「共有」から、そのままLINEに送れます。
- * 共有が使えない端末では、ふだんのダウンロードにします。
+ * 共有が使えない端末では、普段のダウンロードにします。
  */
 async function handOut(file, name) {
   try {

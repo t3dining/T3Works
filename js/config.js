@@ -3,7 +3,7 @@
  *
  *  2026年9月5日、消し忘れた1行でマネージのトップが止まりました。
  *  画面は途中まで描いて終わり、**どこにも何も出ませんでした**。
- *  出ていたのは、ふだん誰も開かない開発者ツールの中だけです。
+ *  出ていたのは、普段誰も開かない開発者ツールの中だけです。
  *  たまたま別件でそこを見た人がいたから見つかりました。
  *
  *  CLAUDE.md の「黙って失敗しない」は、保存には効いていましたが
@@ -4796,7 +4796,7 @@ const SHIFT_SLOTS_DEFAULT = [
     // ★説明に時刻を書き写しません。時刻は下の pick から自動で出ます
     //   （書き写すと、マネージで時刻を直したときに説明だけ古く残ります）
     id: 'open', name: '立ち上げ', hint: '開店の準備から',
-    // 9:00〜10:30 を15分ごと。ふだんは10:00です。
+    // 9:00〜10:30 を15分ごと。普段は10:00です。
     // ★askTime: false … 提出ページでは時刻を選ばせません。
     //   立ち上げはいつも10:00で、前後にずらすのはこちらの都合だからです
     times: ['9', '9.25', '9.5', '9.75', '10', '10.25', '10.5'], pick: '10',
@@ -5225,7 +5225,7 @@ function shiftWishSlots(storeId) {
     id: SHIFT_FULL_ID,
     name: 'F',
     hint: `${lunch.name}から${dinner.name}まで通し（時間はお店が決めます）`,
-    // 時刻はランチと同じものから。ふだんはランチの始まりに入ります。
+    // 時刻はランチと同じものから。普段はランチの始まりに入ります。
     // ★askTime: false … 提出ページでは選ばせません。通しで入る人の
     //   開始時刻は、その日の人の入りぐあいを見てこちらで決めるためです
     times: lunch.times, pick: lunch.pick, askTime: false,
@@ -6102,7 +6102,7 @@ function shiftTimeKey(hours) {
 function shiftTimeMark(storeId, slotId, t) {
   const v = String(t === null || t === undefined ? '' : t);
   // ★入っている時刻は、必ず全部書きます。
-  //   前は「ふだんの時刻の人は書かない」ことにしていましたが、
+  //   前は「普段の時刻の人は書かない」ことにしていましたが、
   //   11時の人だけ時刻が出ないのは、かえって分かりにくいためです
   if (!getShiftSlot(storeId, slotId) || v === '') return '';
   return shiftTimeText(v);
@@ -6111,8 +6111,23 @@ function shiftTimeMark(storeId, slotId, t) {
 /** 表に出す1人分（'18:00 そう' のような形） */
 function shiftNameText(storeId, slotId, entry) {
   const mark = shiftTimeSpan(storeId, slotId, entry);
-  const name = String((entry && entry.n) || '');
+  const name = String((entry && entry.n) || '') + helpFromLabel(entry);
   return mark ? `${mark} ${name}` : name;
+}
+
+/**
+ * ヘルプで来た人なら「（ちゃこる）」、そうでなければ空
+ *
+ * ★名前を出すところ（組む画面の表・印刷・提出ページ・絵）は、全部
+ *   shiftNameText を通るので、**ここ1か所**で付きます（2026-09-18）。
+ * ★店舗は短い名前（`short`）です。印刷は1列が狭く、長い名前に合わせて
+ *   字が小さくなるためです。
+ */
+function helpFromLabel(entry) {
+  const from = entry && entry[HELP_FROM_KEY];
+  if (!from) return '';
+  const st = typeof getStore === 'function' ? getStore(from) : null;
+  return `（${(st && (st.short || st.name)) || from}）`;
 }
 
 /**
@@ -6590,6 +6605,31 @@ const HELP_REQ_KINDS = [
 ];
 /** 1回に出せる、一番多い人数 */
 const HELP_REQ_MAX = 9;
+
+/* -------- ヘルプに出す（2026-09-18、ko-dai さんの指示） --------
+ *
+ * ★人を送るときは、**受け入れる店舗のシフトに直接入れます。**
+ *   その人の行（`_shift/受け入れる店舗-半月` の `d:日付` の枠の中）に
+ *   `{ n: 名前, t: 時刻, p: 持ち場, h: 送り元の店舗 }` を1つ足すだけです。
+ *   ★これで、受け入れる店舗の表・印刷・提出ページ・絵に**そのまま出ます**
+ *     （名簿に名前が無くても出ます。表は名簿で名前をしぼらないため）。
+ * ★送り元の店舗の「いつ・誰を・どこへ」は、**持たずに、毎回ほかの店舗の行から
+ *   数え直します**（→ helpSentFrom／GAS の shiftHelpOut_）。送り元にも別に書くと、
+ *   受け入れる店舗で外したときに「送った」だけが残って食いちがうためです。
+ *   **1か所にだけ持つ**ので、どちらで外しても両方の表から消えます。
+ * ★送り元の日の中身（`d:日付`）には何も足しません。saveShiftDay は決まった
+ *   項目しか書き戻さないので、足しても次の保存で黙って消えます。
+ */
+const HELP_FROM_KEY = 'h';
+
+/** 送った先を1行に（「アアア→炭まろ 営業17:00」） */
+function helpSentText(sent) {
+  const st = typeof getStore === 'function' ? getStore(sent.to) : null;
+  const 店 = (st && (st.short || st.name)) || sent.to;
+  const 枠 = typeof getShiftSlot === 'function' ? (getShiftSlot(sent.to, sent.slot) || {}).name : '';
+  const 時 = sent.t !== undefined && sent.t !== '' ? shiftTimeText(sent.t) : '';
+  return `${sent.n}→${店}${枠 ? ` ${枠}` : ''}${時 ? ` ${時}〜` : ''}`;
+}
 
 /** その店舗でヘルプ要請・人員過多を使うか */
 function shiftHelpOn(storeId) {
