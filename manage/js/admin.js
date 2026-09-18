@@ -466,21 +466,31 @@ function moveButton(label, enabled, onClick) {
 
 /* -------- 追加・削除・並べ替え -------- */
 
+/**
+ * 項目を1つ足す
+ *
+ * ★**名前を先に聞きます**（2026-09-18、本部。ko-dai さんの「全て直して」）。
+ *   前は押した瞬間に「新しい項目」を `addedAt: 今日` ですぐ保存していたので、名前を入れずに画面を離れると、
+ *   **「新しい項目」という名前のチェックが今日から6店舗の現場に出ていました**（週間掃除・随時掃除のような
+ *   `draft` の印が無く、現場の `appliesTo` も印を見ません）。名前が空か、やめたときは何も足しません。
+ * ★教育の項目も同じ道具を使います（しまう先だけが違う）。
+ */
 function addItem(secId) {
+  const 聞く = editingTrain()
+    ? '足す項目の名前を入れてください。'
+    : '足す確認項目の名前を入れてください。\n今日から6店舗の現場に出ます。';
+  const label = String(window.prompt(聞く, '') || '').trim();
+  if (!label) return;
   const next = currentSections();
   const sec = next.find((s) => s.id === secId);
+  if (!sec) return;
   sec.items.push({
     id: newId('it'),
-    label: NEW_ITEM,
+    label,
     type: 'check',
     addedAt: todayStr(), // 今日から出す（過去の日にはさかのぼらせない）
   });
   saveSections(next);
-
-  // 追加した項目にすぐ名前を入れられるようにしておく
-  const cells = [...editorBox().querySelectorAll('.item-row__name')];
-  const last = cells.reverse().find((c) => c.textContent === NEW_ITEM);
-  if (last) startNameEdit(last);
 }
 
 async function removeItem(sec, item) {
@@ -1535,17 +1545,60 @@ function renderTrainees() {
   el.trainInput.value = people.map((p) => p.n).join('\n');
 }
 
-function saveTrainees() {
+/**
+ * 欄の名前と、いまの人（id つき）を付き合わせます（2026-09-18、本部。ko-dai さんの「全て直して」）
+ *
+ * ★2026-09-18 まで**上から順に** `before[i]` と付き合わせていました。途中の人を1行消すと、
+ *   下の人が1つずつ上の人の id（＝進み具合）を受け継ぎ、**記録が別人のものになっていました。**画面では気づけません。
+ * ★いまの決め方
+ *   ① **名前が同じ人**は、その人の id を引き継ぎます（行の順番を入れかえても大丈夫）
+ *   ② 名前が合わない人が「前に1人・欄に1人」だけのときは、**名前を直した**とみなして id を引き継ぎます
+ *   ③ それ以外は当てずっぽうをしません。合わない名前は新しい人、合わない前の人は一覧から外します
+ * 返すもの … { after, 直す: [{ from, to }], 足す: [名前], 外す: [名前] }
+ */
+function 教育の人を付き合わせる(before, names) {
+  const 使った = new Set();
+  const 行 = names.map((n) => {
+    const 同じ = before.find((p) => p.n === n && !使った.has(p.id));
+    if (同じ) { 使った.add(同じ.id); return { ...同じ, n }; }
+    return null;
+  });
+  const 残り前 = before.filter((p) => !使った.has(p.id));
+  const 残り欄 = names.filter((n, i) => !行[i]);
+  const 直す = [];
+  const 足す = [];
+  const after = 行.map((p, i) => {
+    if (p) return p;
+    const n = names[i];
+    if (残り前.length === 1 && 残り欄.length === 1) {
+      直す.push({ from: 残り前[0].n, to: n });
+      使った.add(残り前[0].id);
+      return { ...残り前[0], n };
+    }
+    足す.push(n);
+    return { id: newTraineeId(), n, at: new Date().toISOString() };
+  });
+  const 外す = before.filter((p) => !使った.has(p.id)).map((p) => p.n);
+  return { after, 直す, 足す, 外す };
+}
+
+async function saveTrainees() {
   const names = el.trainInput.value.split('\n').map((t) => t.trim()).filter(Boolean);
   const before = Trainees.list(state.storeId);
+  const { after, 直す, 足す, 外す } = 教育の人を付き合わせる(before, names);
 
-  // 上から順に、いまの人と付き合わせます。
-  // 同じところにいる人は id をそのまま引き継ぐので、名前を直しても進み具合が続きます
-  const after = names.map((n, i) => (
-    before[i]
-      ? { ...before[i], n }
-      : { id: newTraineeId(), n, at: new Date().toISOString() }
-  ));
+  // ★外す人・名前を直す人がいるときは、保存の前に聞きます（進み具合がどこへ行くかを見せるため）
+  if (外す.length || 直す.length) {
+    const 文 = [];
+    直す.forEach((r) => 文.push(`「${r.from}」を「${r.to}」に直します（進み具合はそのまま続きます）。`));
+    if (外す.length) 文.push(`一覧から外します：${外す.join('、')}（それまでの記録は残ります）。`);
+    if (足す.length) 文.push(`新しく足します：${足す.join('、')}。`);
+    if (外す.length && 足す.length) {
+      文.push('名前を直したつもりなら、いったんやめて、1回に1人ずつ直して保存してください。');
+    }
+    const ok = await askConfirm({ item: getStore(state.storeId).name, message: 文.join('\n'), okLabel: '保存する' });
+    if (!ok) return;
+  }
   Trainees.save(state.storeId, after);
 
   renderTrainees();

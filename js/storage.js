@@ -1188,17 +1188,11 @@ const ShiftStaff = {
     return this.save(map);
   },
 
-  /** その人の番号を作り直す（前の番号では入れなくなります） */
-  reissue(storeId, name) {
-    const map = this.all();
-    const list = map[storeId] || [];
-    const who = list.find((p) => p.n === name);
-    if (!who) return this.all();
-    who.c = makeShiftCode(this.codes());
-    // 番号が変わったら、送りずみの印は外します（送り直しが要るため）
-    who.s = false;
-    return this.save(map);
-  },
+  /* ★番号の作り直しは、ここには置きません（2026-09-18 に `reissue` を外しました）。
+       前の `reissue` は**その店の名簿だけ**番号を替えていて、他店舗にも所属している人は、
+       ほかの店の名簿に古い番号が残り、古い番号のままその店で入れました。
+       作り直すときは js/config.js の **`shiftReissue()`**（同じ番号を持つ全部の店の名簿を替える）を使ってください。
+       残しておくと、次に誰かが「番号を作り直す道具がある」と見つけて呼び、同じ穴を踏みます（シフトの頼み） */
 
   /** その人のふだんの持ち場を決める（'k' / 'h' / 空で「決めていない」） */
   setLane(storeId, name, lane) {
