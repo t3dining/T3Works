@@ -3156,6 +3156,25 @@ function 描き直す() {
   window.scrollTo(0, y);
 }
 
+/**
+ * 定休日を、設定にまだ無い店舗の分までそろえて書きます（2026-09-18、本部の残り②）
+ *
+ * ★LINE のクローズ通知（gas/通知.gs の isClosed_）は、**スプレッドシートの設定（closedDows）だけ**を見ます。
+ *   アプリは、設定に無い店舗を js/config.js の初期値（STORES の closedDays）で定休日にしますが、
+ *   シートには入っていません。**マネージで一度も曜日を触っていない店は、定休日にも「クローズ未提出」が飛ぶ**おそれがありました。
+ * ★アプリがいま使っている定休日（Closed.dows）を、そのまま設定に書くだけです。**どの画面の表示も変わりません。**
+ *   GAS を直すより、貼り直しが要らず、定休日の持ち主（マネージの設定）が1つのままで済みます。
+ * ★同期で設定を受け取ってからだけ動きます（受け取る前に書くと、シートにある分を初期値で上書きします）
+ * ★ストーリーズの自動投稿も同じ設定を見ますが、バグる（火曜）は投稿側の営業時間.csv と同じ、popo は定休日なしで、動きは変わりません
+ */
+function 定休日をそろえる() {
+  if (!Sync.enabled() || !Sync._settingsPulled || !Sync.pin()) return;
+  const 今 = Closed._read(Closed._dowsKey);
+  const 足りない = STORES.filter((s) => !Array.isArray(今[s.id]));
+  // 最後の1回だけで全部そろいます（setDows は毎回、全店舗分をまとめて送ります）
+  足りない.forEach((s) => Closed.setDows(s.id, Closed.dows(s.id)));
+}
+
 /** 同期のたびに呼びます（init の Sync.onChange） */
 function よそで変わったら() {
   const n = Sync.変わった回数 || 0;
@@ -3611,6 +3630,7 @@ async function init() {
   Sync.onChange = () => {
     renderSyncStatus();
     addLaterItems();
+    定休日をそろえる();
     よそで変わったら();
     if (Sync.needStaffCode && !番号を聞いた && Sync.pin()) {
       番号を聞いた = true;
