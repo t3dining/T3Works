@@ -601,7 +601,7 @@ body.is-shift-wide .page { max-width: 1900px; }
 .report-nav__date { font-size: 14.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .report-summary { margin: 10px 0 0; font-size: 13px; font-weight: 700; color: var(--text-sub); }
 
-/* いま何文字か（マインの立替金だけ）。ふだんは目立たせません。
+/* いま何文字か（マインの立替金だけ）。普段は目立たせません。
    4万文字を超えたときだけ、色を付けて気づけるようにします */
 .expense-size {
   margin: 8px 0 0; font-size: 11.5px; font-weight: 600;
@@ -4202,7 +4202,7 @@ body.print-shift .shift-sheet__name.is-full .shift-sheet__who::after { font-size
 /* 記録済みのあいだ、金額と担当者はさわれません（押しまちがえの上書きを防ぐため） */
 .cash-line__input[readonly],
 .cash-line__select:disabled { background: var(--line-2); color: var(--text-sub); }
-/* 「記録し直す」。ふだんは使わないので、真ん中に小さく置きます */
+/* 「記録し直す」。普段は使わないので、真ん中に小さく置きます */
 .cash-box .linkbtn { display: block; margin: 10px auto 0; padding: 4px 10px; }
 
 /* ============================================================
@@ -4237,7 +4237,7 @@ body.print-shift .shift-sheet__name.is-full .shift-sheet__who::after { font-size
 .train-add { display: flex; gap: 8px; }
 .train-add__input { flex: 1 1 auto; }
 
-/* 終わった人（ふだんは畳んでおきます） */
+/* 終わった人（普段は畳んでおきます） */
 .train-done-head {
   display: flex; align-items: center; width: 100%; padding: 0;
   border: 0; background: none; color: var(--text); font: inherit; font-size: 15px;
