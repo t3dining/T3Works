@@ -10949,8 +10949,8 @@ function openShiftQr() {
           style="display:block;width:220px;height:220px;margin:0 auto 10px;">
         <p class="modal__note">スマホのカメラで読み取ると、シフト提出のページが開きます。<br>
           番号は、ひとりずつ別に送ってください。</p>
-        <input type="text" class="field__input" id="shiftQrUrl" readonly
-          style="font-size:12.5px;text-align:center;margin-bottom:12px;">
+        <textarea class="field__input" id="shiftQrUrl" rows="2" readonly
+          style="font-size:12.5px;text-align:center;margin-bottom:12px;resize:none;"></textarea>
         <div class="modal__actions modal__actions--confirm">
           <button type="button" class="btn" data-shift-qr-close>閉じる</button>
           <button type="button" class="btn btn--primary" id="shiftQrCopy">URLをコピー</button>
@@ -10964,19 +10964,29 @@ function openShiftQr() {
     // 押したら全部選びます（コピーできない端末でも、そのまま長押しで写せるように）
     入れ物.addEventListener('focus', () => 入れ物.select());
     const 写す = m.querySelector('#shiftQrCopy');
+    // ★写すのは3段です（本部の js/share.js の 写す() と同じ順。2026-09-18）。
+    //   ① 新しいやり方（navigator.clipboard）
+    //   ② 断られたら、URL を選んで古いやり方（execCommand）。新しいやり方を断る
+    //      端末やアプリの中の画面で効くことがあります（確かめ用のブラウザもこれで写せました）
+    //   ③ それもだめなら、選んだ状態のまま「長押しでコピー」と案内します
+    const できた = () => {
+      写す.textContent = 'コピーしました';
+      setTimeout(() => { 写す.textContent = 'URLをコピー'; }, 1800);
+    };
     写す.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(SHIFT_SHARE_URL);
-        写す.textContent = 'コピーしました';
-        setTimeout(() => { 写す.textContent = 'URLをコピー'; }, 1800);
-      } catch (e) {
-        // コピーできない端末では、URL を選んだ状態にして写してもらいます。
-        // ★この案内は**すぐ戻しません。**長押しして写すあいだ出ていないと、
-        //   何をすればいいのか分からなくなります（閉じて開き直すと戻ります）
-        入れ物.focus();
-        入れ物.select();
-        写す.textContent = '選んだURLを長押しでコピー';
-      }
+        できた();
+        return;
+      } catch (e) { /* 下の古いやり方を試します */ }
+      入れ物.focus();
+      入れ物.select();
+      let 写せた = false;
+      try { 写せた = document.execCommand('copy'); } catch (e) { 写せた = false; }
+      if (写せた) { できた(); return; }
+      // ★この案内は**すぐ戻しません。**長押しして写すあいだ出ていないと、
+      //   何をすればいいのか分からなくなります（閉じて開き直すと戻ります）
+      写す.textContent = '選んだURLを長押しでコピー';
     });
   }
   // ★マイン（mine/）から開くと相対の img/ は /mine/img/ を見に行って404になるので、
