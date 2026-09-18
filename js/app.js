@@ -654,6 +654,19 @@ const CASH_JOB = 'cashJob';
 const ASK_静かな間 = [3000, 6000, 12000];
 
 /**
+ * 返事を待つ上限（ms）。`Sync.ask` の3つ目に渡します（本部が 2026-09-19 に足す口。無い版では 60秒のまま）
+ *
+ * ★本部の測り（2026-09-18 23:09〜23:14、17回）：通った返事でも合計 12〜23秒が 5回ありました。
+ *   20秒にすると、通る返事を 3〜5回に1回捨てます。端末があきらめても Apps Script は走り続けるので、
+ *   30秒にしてあります。24時間の測りが出たら、本部と一緒に見直します。
+ * ★写真の読み取り（Vision 2〜4秒＋送る分）も 30秒で足ります。足りなくても、印で聞き直せます（journal送る）。
+ */
+const ASK_上限 = { 日報: 30000, 読む: 30000, 残す: 30000, 聞く: 15000 };
+
+/** 「届いたか」を聞き直す間（ms）。合わせて30秒ほど。サーバーが「まだ動いている」と言うあいだ、これで待ちます */
+const ASK_聞き直す間 = [2000, 4000, 6000, 8000, 10000];
+
+/**
  * サーバーに頼み、**つながらなかったときだけ**、静かに送り直します（3回まで）
  *
  * ★2026-09-15、入口が閉店の時間帯に Google の「404のページ」を 5〜50秒待たせてから
@@ -690,16 +703,103 @@ const ASK_静かな間 = [3000, 6000, 12000];
 async function askAgain(action, extra, 決め) {
   const 時間切れか = (r) => r.kind === '返事なし' || /返事をしません/.test(String(r.error || ''));
   const 送らない = !!(決め && 決め.時間切れは送らない);
-  let 出 = await Sync.ask(action, extra);
+  /* ★待つ上限（ms）と、重ねて送るか（hedge）。渡さなければ Sync.ask の決まり（60秒・重ねない）です。
+       hedge は本部が 2026-09-19 に足した口：8秒たっても返事が無ければ同じ体をもう1本送り、先に返った方を取ります。
+       ★付けるのは日報の**見るだけ**です。書き込みには付けません（遅れた片割れが、直したあとの値を古い値で上書きしうるため）。
+         写真にも付けません（Vision が2枚になります） */
+  const 上限 = 決め && (決め.ms || 決め.hedge) ? { ms: 決め.ms, hedge: !!決め.hedge } : undefined;
+  let 出 = await Sync.ask(action, extra, 上限);
   let 回 = 0;
   while (!出.ok && cashTodokazu(出.error) && 出.kind !== '電波なし'
     && !(送らない && 時間切れか(出)) && 回 < ASK_静かな間.length) {
     await new Promise((r) => setTimeout(r, ASK_静かな間[回]));
     回 += 1;
-    出 = await Sync.ask(action, extra);
+    出 = await Sync.ask(action, extra, 上限);
     出.送り直した = 回;
   }
   return 出;
+}
+
+/* ------------------------------------------------------------
+ *  ★★写真の頼みごと（journal）は、印を付けて送り、返事が来なければ「届いたか」を聞き直します
+ *
+ *  上の askAgain は「404 なら送り直す・時間切れなら送り直さない（人が押し直す）」でした。
+ *  写真は送り直すと Cloud Vision がもう1枚数え、ドライブの写真も作り直しになるからです。
+ *  ★2026-09-18 の夜、Google の渡す口が止まって、押し直しと待ちで「かなり遅い」と ko-dai さんから。
+ *
+ *  ★端末が写真ごとに印（id）を付けます。サーバー（gas/現金売上.gs）は印ごとに返事を6時間置きます。
+ *    返事が来なかったら、写真は送らずに { mode:'result', id } で「届いたか」だけ聞きます。
+ *      返事がある（again）        → それを使います。Vision もドライブも動きません
+ *      まだ動いている（running）  → 少し待ってもう一度聞きます
+ *      知らない印（none）         → 届いていなかったので、**同じ印で**1回だけ送り直します
+ *  ★サーバーが印を知らない版（貼り直し前）のときは、今までどおりです（聞き直しも送り直しもしません）。
+ *    前にもらった返事の版（cashGasSeen）で見分けます。
+ * ---------------------------------------------------------- */
+
+/** 写真1枚ごとの印（英数字だけ。サーバーはこれで返事を置きます） */
+function journalId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** サーバー（現金売上.gs）が印を知っている版か。前に返事をもらった版で見ます（cashGasOk が覚えます） */
+function journal印が使える() {
+  try { return Store.meta('cashGasSeen') === CASH_GAS_VERSION; } catch (e) { return false; }
+}
+
+async function journal送る(req, ms) {
+  const 上限 = { ms };
+  let 出 = await Sync.ask('journal', req, 上限);
+  if (出.ok || !cashTodokazu(出.error) || 出.kind === '電波なし') return 出;
+  if (!journal印が使える()) return 出;            // 古いサーバー：今までどおり（送り直しません）
+  const of = req.mode === 'read' ? 'read' : 'save';
+  let 送り直した = 0;
+  for (let 回 = 0; 回 < ASK_聞き直す間.length; 回++) {
+    await new Promise((r) => setTimeout(r, ASK_聞き直す間[回]));
+    const r = await Sync.ask('journal', { mode: 'result', of, id: req.id }, { ms: ASK_上限.聞く });
+    // ★again … 置いてあった返事（うまくいったものも、途中で落ちたものも）。これで決まりです
+    if (r.again) { r.聞き直した = 回 + 1; r.送り直した = 送り直した; return r; }
+    // ★印を知らないサーバー（貼り直し前）は、code も kind も無い断りを返します。聞いても無駄なのでやめます
+    if (!r.code && !r.kind) return 出;
+    if (r.code === 'none' && !送り直した) {
+      送り直した = 1;
+      出 = await Sync.ask('journal', req, 上限);
+      if (出.ok || !cashTodokazu(出.error) || 出.kind === '電波なし') {
+        出.聞き直した = 回 + 1; 出.送り直した = 1; return 出;
+      }
+    }
+    // 'running' と、聞き直しそのものが通らなかったとき … 次の間を待ちます
+  }
+  出.聞き直した = ASK_聞き直す間.length;
+  出.送り直した = 送り直した;
+  return 出;
+}
+
+/* ------------------------------------------------------------
+ *  かかった時間を、この端末に残します（直近12回）
+ *
+ *  ★「遅い」と言われたとき、そのときの画面の文はもう消えています（2026-09-18）。
+ *    端末に残しておけば、あとから「読み取った文字を見る」で読めます。共有のシートには送りません。
+ * ---------------------------------------------------------- */
+const JOURNAL_秒 = 'journal秒';
+
+function journal秒を残す(何, 中身) {
+  try {
+    const 前 = JSON.parse(Store.meta(JOURNAL_秒) || '[]');
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    前.push({ at: `${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`, 何, ...中身 });
+    Store.setMeta(JOURNAL_秒, JSON.stringify(前.slice(-12)));
+  } catch (e) { /* 残せなくても、打つのに困りません */ }
+}
+
+function journal秒の文() {
+  try {
+    const 並び = JSON.parse(Store.meta(JOURNAL_秒) || '[]');
+    if (!並び.length) return '';
+    const 秒 = (ms) => (typeof ms === 'number' ? `${(ms / 1000).toFixed(1)}秒` : '?');
+    return 並び.slice().reverse().map((x) => `${x.at}　${x.何}　${秒(x.ms)}（サーバーの中 ${秒(x.中)}`
+      + `${x.送り直した ? `・${x.送り直した}回 送り直し` : ''}${x.聞き直した ? `・${x.聞き直した}回 聞き直し` : ''}）`).join('\n');
+  } catch (e) { return ''; }
 }
 
 /**
@@ -715,6 +815,7 @@ function nippou秒(部) {
   const 外 = [];
   const 内 = [];
   let 送り直し = 0;
+  // ★「見る」は 2026-09-19 に無くなりました（往復1回）。古い控えのために残してあります
   if (部.見) {
     外.push(`見る ${秒(部.見.ms)}`); 内.push(中(部.見.res));
     送り直し += ((部.見.res || {}).送り直した || 0);
@@ -725,8 +826,9 @@ function nippou秒(部) {
     送り直し += ((部.書.res || {}).送り直した || 0);
   }
   if (!外.length) return '';
+  const 聞き返し = 部.書 && 部.書.res && 部.書.res.聞き返した ? '・日報の数を確かめてから' : '';
   return `　${外.join('／')}（サーバーの中 ${内.join('／')}`
-    + `${送り直し ? `・${送り直し}回 静かに送り直しました` : ''}）`;
+    + `${送り直し ? `・${送り直し}回 静かに送り直しました` : ''}${聞き返し}）`;
 }
 
 /**
@@ -816,7 +918,8 @@ async function cashResume() {
       el.cashShotEmpty.classList.add('is-hidden');
       el.cashShot.classList.remove('is-empty');
       setCashMsg('前の読み取りが途中でした。続きからやり直します…');
-      await cashReadPhoto(job.image, job.date);
+      // ★印（job.id）も渡します。前の読み取りがサーバーで終わっていれば、その返事をもらえます
+      await cashReadPhoto(job.image, job.date, null, job.id);
     } else if (job.kind === 'send') {
       if (job.sales !== undefined && job.sales !== null) el.cashSales.value = cashText(job.sales);
       if (job.by) fillStaffOptions(el.cashStaff, job.by);
@@ -838,11 +941,14 @@ async function cashResume() {
       setNippouMsg(`前の書き込みが途中でした。続きからやり直します…（${名}）`);
       await cashWakeOn();
       try {
-        const res = await Sync.ask('nippouWrite', {
-          mode: '書く', file: job.test, folder: job.folder, day: job.date,
+        /* ★やり直しでも「確かめて書く」です。人が確かめたのは**アプリの数**で、
+             そのあと日報が手で直されていれば、ここで聞き直します（黙って上書きしません） */
+        const res = await 日報確かめて書く({
+          file: job.test, folder: job.folder, day: job.date,
           values: nippouZeroDrop(job.values), extra: job.extra || [], calc: job.calc || {},
-        });
+        }, 名);
         if (!res.ok) {
+          if (res.やめた || res.版ちがい) { cashJobClear(); if (res.やめた) setNippouMsg(''); return; }
           if (!cashTodokazu(res.error)) cashJobClear();
           setNippouMsg((res.error || '書けませんでした')
             + (cashTodokazu(res.error) ? '　アプリを開き直すと、続きからやり直します' : ''), 'warn');
@@ -1661,7 +1767,7 @@ async function cashPullFromNippou(しずかに) {
 
   try {
     const res = await Sync.ask('nippouWrite',
-      { mode: '見る', file: test, folder, day: dateStr, values, extra: [], calc: {} });
+      { mode: '見る', file: test, folder, day: dateStr, values, extra: [], calc: {} }, { ms: ASK_上限.日報, hedge: true });
     if (!res.ok && !res.grid) { if (!しずかに) setNippouMsg(res.error || '日報を開けませんでした', 'warn'); return; }
     if (!res.v || res.v !== NIPPOU_GAS_VERSION) { if (!しずかに) nippouGasOk(res); return; }
 
@@ -1786,6 +1892,9 @@ function renderCash() {
     cashEdit.ms = 0;
     cashEdit.saveMs = 0;
     cashEdit.size = 0;
+    cashEdit.keepMs = 0;
+    cashEdit.keepError = '';
+    cashEdit.聞き直した = 0;
     // ジャーナルから読めた5つと、手で入れる引き算の分
     cashEdit.j = (saved && saved.j) ? { ...saved.j } : null;
     // ★記録ずみならその中身を、まだなら書きかけを出します。
@@ -2111,7 +2220,7 @@ async function cashGridLoad(しずかに) {
   try {
     const res = await Sync.ask('nippouWrite', {
       mode: '見る', file: test, folder, day: ymd(y, m, state.d), values: {},
-    });
+    }, { ms: ASK_上限.日報, hedge: true });
     if (!res.ok && !res.grid) { 言(res.error || '日報を開けませんでした', 'warn'); return; }
     // ★静かに読んでいるときは、版が古くても画面に出しません。
     //   日報へ書こうとしたときに、あらためて出ます
@@ -2620,8 +2729,30 @@ function nippouClashText(食いちがい) {
 }
 
 function setNippouMsg(text, kind) {
+  clearInterval(nippouTick);
   el.cashNippouMsg.textContent = text || '';
   el.cashNippouMsg.className = 'cash-msg' + (kind ? ` is-${kind}` : '') + (text ? '' : ' is-hidden');
+}
+
+/**
+ * 待っているあいだ、秒を数えて出します（「日報に書いています…（12秒）」）
+ *
+ * ★それまでは「書いています…」のまま止まって見えました。Google の渡す口が止まる晩は
+ *   30秒たつことがあります（2026-09-18）。動いていることと、電波のせいではないことを出します。
+ */
+let nippouTick = 0;
+function nippou待ち(text) {
+  clearInterval(nippouTick);
+  const from = Date.now();
+  const show = () => {
+    const sec = Math.round((Date.now() - from) / 1000);
+    el.cashNippouMsg.textContent = sec
+      ? `${text}（${sec}秒${sec >= 15 ? '・Google が混み合っています。このまま待ってください' : ''}）`
+      : text;
+    el.cashNippouMsg.className = 'cash-msg is-busy';
+  };
+  show();
+  nippouTick = setInterval(show, 1000);
 }
 
 /* ------------------------------------------------------------
@@ -2973,39 +3104,38 @@ async function nippouWritePart(part, btn) {
     return;
   }
 
-  nippouBtnBusy(btn, '日報を見に行っています…');
+  /* ★★往復は1回です（2026-09-19）。
+
+       それまでは ① 日報を見に行く → ② 確かめてもらう → ③ 書く、と Google への往復が2回
+       （ジャーナルは写真を残す分を足して3回）でした。1回が 3〜5秒でも 10〜15秒、
+       Google の渡す口が止まる晩は 1回ごとに最大60秒×送り直しで**分単位**になりました
+       （ko-dai さん「かなり遅い」・2026-09-18）。
+
+     ★確かめの画面は、**端末が持っている数**ですぐ出します。
+       日報にすでに**ちがう数**が入っていれば、サーバー（日報に書く.gs の '確かめて書く'）が
+       何も書かずにその並びを返し、そこでもう一度聞きます（日報確かめて書く）。
+       普段の日報はその日のマスが空なので、聞き直しは起きず、往復は1回で済みます。
+     ★書き先は、ボタンの上の札（renderNippouWhere）と、確かめの画面の「テスト用」の印で出します。
+       書いたあとの知らせには、これまでどおりファイルの名前を出します。 */
+  const 店名 = getStore(state.storeId) ? getStore(state.storeId).name : state.storeId;
+  // ★手で直した数は、押す前の確かめの画面でも分かるようにします
+  const 手の名 = 組.indexOf('journal') >= 0
+    ? journal行の数(state.storeId).filter((x) => x.手入力 && x.紙 !== null)
+      .map((x) => NIPPOU_LABELS[x.row.key])
+    : [];
+  const ok = await askConfirm({
+    // ★書き先を、押す前にも出します。テスト用なら、そう書きます
+    item: `${test ? '★テスト用の日報★　' : ''}${店名}　${Number(dateStr.slice(8))}日のページ（${決.name}）`,
+    message: nippou確かめの行(values, calc, extra).map((r) => r.text
+      + (手の名.indexOf(r.name) >= 0 ? '（手で直した数）' : '')).join('／')
+      + '　※日報にすでにちがう数が入っていれば、書く前にもう一度聞きます',
+    okLabel: '書く',
+  });
+  if (!ok) { setNippouMsg(''); return; }
+
+  nippouBtnBusy(btn, '日報に書いています…');
   await cashWakeOn();          // ★画面を消させません（消えると止まります）
   try {
-    // ① まず、今の中身を見に行きます（書きません）
-    setNippouMsg(`日報を見に行っています…（${決.name}）`);
-    const 見た = Date.now();
-    const look = await askAgain('nippouWrite',
-      { mode: '見る', file: test, folder, day: dateStr, values, extra, calc });
-    const 見 = { ms: Date.now() - 見た, res: look };
-    if (!look.ok) { setNippouMsg(look.error || '日報を開けませんでした', 'warn'); return; }
-    // ★書く前に、Apps Script が新しい版かを見ます
-    if (!nippouGasOk(look)) return;
-
-    // ② 並べて確かめてもらいます
-    const rows = look.rows || [];
-    const 食いちがい = nippouClash(rows);
-    // ★手で直した数は、押す前の確かめの画面でも分かるようにします
-    const 手の名 = 組.indexOf('journal') >= 0
-      ? journal行の数(state.storeId).filter((x) => x.手入力 && x.紙 !== null)
-        .map((x) => NIPPOU_LABELS[x.row.key])
-      : [];
-    const ok = await askConfirm({
-      // ★書き先の名前を、押す前にも出します。テスト用なら、そう書きます
-      item: `${test ? '★テスト用の日報★　' : ''}${look.file}　${look.sheet}日のページ（${決.name}）`,
-      message: rows.map((r) => `${r.name} ${cashShow(r.after)}`
-        + (手の名.indexOf(r.name) >= 0 ? '（手で直した数）' : '')).join('／')
-        + nippouClashText(食いちがい),
-      okLabel: '書く',
-      danger: 食いちがい.length > 0,
-    });
-    if (!ok) { setNippouMsg(''); return; }
-    nippouBtnBusy(btn, '日報に書いています…');
-
     if (決.記録も) {
       // ★ここから先は何秒かかかります。控えておいて、
       //   途中でアプリを閉じられても続きからやり直せるようにします
@@ -3015,11 +3145,11 @@ async function nippouWritePart(part, btn) {
         j: cashEdit.j, m: cashEdit.m, sure: cashEdit.sure, 手: cashEdit.手, extra, calc,
         at: new Date().toISOString(),
       });
-      await nippouSendNow(values, dateStr, test, folder, extra, calc, 見);
+      await nippouSendNow(values, dateStr, test, folder, extra, calc);
       return;
     }
 
-    /* ③ 書きます（ジャーナル以外は、現金売上の記録は要りません）
+    /* 書きます（ジャーナル以外は、現金売上の記録は要りません）
 
        ★書く前に控えます。**ここから先は何秒かかかります。**
          途中でアプリを閉じても、スマホがロックされても、
@@ -3030,12 +3160,12 @@ async function nippouWritePart(part, btn) {
       kind: 'part', part: 組.length === 1 ? 組[0] : 組, store: state.storeId, date: dateStr,
       values, extra, calc, test, folder, at: new Date().toISOString(),
     });
-    setNippouMsg(`日報に書いています…（${決.name}）`);
     const 書いた = Date.now();
-    const res = await askAgain('nippouWrite',
-      { mode: '書く', file: test, folder, day: dateStr, values, extra, calc });
+    const res = await 日報確かめて書く({ file: test, folder, day: dateStr, values, extra, calc }, 決.name);
     const 書 = { ms: Date.now() - 書いた, res };
     if (!res.ok) {
+      if (res.やめた) { cashJobClear(); setNippouMsg(''); return; }
+      if (res.版ちがい) { cashJobClear(); return; }      // 知らせは出ています。貼り直したら、もう一度押してもらいます
       // ★サーバーまで届いていないときだけ、控えを残します
       if (cashTodokazu(res.error)) {
         setNippouMsg((res.error || '書けませんでした')
@@ -3048,6 +3178,7 @@ async function nippouWritePart(part, btn) {
     }
     cashJobClear();                          // ここまで来たら、やり直す必要はありません
     cashWroteSave(dateStr, values, extra);   // ★日報で直されたかを見くらべるため
+    journal秒を残す(`日報（${決.name}）`, { ms: 書.ms, 中: res.ms && res.ms.全部, 送り直した: res.送り直した || 0 });
     /* ★どのファイルに書いたかを出します。
          「アプリでは書けたことになっているのに、日報には入っていなかった」
          ということがありました（バグる・2026-09-11）。
@@ -3055,13 +3186,40 @@ async function nippouWritePart(part, btn) {
          書き先の名前を、あとから見て分かるように残します。 */
     setNippouMsg(`${決.name}を書きました　→ ${res.file}　${res.sheet}日`
       + `（${(res.rows || []).length}か所）${test ? '　★テスト用の日報です' : ''}`
-      + nippou秒({ 見, 書 }), 'ok');
+      + nippou秒({ 書 }), 'ok');
   } catch (e) {
     setNippouMsg(String(e && e.message || e), 'warn');
   } finally {
     cashWakeOff();
     nippouBtnDone(btn);
   }
+}
+
+/**
+ * 確かめの画面に並べる行（端末が持っている数から作ります）
+ *
+ *   values … { '電子マネー': ◯◯◯◯◯, … }             → 「電子マネー ◯◯,◯◯◯」
+ *   calc   … { '現金売上': { base, minus: [名…] } }  → 「現金売上 ◯◯◯,◯◯◯（◯◯◯,◯◯◯−出前館現金−ウーバー現金）」
+ *   extra  … [{ name, col, value }]                  → 「仕入先A（F）3,000」
+ *
+ * ★見に行かずに出すので、行番号は分かりません。引き算は**行の名前**で見せます
+ *   （前はサーバーの作った式 =◯◯◯◯◯◯-B5-B11 をそのまま見せていました。こちらの方が読めます）。
+ */
+function nippou確かめの行(values, calc, extra) {
+  const 行 = [];
+  Object.keys(values || {}).forEach((name) => {
+    if (calc && calc[name]) return;                     // 式で入れる行は下で
+    行.push({ name, text: `${name} ${cashShow(values[name])}` });
+  });
+  Object.keys(calc || {}).forEach((name) => {
+    const c = calc[name] || {};
+    const 引く = (c.minus || []).map((m) => `−${m}`).join('');
+    行.push({ name, text: `${name} ${cashShow(c.base)}${引く ? `（${cashShow(c.base)}${引く}）` : ''}` });
+  });
+  (extra || []).forEach((x) => {
+    行.push({ name: `${x.name}（${x.col}）`, text: `${x.name}（${x.col}）${cashShow(x.value)}` });
+  });
+  return 行;
 }
 
 /* ------------------------------------------------------------
@@ -3126,11 +3284,89 @@ async function writeNippou() {
  *  ★writeNippou からも、続きからやり直すとき（cashResume）からも呼びます。
  *    最後まで行けたら控えを消します。
  */
-async function nippouSendNow(values, dateStr, test, folder, extra, calc, 見) {
+/**
+ * 日報へ、確かめながら書きます（往復1回。日報に書く.gs の '確かめて書く'）
+ *
+ *   返り … サーバーの返事そのもの（ok・rows・file・sheet・total・ms・wrote）。
+ *          ok:false のとき、やめた:true（人が上書きをやめた）／版ちがい:true（知らせは出してあります）が付くことがあります
+ *
+ * ★日報にすでに**ちがう数**が入っているマスがあれば、サーバーは何も書かずに clash を返します。
+ *   ここで人に見せて（赤いボタン）、「上書きして書く」なら force を付けて送り直します。
+ *   ★これは前の「見る → 確かめる → 書く」と同じ守りです。ちがうのは、日報が空の普段の日に
+ *     見に行く往復が無いことだけです。
+ * ★やり直しても同じ値を同じマスに書くだけなので、返事が来なかったときは askAgain が静かに送り直します。
+ * ★★書き込みには hedge（8秒で同じ頼みを重ねる）を**付けません**（本部の注意・2026-09-19）。
+ *   先に返った方を取ると、遅れた片割れは Google 側で走り続けます。悪い晩はスクリプトが動き出すまで
+ *   10〜21秒かかるので、**数を直してすぐ書き直すと、古い片割れがあとから古い値で上書きする**ことがあります。
+ *   見るだけ（cashPullFromNippou・cashGridLoad）には付けています。
+ */
+async function 日報確かめて書く(req, 名) {
+  const 送る = (force) => askAgain('nippouWrite', {
+    mode: '確かめて書く', force: !!force, file: req.file, folder: req.folder, day: req.day,
+    values: req.values, extra: req.extra || [], calc: req.calc || {},
+  }, { ms: ASK_上限.日報 });   // ★hedge は付けません（下の説明）
+  const 文 = `日報に書いています…${名 ? `（${名}）` : ''}`;
+  nippou待ち(文);
+  let res = await 送る(false);
+  if (!res.ok) return res;
+  // ★Apps Script が新しい版かを見ます。古いと '確かめて書く' を「見る」と読んで**書いていません**
+  if (!nippouGasOk(res)) return { ok: false, error: '', 版ちがい: true };
+  /* ★★古い日報に書く.gs（'確かめて書く' を知らない版）への逃げ道（2026-09-19）。
+       古い版は '確かめて書く' を「見る」と読んで**書かず**、rows を返し、返事に clash の欄がありません
+       （新しい版は、書かなかったときも clash を入れます。無ければ null）。
+       版の印が合っていてこの形なら、前の「見る → 確かめる → 書く」で続けます。
+       ★貼り直しの順番がずれても日報が止まらないための道です。普段は通りません。 */
+  if (res.wrote === false && res.clash === undefined) {
+    const 食いちがい = nippouClash(res.rows || []);
+    if (食いちがい.length) {
+      const ok = await askConfirm({
+        item: `${req.file ? '★テスト用の日報★　' : ''}${res.file}　${res.sheet}日のページ`,
+        message: nippouClashText(食いちがい).replace(/^　/, '') + '。このまま書きますか',
+        okLabel: '上書きして書く',
+        danger: true,
+      });
+      if (!ok) return { ok: false, error: '', やめた: true };
+    }
+    nippou待ち(文);
+    res = await askAgain('nippouWrite', {
+      mode: '書く', file: req.file, folder: req.folder, day: req.day,
+      values: req.values, extra: req.extra || [], calc: req.calc || {},
+    }, { ms: ASK_上限.日報 });
+    if (!res.ok) return res;
+    if (!nippouGasOk(res)) return { ok: false, error: '', 版ちがい: true };
+    res.古い道 = 1;
+    if (食いちがい.length) res.聞き返した = 1;
+    return res.wrote ? res : { ok: false, error: '書けたかどうか分かりません' + gasNakami(res) };
+  }
+  if (res.clash && res.clash.length && !res.wrote) {
+    const 前の送り直し = res.送り直した || 0;
+    const ok = await askConfirm({
+      item: `${req.file ? '★テスト用の日報★　' : ''}${res.file}　${res.sheet}日のページ`,
+      message: nippouClashText(res.clash).replace(/^　/, '') + '。このまま書きますか',
+      okLabel: '上書きして書く',
+      danger: true,
+    });
+    if (!ok) return { ok: false, error: '', やめた: true };
+    nippou待ち(文);
+    res = await 送る(true);
+    if (!res.ok) return res;
+    if (!nippouGasOk(res)) return { ok: false, error: '', 版ちがい: true };
+    res.送り直した = (res.送り直した || 0) + 前の送り直し;
+    res.聞き返した = 1;
+  }
+  if (!res.wrote) {
+    // ★新しいサーバーは、書いたときだけ wrote:true を返します。ここに来るのは、書くものが無かったときです
+    return { ok: false, error: '日報に書くものがありませんでした' + gasNakami(res) };
+  }
+  return res;
+}
+
+async function nippouSendNow(values, dateStr, test, folder, extra, calc) {
   values = nippouZeroDrop(values);      // ★0円は書きません（出口でも落とします）
   // ① ★先に現金売上を確定させます（写真もドライブへ）。
   //    こちらが失敗したら日報には書きません。書いてから記録に失敗すると、
   //    日報にだけ数字が入って、手元に証拠が残らない形になってしまいます
+  //    ★2026-09-19 から、写真は読み取りのついでに残るので、ここで送るものはふつうありません（saveCash）
   setNippouMsg('現金売上を記録しています…');
   const kept = await saveCash();
   if (!kept) {
@@ -3138,13 +3374,14 @@ async function nippouSendNow(values, dateStr, test, folder, extra, calc, 見) {
     return;
   }
 
-  // ② 書きます
-  setNippouMsg('日報に書いています…');
+  // ② 確かめながら書きます（往復1回）
   const 書いた = Date.now();
-  const res = await askAgain('nippouWrite',
-    { mode: '書く', file: test, folder, day: dateStr, values, extra: extra || [], calc: calc || {} });
-  const 秒 = nippou秒({ 見, 写真ms: cashEdit.saveMs, 書: { ms: Date.now() - 書いた, res } });
+  const res = await 日報確かめて書く({ file: test, folder, day: dateStr, values, extra: extra || [], calc: calc || {} }, 'ジャーナル');
+  const 秒 = nippou秒({ 写真ms: cashEdit.saveMs, 書: { ms: Date.now() - 書いた, res } });
   if (!res.ok) {
+    if (res.やめた) { cashJobClear(); setNippouMsg(''); return; }
+    if (res.版ちがい) { cashJobClear(); return; }      // 知らせは出ています。貼り直したら、もう一度押してもらいます
+    if (!cashTodokazu(res.error)) { cashJobClear(); setNippouMsg(res.error || '書けませんでした', 'warn'); return; }
     // ★控えは消しません。通信が切れただけなら、次に開いたときに続きからやり直します
     setNippouMsg((res.error || '書けませんでした') + '　アプリを開き直すと、続きからやり直します', 'warn');
     return;
@@ -3152,6 +3389,7 @@ async function nippouSendNow(values, dateStr, test, folder, extra, calc, 見) {
 
   cashJobClear();            // ここまで来たら、やり直す必要はありません
   cashWroteSave(dateStr, values, extra);   // ★日報で直されたかを見くらべるため
+  journal秒を残す('日報（ジャーナル）', { ms: Date.now() - 書いた, 中: res.ms && res.ms.全部, 送り直した: res.送り直した || 0 });
 
   // ③ 書いたあとの検算
   const want = (cashEdit.j || {}).gross;
@@ -3481,7 +3719,10 @@ function setCashWait(text) {
   const from = Date.now();
   const show = () => {
     const sec = Math.round((Date.now() - from) / 1000);
-    el.cashMsg.textContent = sec ? `${text}（${sec}秒）` : text;
+    // ★15秒を超えたら、電波のせいではないことを添えます（Google の渡す口が止まる晩があります）
+    el.cashMsg.textContent = sec
+      ? `${text}（${sec}秒${sec >= 15 ? '・Google が混み合っています。このまま待ってください' : ''}）`
+      : text;
     el.cashMsg.className = 'cash-msg is-busy';
   };
   show();
@@ -3638,6 +3879,8 @@ function cashShrink(file, quality) {
  */
 function cashGasOk(res, 読むだけ) {
   const now = res && res.v ? String(res.v) : '';
+  // ★もらった版を覚えます。写真の「届いたか」の聞き直し（journal送る）は、この版で使えるかを決めます
+  if (now) { try { Store.setMeta('cashGasSeen', now); } catch (e) { /* 覚えられなくても進みます */ } }
   if (now === CASH_GAS_VERSION) return true;
   gasChigauShow(setCashMsg, '現金売上.gs', now, CASH_GAS_VERSION, gasNakami(res));
   /* ★版が**分からない**だけのときは、読み取りは続けます。
@@ -3676,9 +3919,11 @@ async function onCashFile(e) {
 
     // ★送る前に控えます。ここから先は何秒かかかるので、
     //   途中でアプリを閉じられても、戻ってきたら続きからやり直せるようにします
-    cashJobSave({ kind: 'read', store: state.storeId, date: dateStr, image: dataUrl,
+    // ★写真の印も控えます。途中で切れても、サーバーで終わっていればその返事をもらえます
+    const id = journalId();
+    cashJobSave({ kind: 'read', store: state.storeId, date: dateStr, image: dataUrl, id,
       at: new Date().toISOString() });
-    await cashReadPhoto(dataUrl, dateStr, file);
+    await cashReadPhoto(dataUrl, dateStr, file, id);
   } catch (err) {
     setCashMsg(String(err && err.message || err), 'warn');
     showCashPhoto();
@@ -3862,8 +4107,18 @@ function cashYomiApply(積) {
   cashEdit.枚 = res.枚 || 0;
   cashEdit.語数 = res.語数 || 0;
   cashEdit.ocrMs = res.ocrMs || 0;
+  cashEdit.keepMs = res.keepMs || 0;
+  cashEdit.keepError = res.keepError || '';
+  cashEdit.聞き直した = res.聞き直した || 0;
 
-  cashEdit.pending = 積.dataUrl;
+  /* ★読み取りのついでにドライブに残せていれば（fileId）、記録のときに送るものはありません（2026-09-19）。
+       残せていなければ、これまでどおり「記録する」で送ります（pending） */
+  if (res.fileId) {
+    cashEdit.photo = res.fileId;
+    cashEdit.pending = '';
+  } else {
+    cashEdit.pending = 積.dataUrl;
+  }
   // ★読み取った文字はそのまま持っておきます。金額が違って入ったときに、
   //   何が読めていたのかを見られるようにするためです（紙の形が変わったときの手がかり）
   cashEdit.text = res.text || '';
@@ -3890,7 +4145,7 @@ function cashYomiApply(積) {
   return got;
 }
 
-async function cashReadPhoto(dataUrl, dateStr, file) {
+async function cashReadPhoto(dataUrl, dateStr, file, id) {
   /* ★★どの店舗の、どの日のために読んでいるのかを、**始めに控えます。**
 
        2026年9月12日、バグるで**前の日の数字が日報に書き込まれました。**
@@ -3915,13 +4170,16 @@ async function cashReadPhoto(dataUrl, dateStr, file) {
     // ★ここでは読み取るだけで、ドライブには残しません。
     //   残すのは「記録する」を押したときです（撮っただけの写真が溜まらないように）
     const from = Date.now();
-    // ★読み取り1回＝Cloud Vision 1枚。時間切れでは送り直しません（askAgain の説明を見てください）
-    let res = await askAgain('journal', {
-      mode: 'read',
-      store: 元の店,
-      date: dateStr,
-      image: dataUrl,
-    }, { 時間切れは送らない: true });
+    const 店名 = getStore(元の店) ? getStore(元の店).name : 元の店;
+    /* ★読み取り1回＝Cloud Vision 1枚。印（id）を付けて送り、返事が来なければ**同じ写真を送り直さず**、
+         「届いたか」を聞き直します（journal送る）。
+       ★keep … 読んだ写真を、そのままドライブに残してもらいます（2026-09-19）。
+         それまでは「記録する」でもう一度同じ写真を送っていました。残せていれば fileId が返り、
+         記録のときに送るものがありません。残せなければ、これまでどおり「記録する」で送ります */
+    let res = await journal送る({
+      mode: 'read', id: id || journalId(), keep: true,
+      store: 元の店, storeName: 店名, date: dateStr, image: dataUrl,
+    }, ASK_上限.読む);
     if (!res.ok) throw new Error(res.error || '送れませんでした');
 
     // ★Apps Script の貼り直しが済んでいるか、ここで見ます。
@@ -3951,9 +4209,10 @@ async function cashReadPhoto(dataUrl, dateStr, file) {
     if (file && !res.ocrError && (!前.cash || (日報も読む && !前.j))) {
       setCashWait('もう一度、きれいな写真で読み取っています…');
       const big = await cashShrink(file, CASH_PHOTO_Q_RETRY);
-      const res2 = await Sync.ask('journal', {
-        mode: 'read', store: 元の店, date: dateStr, image: big,
-      });
+      const res2 = await journal送る({
+        mode: 'read', id: journalId(), keep: true,
+        store: 元の店, storeName: 店名, date: dateStr, image: big,
+      }, ASK_上限.読む);
       // ★**よくなったときだけ**入れかえます。
       //   ここを「2回目を使う」にすると、1回目で読めていた日に
       //   2回目が外して、読めていたものを失います
@@ -3962,6 +4221,10 @@ async function cashReadPhoto(dataUrl, dateStr, file) {
         const よい = 後.cash > 前.cash || 後.j > 前.j
           || (後.cash === 前.cash && 後.j === 前.j && 後.n > 前.n);
         if (よい) { res = res2; dataUrl = big; }
+        /* ★ドライブに残っているのは**2回目の写真**です（同じ名前で置きかわるため）。
+             使う文字が1回目でも、写真のIDは2回目のものにします。2回目を残せていなければ空にして、
+             「記録する」でこれまでどおり送ります */
+        res = { ...res, fileId: res2.fileId || '', keepError: res2.keepError || '', keepMs: res2.keepMs || 0 };
       }
     }
     /* ★★入れる直前に、まだ同じ日・同じ店舗かを見ます（上の説明のとおり）。
@@ -4057,6 +4320,10 @@ function openOcrText() {
     cashEdit.ocrHow === 'vision' ? '読み取り Vision' : '',
     cashEdit.ocrHow === 'drive' ? '★読み取り ドライブ（Visionが使われていません）' : '',
     cashEdit.ocrMs ? `サーバーの中 ${(cashEdit.ocrMs / 1000).toFixed(1)}秒` : '',
+    // ★読み取りのついでに写真を残した時間と、「届いたか」を聞き直した回数（2026-09-19）
+    cashEdit.keepMs ? `写真を残す ${(cashEdit.keepMs / 1000).toFixed(1)}秒（読み取りのついで）` : '',
+    cashEdit.keepError ? `★写真を残せませんでした（${cashEdit.keepError}）。記録するときに送ります` : '',
+    cashEdit.聞き直した ? `★届いたかを ${cashEdit.聞き直した}回 聞き直しました` : '',
     cashEdit.枚 ? `今月 ${cashEdit.枚}枚目（1か月1000枚まで）` : '',
     cashEdit.どちら ? '★現金は組み直した方から' : '',
     (cashEdit.合わせた || []).length
@@ -4071,8 +4338,11 @@ function openOcrText() {
       + `　${cashEdit.どちら ? '※こちらを使いました' : '※今回はこちらを使っていません'}`
       + '\n────────────────\n' + cashEdit.行
     : '';
+  // ★この端末で日報に書いたときにかかった時間（直近）。「遅い」と言われたとき、ここを送ってもらいます
+  const 秒 = journal秒の文();
+  const 時間 = 秒 ? `\n\n────────────────\n★この端末で日報に書いた時間（直近）\n────────────────\n${秒}` : '';
   el.ocrText.textContent = (how ? `（${how}）\n\n` : '')
-    + (cashEdit.text || '（何も読み取れませんでした）') + 組み;
+    + (cashEdit.text || '（何も読み取れませんでした）') + 組み + 時間;
   el.ocrCopy.textContent = 'コピーする';
   el.ocrModal.classList.remove('is-hidden');
 }
@@ -4122,18 +4392,20 @@ async function saveCash() {
     const before = el.cashSave.textContent;
     el.cashSave.textContent = '写真を残しています…';
     const from = Date.now();
-    /* ★写真を残すのも、時間切れでは送り直しません。
-         向こうはまだ書いている最中かもしれず、重ねて送ると
-         「古いのをゴミ箱へ入れて、新しく作る」が2つ同時に走ります。
+    /* ★ここを通るのは、読み取りのついでに残せなかったときだけです（2026-09-19 から）。
+       ★写真を残すのも、同じ写真を送り直しません。印を付けて送り、返事が来なければ
+         「届いたか」を聞き直します（journal送る）。重ねて送ると
+         「古いのをゴミ箱へ入れて、新しく作る」が2つ同時に走るためです。
        ★残せなかったと出たら、ko-dai さんが「記録する」をもう一度押せば済みます。 */
-    const res = await askAgain('journal', {
+    const res = await journal送る({
       mode: 'save',
+      id: journalId(),
       store: state.storeId,
       // フォルダの名前に使うので、店舗の名前も送ります
       storeName: getStore(state.storeId).name,
       date: dateStr,
       image: cashEdit.pending,
-    }, { 時間切れは送らない: true });
+    }, ASK_上限.残す);
     el.cashSave.disabled = false;
     el.cashSave.textContent = before;
     cashEdit.saveMs = Date.now() - from;
