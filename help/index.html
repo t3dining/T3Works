@@ -267,7 +267,7 @@
   .help-q, .help-lead, .help-first, .help-sec__head { box-shadow: none; }
 }
 </style>
-<meta name="app-version" content="2ca6187c">
+<meta name="app-version" content="4a31a151">
 </head>
 <body>
 
@@ -1206,6 +1206,50 @@
       <li>集まったら、枠に名前を入れていきます</li>
       <li>できたら<b>確定</b>します。確定すると、出した人の画面に決まった表が出ます</li>
     </ol>
+
+    <!-- ★シフトの「QR・URL」ボタン（2026-09-18、ko-dai さんの依頼をシフト部署が取り次ぎ）。
+         絵は js/app.js の openShiftQr() の実物どおりです。マインのシフトの画面だけに出ます -->
+    <h3>提出ページのQRコードとURLを渡す（お店の人）</h3>
+    <p>
+      新しく入った人に提出ページを教えるときは、マインの<b>「シフト」</b>の画面で、
+      店舗名の横の<b>「QR・URL」</b>を押します。
+    </p>
+
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <div class="modal__panel modal__panel--confirm" style="box-shadow:none;border:1px solid var(--line);">
+          <h2 class="modal__title">シフト提出のQRコード</h2>
+          <img src="../img/shift-qr.png?v=3509f79d" alt="シフト提出ページのQRコード" width="220" height="220"
+            style="display:block;width:220px;height:220px;margin:0 auto 10px;">
+          <p class="modal__note">スマホのカメラで読み取ると、シフト提出のページが開きます。<br>
+            番号は、ひとりずつ別に送ってください。</p>
+          <input type="text" class="field__input" readonly
+            value="https://t3dining.github.io/T3Works/shift/?openExternalBrowser=1"
+            style="font-size:12.5px;text-align:center;margin-bottom:12px;">
+          <div class="modal__actions modal__actions--confirm">
+            <button type="button" class="btn">閉じる</button>
+            <button type="button" class="btn btn--primary">URLをコピー</button>
+          </div>
+        </div>
+      </div>
+      <p class="help-shot__cap">「閉じる」か、画面の外側を押すと閉じます。</p>
+    </div>
+
+    <ul class="help-list">
+      <li><b>その場で読み取ってもらう</b>… 相手のスマホのカメラで、QRコードを読み取ってもらいます</li>
+      <li><b>LINEで送る</b>… 「<b>URLをコピー</b>」を押して、LINEに貼って送ります。
+        このURLは、LINEの中ではなく Safari などで開くようになっています</li>
+      <li>コピーできないスマホでは、URLが選ばれた状態になり、ボタンが「<b>選んだURLを長押しでコピー</b>」に変わります。
+        URLを長押ししてコピーしてください</li>
+    </ul>
+
+    <div class="help-important">
+      <span class="help-important__label">番号は別に送ってください</span>
+      <p>QRコードにもURLにも、番号は入っていません。<b>番号は1人ずつ、別に送ってください。</b></p>
+    </div>
+    <div class="help-note">
+      このボタンは<b>マインのシフトの画面だけ</b>に出ます。QRコードとURLは、どのお店でも同じです（誰のシフトかは番号で決まります）。
+    </div>
   </section>
 
   <section class="help-sec" id="s7">
