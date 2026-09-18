@@ -1677,7 +1677,7 @@ function saveCatchStaff() {
 /**
  * 名簿を出している店舗（空なら出していません）
  *
- * ★名前も番号も、**ふだんは出しません。**開きっぱなしの端末で
+ * ★名前も番号も、**普段は出しません。**開きっぱなしの端末で
  *   誰でも読めてしまわないようにするためです。押したときだけ出します。
  * ★店舗を変えたら閉じます。アプリを裏に回したときも閉じます。
  */
@@ -1750,7 +1750,7 @@ function renderShiftCodes() {
     name.className = 'shift-code__name';
     name.textContent = p.n;
 
-    // ★ふだんの持ち場。希望を取り込むと、ここで決めた側に入ります
+    // ★普段の持ち場。希望を取り込むと、ここで決めた側に入ります
     const lanes = document.createElement('span');
     lanes.className = 'shift-code__lanes';
     SHIFT_LANES.forEach((lane) => {
@@ -2412,7 +2412,7 @@ function renderShiftSlots() {
       add('選べる時刻', 'times',
         (Array.isArray(v.times) && v.times.length ? v.times : base.times).join(','),
         base.times.join(','));
-      add('ふだんの時刻', 'pick', v.pick || base.pick, base.pick);
+      add('普段の時刻', 'pick', v.pick || base.pick, base.pick);
     }
 
     el.shiftSlotList.appendChild(row);
@@ -2503,9 +2503,9 @@ function saveShiftSlots() {
       if (!times.length && !bad.length) だめ.push(`${枠名}の「選べる時刻」が空です`);
       const pickRaw = get('pick');
       const pick = pickRaw ? shiftTimeFrom(pickRaw) : '';
-      if (pickRaw && pick === null) だめ.push(`${枠名}の「ふだんの時刻」：${pickRaw}`);
+      if (pickRaw && pick === null) だめ.push(`${枠名}の「普段の時刻」：${pickRaw}`);
       直す.times = times;
-      // ★ふだんの時刻は、選べる時刻の中から選びます。
+      // ★普段の時刻は、選べる時刻の中から選びます。
       //   外れていると「選べない時刻で入っている人」ができてしまいます
       直す.pick = times.includes(pick) ? pick : (times[0] || '');
     }

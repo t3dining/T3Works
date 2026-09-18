@@ -730,6 +730,25 @@ function renderBuilt() {
         p2.textContent = '—';
         body.appendChild(p2);
       }
+      // ★この店舗から**ヘルプに出した人**（GAS の shiftHelpOut_ が、ほかの店舗の
+      //   同じ半月から数えて `out` に入れて渡します。2026-09-18）。
+      //   自分が出されている日は太くします（自分の行き先をひと目で見つけられるように）
+      const 送った = day && Array.isArray(day.out) ? day.out : [];
+      if (送った.length) {
+        const line = document.createElement('p');
+        line.className = 'built-line';
+        const tag = document.createElement('span');
+        tag.className = 'built-line__slot';
+        tag.textContent = 'ヘルプ';
+        line.appendChild(tag);
+        送った.forEach((x) => {
+          const one = document.createElement('span');
+          one.className = 'built-name' + (x.n === me.name ? ' is-me' : '');
+          one.textContent = helpSentText(x);
+          line.appendChild(one);
+        });
+        body.appendChild(line);
+      }
       if (day && day.memo) {
         const memo = document.createElement('p');
         memo.className = 'built-memo';
@@ -801,7 +820,13 @@ function builtSheetModel() {
       }),
     }));
 
-    const memo = part.map((s) => (isClosedOn(s) ? '' : ((built[s] || {}).memo || '')));
+    // ★ヘルプに出した人は、メモの行に「ヘルプ：…」で足します（組む画面の印刷と同じ）
+    const memo = part.map((s) => {
+      if (isClosedOn(s)) return '';
+      const d = built[s] || {};
+      const 足す = Array.isArray(d.out) && d.out.length ? `ヘルプ：${d.out.map(helpSentText).join('、')}` : '';
+      return [d.memo || '', 足す].filter(Boolean).join('　');
+    });
     blocks.push({ head, rows, memo });
   }
 

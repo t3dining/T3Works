@@ -321,7 +321,7 @@ body.is-dragging { cursor: grabbing; user-select: none; }
   background: var(--accent); border-color: var(--accent); color: #fff;
 }
 
-/* シフトに入る人の、ふだんの持ち場（キッチン／ホール） */
+/* シフトに入る人の、普段の持ち場（キッチン／ホール） */
 .shift-code__lanes { display: inline-flex; gap: 4px; }
 .lane-btn {
   border: 1px solid var(--line); border-radius: 7px;
