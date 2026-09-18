@@ -231,7 +231,8 @@
      ★`:where()` で包むのは、強さ（詳細度）を前と同じにするためです。包まないと、
        あとに書いた `margin: 0` の決まりに勝ってしまい、絵の外の余白が5か所変わります */
 .help-sec p:not(:where(.help-shot__body p)) { font-size: 14.5px; line-height: 1.9; margin: 0 0 12px; }
-.help-sec h3 {
+/* ★絵の中の h3（アプリの見出し）には効かせません。p と同じ考えで、:where() で強さを前と同じにしています */
+.help-sec h3:not(:where(.help-shot__body h3)) {
   margin: 24px 0 10px; font-size: 16px; font-weight: 800;
   padding-left: 11px; border-left: 4px solid var(--accent);
 }
@@ -267,7 +268,7 @@
   .help-q, .help-lead, .help-first, .help-sec__head { box-shadow: none; }
 }
 </style>
-<meta name="app-version" content="4a31a151">
+<meta name="app-version" content="045290a8">
 </head>
 <body>
 
@@ -289,7 +290,7 @@
   <p class="help-lead">
     T3 Works は、6店舗の閉店作業・掃除・教育・シフトを、<b>みんなの端末で同じように見るため</b>のアプリです。
     入力したものは、他の人の端末にも届きます。<br>
-    はじめて使う人は <b>1 番</b>から、困ったときは <b>9 番</b>から読んでください。<br><b>数字が3つ出てきます</b>（合言葉・あなたの番号・シフトの番号）。取りちがえやすいので、1番の表で見くらべてください。
+    はじめて使う人は <b>1 番</b>から、困ったときは <b>10 番</b>から読んでください。<br><b>数字が3つ出てきます</b>（合言葉・あなたの番号・シフトの番号）。取りちがえやすいので、1番の表で見くらべてください。
   </p>
 
   <ul class="help-toc">
@@ -301,7 +302,8 @@
     <li class="help-toc__item"><a href="#s6"><span class="help-toc__n">6</span>シフト<span class="help-toc__sub">希望を出す・組む</span></a></li>
     <li class="help-toc__item"><a href="#s7"><span class="help-toc__n">7</span>記録を見る<span class="help-toc__sub">あとから見る</span></a></li>
     <li class="help-toc__item"><a href="#s8"><span class="help-toc__n">8</span>お金まわり<span class="help-toc__sub">立て替え・キャッチ</span></a></li>
-    <li class="help-toc__item"><a href="#s9"><span class="help-toc__n">9</span>困ったとき<span class="help-toc__sub">よくある3つ</span></a></li>
+    <li class="help-toc__item"><a href="#s9"><span class="help-toc__n">9</span>面接マニュアル<span class="help-toc__sub">面接で聞くこと</span></a></li>
+    <li class="help-toc__item"><a href="#s10"><span class="help-toc__n">10</span>困ったとき<span class="help-toc__sub">よくある3つ</span></a></li>
   </ul>
 
   <section class="help-sec" id="s1">
@@ -526,7 +528,7 @@
       こうだいに聞いてください。<br>
       <b>番号の画面が出ないまま、画面の上の印が赤くなるときは、</b>アプリが古いままです。
       「新しい版があります」と出ていれば押してください。出ていなければ、アプリを一度閉じて開き直します
-      （9番の「困ったとき」にも書いてあります）。
+      （10番の「困ったとき」にも書いてあります）。
     </div>
 
     <h3>数字が3つ出てきます。混ざらないように</h3>
@@ -1357,7 +1359,108 @@
          `_loop()` … 今日のクローズ 8秒／誰かが入力中 3秒／それ以外 60秒／裏 取りに行かない
        ============================================================ -->
   <section class="help-sec" id="s9">
-    <div class="help-sec__head"><span class="help-sec__n">9</span><h2 class="help-sec__title">困ったとき</h2></div>
+    <div class="help-sec__head"><span class="help-sec__n">9</span><h2 class="help-sec__title">面接マニュアル</h2></div>
+    <!-- ★2026-09-18、本部が作った「面接マニュアル」（js/interview.js）。ko-dai さんが「新しい章にする」を選びました。
+         ★中身（面接で聞くこと・名前・金額）は、合言葉の内側（スプレッドシート）にあります。**ここには書かないこと。**
+           絵の中の文は、全部作り物の例です -->
+    <p>
+      アルバイトの面接で、<b>聞くことと伝えること</b>が上から並んでいます。
+      面接をする人が、面接のあいだに見ながら使います。
+    </p>
+
+    <h3>開き方</h3>
+    <p>
+      店舗を選ぶ画面の下、<b>「T3Dining」の欄</b>にある<b>「面接マニュアル」</b>（オレンジ）を押します。
+      ワークスにもマインにもあります。
+    </p>
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <button type="button" class="stores-big-btn stores-big-btn--people" style="margin:0;">
+          <span class="stores-big-btn__icon" aria-hidden="true">🤝</span>
+          <span class="stores-big-btn__text">
+            <span class="stores-big-btn__name">面接マニュアル</span>
+            <span class="stores-big-btn__sub">アルバイトの面接で、聞くことと伝えること</span>
+          </span>
+          <span class="stores-big-btn__arrow" aria-hidden="true">›</span>
+        </button>
+      </div>
+    </div>
+
+    <h3>上から順に聞いていく</h3>
+    <ol class="help-steps">
+      <li>上から順に、聞いたり伝えたりします</li>
+      <li>済んだら、<b>左の丸を押します。</b> ✓ が付きます（もう一度押すと戻ります）</li>
+      <li>上に「<b>済み ◯ / ◯</b>」と、いくつ済んだかが出ます</li>
+    </ol>
+
+    <!-- ★絵は js/interview.js の 絵() と index.html の #interviewPanel と同じ作りです。
+         本物は画面いっぱいに重なって出るので、絵では position を外しています -->
+    <div class="help-shot">
+      <div class="help-shot__body" style="padding:0;">
+        <div class="interview" style="position:static;inset:auto;z-index:auto;">
+          <div class="interview__bar" style="padding:10px 12px;">
+            <button type="button" class="interview__close" aria-label="閉じる">✕</button>
+            <h2 class="interview__title">面接マニュアル</h2>
+            <button type="button" class="interview__reset">チェックを消す</button>
+          </div>
+          <div class="interview__scroll" style="overflow:visible;">
+            <p class="interview__lead">上から順に聞いていきます。済んだら左の丸を押すと <b>✓</b> が付きます。
+              <span class="interview__progress">済み <b>1</b> / 3</span></p>
+            <div class="interview__body">
+              <section class="interview-sec">
+                <h3 class="interview-sec__title"><span>（例）はじめに</span><span class="interview-sec__count">1 / 3</span></h3>
+                <div class="interview-item is-done">
+                  <button type="button" class="interview-item__check" aria-pressed="true" aria-label="済み"></button>
+                  <div class="interview-item__body"><p class="interview-item__title">（例）あいさつをする</p></div>
+                </div>
+                <p class="interview-ask"><span class="interview-ask__tag">聞く</span>（例）相手に聞くこと</p>
+                <div class="interview-item">
+                  <button type="button" class="interview-item__check" aria-pressed="false" aria-label="まだ"></button>
+                  <div class="interview-item__body">
+                    <p class="interview-item__title">（例）伝えること</p>
+                    <ul class="interview-lines"><li class="interview-line interview-line--sub">（例）その説明</li></ul>
+                  </div>
+                </div>
+                <div class="interview-item">
+                  <button type="button" class="interview-item__check" aria-pressed="false" aria-label="まだ"></button>
+                  <div class="interview-item__body"><p class="interview-item__title">（例）もう1つ伝えること</p>
+                    <ul class="interview-lines"><li class="interview-line interview-line--em">（例）大事なこと</li></ul>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="help-shot__cap">中の文は例です。本物の文は、アプリの中で見てください。</p>
+    </div>
+
+    <ul class="help-list">
+      <li><b>「聞く」の吹き出し</b>… 相手に聞くことです</li>
+      <li><b>赤い字</b>… 大事なことです</li>
+      <li>閉じるときは、左上の<b>「✕」</b>を押します</li>
+    </ul>
+
+    <h3>面接が終わったら</h3>
+    <p>
+      右上の<b>「チェックを消す」</b>を押して、✓ を全部消してください。<b>次の人の面接の前に、必ず消します。</b>
+    </p>
+    <div class="help-note">
+      ✓ は<b>その端末の中だけ</b>のもので、保存されません。他の人の画面には出ません。アプリを閉じても消えます。
+    </div>
+
+    <h3>「まだ入っていません」と出たとき</h3>
+    <p>
+      面接マニュアルの文は、こうだいがマネージで入れます。
+      入れてあるのに出ないときは、<b>ヘッダーの丸い印が ✓ になるまで待ってから</b>、開き直してください。
+    </p>
+    <div class="help-note">
+      文は、<b>合言葉と番号が入っている端末にだけ</b>届きます（1番を見てください）。
+    </div>
+  </section>
+
+  <section class="help-sec" id="s10">
+    <div class="help-sec__head"><span class="help-sec__n">10</span><h2 class="help-sec__title">困ったとき</h2></div>
 
     <div class="help-q">
       <p class="help-q__title">他の人が入れたものが、自分の画面に出てこない</p>
