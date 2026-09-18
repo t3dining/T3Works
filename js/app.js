@@ -10904,6 +10904,89 @@ function shiftOpenMessage() {
   );
 }
 
+/* -------- 提出ページの QR と URL（2026-09-18、ko-dai さんの指示） --------
+ *
+ * ★組む画面の**店舗名の横**に「QR・URL」のボタンを置きます。
+ *   ふだんは出さず、**押したときだけ** QR と URL を出します（コピーのボタン付き）。
+ *   アルバイトに配るとき、この画面からそのまま見せたり送ったりできます。
+ * ★`index.html` は本部のファイルなので、ボタンも中身もここで作って差し込みます。
+ *   見た目は、すでにある `.today-btn` と `.modal` をそのまま使います（CSS は足していません）。
+ * ★店舗の見出しは**全部の業務で共通**です。シフト以外の業務に移ったときに
+ *   残らないよう、`render()` が毎回 `shiftQrBtnSync(isShift)` を呼びます。
+ * ★中身は全店舗で同じです（どの店舗の誰かは番号で決まるため）。
+ *   URL と絵は `SHIFT_SHARE_URL` ／ `SHIFT_QR_IMG`（js/config.js）。
+ */
+function shiftQrBtnSync(on) {
+  let b = document.getElementById('shiftQrBtn');
+  if (!b) {
+    if (!on) return;
+    const 置き場 = el.storeClosedBadge && el.storeClosedBadge.parentNode;
+    if (!置き場) return;
+    b = document.createElement('button');
+    b.type = 'button';
+    b.id = 'shiftQrBtn';
+    b.className = 'today-btn';
+    b.style.marginLeft = '0';   // .today-btn は右へ寄せる形なので、店舗名のすぐ横に戻します
+    b.textContent = 'QR・URL';
+    b.title = 'シフト提出ページの QR コードと URL';
+    b.addEventListener('click', openShiftQr);
+    置き場.appendChild(b);
+  }
+  b.hidden = !on;
+}
+
+function openShiftQr() {
+  let m = document.getElementById('shiftQrModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'shiftQrModal';
+    m.className = 'modal is-hidden';
+    m.innerHTML = `
+      <div class="modal__backdrop" data-shift-qr-close></div>
+      <div class="modal__panel modal__panel--confirm" role="dialog" aria-modal="true" aria-labelledby="shiftQrTitle">
+        <h2 class="modal__title" id="shiftQrTitle">シフト提出のQRコード</h2>
+        <img id="shiftQrImg" alt="シフト提出ページのQRコード" width="220" height="220"
+          style="display:block;width:220px;height:220px;margin:0 auto 10px;">
+        <p class="modal__note">スマホのカメラで読み取ると、シフト提出のページが開きます。<br>
+          番号は、ひとりずつ別に送ってください。</p>
+        <input type="text" class="field__input" id="shiftQrUrl" readonly
+          style="font-size:12.5px;text-align:center;margin-bottom:12px;">
+        <div class="modal__actions modal__actions--confirm">
+          <button type="button" class="btn" data-shift-qr-close>閉じる</button>
+          <button type="button" class="btn btn--primary" id="shiftQrCopy">URLをコピー</button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+    m.querySelectorAll('[data-shift-qr-close]').forEach((x) => {
+      x.addEventListener('click', () => m.classList.add('is-hidden'));
+    });
+    const 入れ物 = m.querySelector('#shiftQrUrl');
+    // 押したら全部選びます（コピーできない端末でも、そのまま長押しで写せるように）
+    入れ物.addEventListener('focus', () => 入れ物.select());
+    const 写す = m.querySelector('#shiftQrCopy');
+    写す.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(SHIFT_SHARE_URL);
+        写す.textContent = 'コピーしました';
+        setTimeout(() => { 写す.textContent = 'URLをコピー'; }, 1800);
+      } catch (e) {
+        // コピーできない端末では、URL を選んだ状態にして写してもらいます。
+        // ★この案内は**すぐ戻しません。**長押しして写すあいだ出ていないと、
+        //   何をすればいいのか分からなくなります（閉じて開き直すと戻ります）
+        入れ物.focus();
+        入れ物.select();
+        写す.textContent = '選んだURLを長押しでコピー';
+      }
+    });
+  }
+  // ★マイン（mine/）から開くと相対の img/ は /mine/img/ を見に行って404になるので、
+  //   ロゴと同じく ASSET_BASE を前に付けます
+  m.querySelector('#shiftQrImg').src = ASSET_BASE + SHIFT_QR_IMG;
+  m.querySelector('#shiftQrUrl').value = SHIFT_SHARE_URL;
+  m.querySelector('#shiftQrCopy').textContent = 'URLをコピー';
+  m.classList.remove('is-hidden');
+}
+
 /**
  * LINEに送る文をコピーするボタン
  *
@@ -11718,6 +11801,8 @@ function render() {
   if (closedDows.length) {
     el.storeClosedBadge.textContent = '毎週' + closedDows.map((n) => DOW[n]).join('・') + '曜定休';
   }
+  // シフトの画面のときだけ、店舗名の横に「QR・URL」（→ shiftQrBtnSync）
+  shiftQrBtnSync(isShift);
 
   renderStoreTabs();
   renderMonthTabs();

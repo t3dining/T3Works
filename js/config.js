@@ -6443,6 +6443,24 @@ function shiftSubmitUrl(code) {
   return u.href;
 }
 
+/**
+ * 提出ページを**配るとき**の URL と、その QR コード（2026-09-18、ko-dai さんの指示）
+ *
+ * ★組む画面（マインの各店舗 → シフト）の店舗名の横に「QR・URL」のボタンがあり、
+ *   押すとこの2つが出ます。全店舗で同じです（どの店舗かは番号で決まるため）。
+ * ★`shiftSubmitUrl()` は**いま開いている場所から組み立てる**ので、確かめ用の
+ *   localhost では localhost を指します。**配る URL はここに1つだけ**書きます。
+ * ★うしろの `?openExternalBrowser=1` は **LINE の決まりごと**です。LINE の中の
+ *   ブラウザでは番号を覚えられず、ホーム画面にも足せないので、LINE で読んでも
+ *   標準のブラウザ（Safari など）で開くようにします。提出ページは `?見本=` しか
+ *   読まないので、この印で動きは変わりません。
+ * ★**QR の絵（`img/shift-qr.png`）はこの URL から作ってあります。**
+ *   URL を変えたら、`swift 素材/シフト提出のQRを作る.swift` で作り直してください。
+ *   道具はここを読んで作り、読み直して1文字も同じか確かめます。
+ */
+const SHIFT_SHARE_URL = 'https://t3dining.github.io/T3Works/shift/?openExternalBrowser=1';
+const SHIFT_QR_IMG = 'img/shift-qr.png';
+
 /** 番号の桁数。増やすと当てにくくなりますが、打つのが手間になります */
 const SHIFT_CODE_LENGTH = 6;
 
