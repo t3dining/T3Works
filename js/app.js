@@ -7935,34 +7935,35 @@ function buildItemRow(storeId, dateStr, item, data) {
   time.className = 'item__time';
   time.textContent = timeText(data);
 
-  /* 誤チェック防止：チェックの前に確認する
-     click で preventDefault し、「はい」のときだけ実際に切り替える */
+  /* チェックを入れるときは、押したその場で入れます。
+     ★もとは入れるときも「完了にする」の確認を出していましたが、
+       2026-09-18 に ko-dai さんの指示でやめました。まちがえたら、もう一度押せば外せます。
+     外すときだけ確かめます。提出済みの日に外すと、提出の取り消しまで起きるためです。 */
+  const apply = (on, unsubmit) => {
+    cb.checked = on;
+    const next = Store.setItem(storeId, dateStr, item.id, { done: on });
+    if (unsubmit) Store.unsubmit(storeId, dateStr);
+    row.classList.toggle('is-done', on);
+    time.textContent = timeText(next);
+    refreshProgress();
+    renderDayTabs(false);
+  };
+
   cb.addEventListener('click', (e) => {
-    // click の時点で checked は既に反転済み。preventDefault で元に戻るので、
-    // 「これから入れたい状態」は cb.checked そのもの
-    const turningOn = cb.checked;
+    // click の時点で checked は既に反転済み＝「これから入れたい状態」
+    if (cb.checked) { apply(true, false); return; }
+
+    // 外すとき：preventDefault で見た目を元に戻し、「はい」のときだけ外します
     e.preventDefault();
-    // 提出済みの日でチェックを外すと、提出も取り消しになる
-    const wasSubmitted = !turningOn && !!Store.getDay(storeId, dateStr).submittedAt;
+    const wasSubmitted = !!Store.getDay(storeId, dateStr).submittedAt;
     askConfirm({
       item: item.label,
-      message: turningOn
-        ? 'この項目を「完了」にします。確認は済んでいますか？'
-        : wasSubmitted
-          ? 'この項目のチェックを外します。この日は提出済みのため、提出も取り消されます。'
-          : 'この項目のチェックを外します。よろしいですか？',
-      okLabel: turningOn ? '完了にする' : 'チェックを外す',
-      danger: !turningOn,
-    }).then((ok) => {
-      if (!ok) return;
-      cb.checked = turningOn;
-      const next = Store.setItem(storeId, dateStr, item.id, { done: turningOn });
-      if (wasSubmitted) Store.unsubmit(storeId, dateStr);
-      row.classList.toggle('is-done', turningOn);
-      time.textContent = timeText(next);
-      refreshProgress();
-      renderDayTabs(false);
-    });
+      message: wasSubmitted
+        ? 'この項目のチェックを外します。この日は提出済みのため、提出も取り消されます。'
+        : 'この項目のチェックを外します。よろしいですか？',
+      okLabel: 'チェックを外す',
+      danger: true,
+    }).then((ok) => { if (ok) apply(false, wasSubmitted); });
   });
 
   row.appendChild(cb);
@@ -10390,12 +10391,26 @@ function openHelpSend(dateStr) {
     });
     if (!at.to) m.querySelector('#helpSendSlot').textContent = '先に店舗を選んでください';
     const 今の枠 = 枠.find((sl) => sl.id === at.slot);
-    if (枠から && 今の枠 && at.t === '') at.t = 今の枠.pick || (今の枠.times || [])[0] || '';
-    ボタン(m.querySelector('#helpSendTimes'), (今の枠 ? 今の枠.times || [] : []).map((t) => ({ id: t, name: shiftTimeText(t) })), at.t, (t) => {
-      at.t = t;
-      m.querySelector('#helpSendFree').value = '';
-      m._draw(false);
-    });
+    // ★`every` の枠（4店舗）は普段の時刻を持たないので、先に入れておきません
+    if (枠から && 今の枠 && at.t === '' && !今の枠.every) at.t = 今の枠.pick || (今の枠.times || [])[0] || '';
+    const 時刻の箱 = m.querySelector('#helpSendTimes');
+    const 手で = m.querySelector('#helpSendFree').parentNode;
+    if (今の枠 && 今の枠.every) {
+      // 4店舗は、時と分を回して選びます（→ shiftWheel）。手で打つ欄は要りません
+      時刻の箱.innerHTML = '';
+      時刻の箱.appendChild(shiftWheel(今の枠.times || [], at.t, (t) => {
+        at.t = t;
+        m._draw(false);
+      }, 'field__input'));
+      手で.style.display = 'none';
+    } else {
+      手で.style.display = '';
+      ボタン(時刻の箱, (今の枠 ? 今の枠.times || [] : []).map((t) => ({ id: t, name: shiftTimeText(t) })), at.t, (t) => {
+        at.t = t;
+        m.querySelector('#helpSendFree').value = '';
+        m._draw(false);
+      });
+    }
     m.querySelector('#helpSendGo').disabled = !(at.n && at.to && at.lane && at.slot && at.t !== '');
   };
   m._draw(true);
@@ -11007,7 +11022,29 @@ function renderShiftPick() {
     ? (時刻で入れる ? '出勤時刻（押すと変わります）' : '開始時刻（押すと変わります）')
     : (時刻で入れる ? '出勤時刻（選ばなければ、その人の希望どおりに入ります）'
       : '開始時刻（選ばなければ、その人の希望どおりに入ります）');
-  if (選べる時刻.length) {
+  if (選べる時刻.length && !時刻で入れる && slot.every) {
+    // ★こじゃれ・炭まろ・ちゃこる・おいでんテラスは、時と分を回して選びます
+    //   （→ shiftWheel。2026-09-18、ko-dai さんの指示）。
+    //   ★直すときも**閉じません。**時を選んだあと、続けて分を回せるようにするためです。
+    //     時刻が変わると並びが変わるので、いまの人の位置を取り直します
+    el.shiftPickTimes.appendChild(shiftWheel(選べる時刻,
+      entry ? String(entry.t || '') : shiftPickAt.time, (t) => {
+        if (entry) {
+          const now = shiftDayOf(shiftRec(), dateStr);
+          const 直した = { ...now[slotId][index], t };
+          now[slotId].splice(index, 1);
+          now[slotId].push(直した);
+          now[slotId] = shiftSort(now[slotId]);
+          saveShiftDay(dateStr, now);
+          shiftPickAt.index = now[slotId].indexOf(直した);
+          renderShiftPick();
+          renderKeepScroll();
+        } else {
+          shiftPickAt.time = t;
+          renderShiftPick();
+        }
+      }, 'field__input'));
+  } else if (選べる時刻.length) {
     選べる時刻.forEach((t) => {
       const b = document.createElement('button');
       b.type = 'button';
