@@ -923,12 +923,27 @@ let calcPadHold = 0;        // テンキーの中を触った時刻（閉じな�
  *
  * ★★ko-dai さんの依頼で、会社のロゴでそろえました（2026-09-16）。
  *   img/t3dining-mark.png の画素を数えて測った色です。
- *     墨   #231916 … ロゴの黒。テンキーの地
- *     朱   #cf131c … ロゴの赤。＝ ＋ − と「確定」、上のふちの線
- *     生成り #f4ede4 … 数字の字と、ロゴの黒い線を明るくした色（暗い地で見えるように）
+ * ★★「赤・緑・白」の3案から **案1「白が主役」** に決まりました（ko-dai さん・2026-09-18）。
+ *   白い地に墨の字。赤は「消す」側（⌫・全部消す）、緑は「進む」側（確定）です。信号と同じ向きです。
+ *     墨   #231916 … ロゴの黒。数字・記号の字と、透かしの黒い線
+ *     朱   #cf131c … ロゴの赤。上のふちの線と、透かしの赤
+ *     地   #fbf8f4 … テンキーの地（少しだけ温かい白）
+ *     消す #b3121b … ⌫・全部消す の字。朱を少し沈めて、白の上でも読める濃さにしました
+ *     緑   #1d8049 … 確定の地。見本（#1f8a4f）だと白い字との差が 4.4 で、読みやすさの目安 4.5 に
+ *                    届かなかったので、見た目が変わらない程度に濃くしました（差 5.0）
  * ★キーの字の読みやすさを先に決めてあります。ロゴは打つ邪魔をしない濃さです。
  */
-const CALC_色 = { 墨: '#231916', 朱: '#cf131c', 生成り: '#f4ede4' };
+const CALC_色 = { 墨: '#231916', 朱: '#cf131c', 地: '#fbf8f4', 消す: '#b3121b', 緑: '#1d8049' };
+
+/**
+ * 式の窓の、答えと知らせの色（calcPadMake と calcPadEcho の両方で使います）
+ * ★白い窓の上で読める濃さです。暗い地のころの明るい色（淡い緑・淡い赤・明るい橙）は、白の上では読めません
+ *     出た   … 「＝ ◯◯,◯◯◯」
+ *     途中   … 「…」（「+」で終わっているなど、打っている途中）
+ *     だめ   … 「計算できません」「数になりません」
+ *     途中へ … 「★式の途中に入ります」の字と、窓のまわりの枠
+ */
+const CALC_答えの色 = { 出た: '#1f7a4c', 途中: '#8f8379', だめ: '#b3121b', 途中へ: '#b35900', 途中への枠: '#e8912d' };
 
 /** 作った透かし（data URL）。1回だけ作って使い回します */
 let calcPad透かし = null;
@@ -939,7 +954,7 @@ let calcPad透かし = null;
  * ★ロゴの画像は**背景が白で塗られていて、透明ではありません**（512×512の全部が不透明）。
  *   そのまま敷くと白い四角が出るので、「白い紙に刷ったインク」とみなして抜きます。
  *     白 … 透明
- *     黒 … 生成り（暗い地で見えるように明るくします）
+ *     黒 … 墨のまま（白い地なので、明るくしません）
  *     赤 … 赤のまま
  *   インクの濃さは緑の値から戻します（黒 #231916 も赤 #cf131c も、緑が小さいため）。
  *   線のふちのぼかしも、そのまま残ります。
@@ -961,8 +976,8 @@ function calcPad透かしを作る(できたら) {
         const r = px[k], gr = px[k + 1];
         const 赤 = r - gr > 60;                       // 赤いインクか（ふちのぼかしも含めて）
         const 濃さ = Math.max(0, Math.min(1, (255 - gr) / (赤 ? 236 : 230)));
-        if (赤) { px[k] = 207; px[k + 1] = 19; px[k + 2] = 28; }
-        else { px[k] = 244; px[k + 1] = 237; px[k + 2] = 228; }
+        if (赤) { px[k] = 207; px[k + 1] = 19; px[k + 2] = 28; }      // 朱 #cf131c
+        else { px[k] = 35; px[k + 1] = 25; px[k + 2] = 22; }          // 墨 #231916
         px[k + 3] = Math.round(px[k + 3] * 濃さ);
       }
       g.putImageData(d, 0, 0);
@@ -979,7 +994,7 @@ function calcPadMake() {
   //   何かの拍子に外れたとき、二度と出てこなくなります
   if (calcPad && document.body && document.body.contains(calcPad)) return calcPad;
   calcPad = null;
-  const { 墨, 朱, 生成り } = CALC_色;
+  const { 墨, 朱, 地, 消す, 緑 } = CALC_色;
 
   const pad = document.createElement('div');
   pad.id = 'calcPad';
@@ -987,11 +1002,11 @@ function calcPadMake() {
     'position:fixed', 'left:0', 'right:0', 'bottom:0', 'z-index:99999',
     'display:none', 'grid-template-columns:repeat(4,1fr)', 'gap:6px',
     'padding:8px 8px calc(8px + env(safe-area-inset-bottom))',
-    /* ★「もう少し明るく」（ko-dai さん・2026-09-16）。ロゴの墨の色味は残したまま、
-         明るめの茶灰色にしました。キーの字（白）との差は十分にあります */
-    'background:linear-gradient(180deg, #6e5c54 0%, #5a4a43 45%, #483a34 100%)',
-    `border-top:2px solid ${朱}`,
-    'box-shadow:0 -6px 18px rgba(0,0,0,.35)', 'overflow:hidden',
+    /* ★案1「白が主役」（ko-dai さん・2026-09-18）。白い地に、上のふちだけロゴの赤です。
+         白いページの上に出るので、影で「下から出てきた板」だと分かるようにします */
+    `background:${地}`,
+    `border-top:3px solid ${朱}`,
+    'box-shadow:0 -4px 16px rgba(35,25,22,.18)', 'overflow:hidden',
     'font-variant-numeric:tabular-nums',
   ].join(';');
 
@@ -1002,7 +1017,8 @@ function calcPadMake() {
   透かし.style.cssText = [
     'position:absolute', 'left:0', 'right:0', 'top:0', 'bottom:0', 'z-index:0',
     'pointer-events:none', 'background-repeat:no-repeat',
-    'background-position:center 66%', 'background-size:auto 80%', 'opacity:.20',
+    // ★白い地に墨の線は濃く見えるので、暗い地のとき（.20）より薄くします
+    'background-position:center 66%', 'background-size:auto 80%', 'opacity:.09',
   ].join(';');
   pad.appendChild(透かし);
   calcPad透かしを作る((url) => { 透かし.style.backgroundImage = `url("${url}")`; });
@@ -1016,18 +1032,18 @@ function calcPadMake() {
   窓.style.cssText = [
     // ★透かしより手前に出すため、position と z-index を付けます
     'grid-column:1/-1', 'position:relative', 'z-index:1',
-    'background:rgba(35,25,22,.45)', 'border:1px solid rgba(255,248,240,.20)',
+    'background:#ffffff', 'border:1px solid #e6ddd3',
     'border-radius:10px', 'padding:6px 10px', 'margin-bottom:2px',
   ].join(';');
   const 頭 = document.createElement('div');
   頭.style.cssText = [
     'display:flex', 'justify-content:space-between', 'align-items:baseline',
-    'gap:8px', 'font-size:12px', 'color:#e3d7cb', 'line-height:1.4',
+    'gap:8px', 'font-size:12px', 'color:#76675b', 'line-height:1.4',
   ].join(';');
   const 欄名 = document.createElement('span');
   欄名.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
   const 答え = document.createElement('span');
-  答え.style.cssText = 'flex:0 0 auto;font-weight:700;font-size:13px;color:#a6dfb4';
+  答え.style.cssText = `flex:0 0 auto;font-weight:700;font-size:13px;color:${CALC_答えの色.出た}`;
   頭.append(欄名, 答え);
   /* ★★窓の中で**式を直せます**（ko-dai さん・2026-09-13）。
 
@@ -1045,13 +1061,13 @@ function calcPadMake() {
   式.autocapitalize = 'off';
   式.autocomplete = 'off';
   式.style.cssText = [
-    'font-size:17px', 'font-weight:700', 'color:#fff', 'line-height:1.35',
+    'font-size:17px', 'font-weight:700', `color:${墨}`, 'line-height:1.35',
     'font-family:ui-monospace,SFMono-Regular,Menlo,monospace',
     'word-break:break-all', 'max-height:4.1em', 'overflow-y:auto',
     'min-height:1.35em', '-webkit-overflow-scrolling:touch',
     'width:100%', 'box-sizing:border-box', 'display:block',
     'background:transparent', 'border:0', 'outline:none', 'padding:0',
-    'resize:none', 'caret-color:#ff7a7f',
+    'resize:none', `caret-color:${朱}`,
   ].join(';');
   // 窓で打ったら、そのまま入力欄へ写します
   式.addEventListener('input', () => calcPad写す());
@@ -1099,13 +1115,15 @@ function calcPadMake() {
        ★押している間だけ色を変えます。**どのキーに指が当たったか**が見えるようにするためです
        （押したキーと違う数字が入る、と言われたので）。
        大きさ（transform）は変えません。変えると指の下のキーの形が動き、押し分けが変わります */
+  /* ★案1「白が主役」（2026-09-18）。数字は白いキー、記号は少しだけ色の付いたキーで見分けます。
+       赤い字は ⌫・全部消す（消す側）、緑は確定（進む側）だけです */
   const 形 = {
-    数: { 地: 'rgba(255,248,240,.16)', 線: 'rgba(255,248,240,.30)', 字: '#fffaf4', 押: 'rgba(255,248,240,.40)' },
-    記号: { 地: 'rgba(207,19,28,.62)', 線: 'rgba(255,150,150,.60)', 字: '#fff', 押: 'rgba(170,12,20,.90)' },
-    戻す: { 地: 'rgba(255,248,240,.28)', 線: 'rgba(255,248,240,.40)', 字: '#fffaf4', 押: 'rgba(255,248,240,.48)' },
-    消す: { 地: 'rgba(255,248,240,.08)', 線: 'rgba(255,160,160,.70)', 字: '#ffd0d2', 押: 'rgba(207,19,28,.40)' },
-    閉じる: { 地: 'rgba(255,248,240,.08)', 線: 'rgba(255,248,240,.34)', 字: '#f3e9de', 押: 'rgba(255,248,240,.24)' },
-    確定: { 地: `linear-gradient(180deg, #e3262e 0%, ${朱} 55%, #a50f17 100%)`, 線: 'rgba(0,0,0,0)', 字: '#fff', 押: '#9a0d14' },
+    数: { 地: '#ffffff', 線: '#e6ddd3', 字: 墨, 押: '#e9e1d8' },
+    記号: { 地: '#f1ebe4', 線: '#e0d6cb', 字: 墨, 押: '#ddd2c6' },
+    戻す: { 地: '#fdecec', 線: '#f3b9bc', 字: 消す, 押: '#f7cfd1' },
+    消す: { 地: '#ffffff', 線: '#f0a8ac', 字: 消す, 押: '#fbdcde' },
+    閉じる: { 地: '#ffffff', 線: '#e0d6cb', 字: '#5b4a43', 押: '#ece5dd' },
+    確定: { 地: 緑, 線: 緑, 字: '#fff', 押: '#166b3c' },
   };
   const キー = (label, どうする, 種類) => {
     const f = 形[種類] || 形.数;
@@ -1213,17 +1231,17 @@ function calcPadEcho() {
     const 長さ = String(t.value || '').length;
     return t.selectionStart < 長さ || t.selectionEnd < 長さ;
   })();
-  欄名.style.color = 途中へ ? '#ffb454' : '';
+  欄名.style.color = 途中へ ? CALC_答えの色.途中へ : '';
   欄名.style.fontWeight = 途中へ ? '700' : '';
   if (途中へ) 欄名.textContent = '★式の途中に入ります　' + 欄名.textContent;
-  式.style.boxShadow = 途中へ ? 'inset 0 0 0 2px #ffb454' : '';
+  式.style.boxShadow = 途中へ ? `inset 0 0 0 2px ${CALC_答えの色.途中への枠}` : '';
   式.style.borderRadius = 途中へ ? '4px' : '';
   /* ★窓を触っているあいだは、窓の中身を書きかえません。
        書きかえるとカーソルが末尾へ飛んで、**途中を直せなくなります。**
        （窓で打った分は、すでに入力欄へ写っています） */
   if (document.activeElement !== 式) 式.value = 文字;
   式.placeholder = 'まだ何も入っていません';
-  式.style.color = '#fff';
+  式.style.color = CALC_色.墨;
   if (!文字.trim()) {
     答え.textContent = '';
   } else {
@@ -1234,13 +1252,13 @@ function calcPadEcho() {
     const 途中 = /[=＝+＋\-ー−*×/÷(（.．]\s*$/.test(文字.trim());
     if (n === null && 途中) {
       答え.textContent = '…';
-      答え.style.color = '#8f8379';
+      答え.style.color = CALC_答えの色.途中;
     } else if (n === null) {
       答え.textContent = 式か ? '計算できません' : '数になりません';
-      答え.style.color = '#ffa3a7';
+      答え.style.color = CALC_答えの色.だめ;
     } else {
       答え.textContent = '＝ ' + n.toLocaleString('ja-JP');
-      答え.style.color = '#a6dfb4';
+      答え.style.color = CALC_答えの色.出た;
     }
   }
   /* ★中身に合わせて高さを変えます（textarea は放っておくと1行のままです）。
