@@ -111,19 +111,141 @@ let 店舗の切替 = 0;
 /* ============================================================
  *  サーバーとのやりとり
  * ============================================================ */
-async function call(body) {
-  if (!APP.syncUrl) return { ok: false, error: '接続先が設定されていません' };
+
+/**
+ * 1回の返事を待つ上限（30秒）
+ *
+ * ★20秒では短すぎます。悪い夜は**通る返事にも 12〜23秒**かかります
+ *   （2026-09-18 の夜、本部が Mac から測った値。最長19秒。普段は2秒前後）。
+ *   20秒で切ると、通るはずの返事を捨てて送り直すことになります。
+ *   アプリ本体の `Sync.readHangMs` と同じ30秒です。
+ */
+const 返事の上限ms = 30000;
+
+/**
+ * 静かに送り直すまでの待ち（3秒 → 6秒 → 12秒。送り直しは3回まで）
+ *
+ * ★一番長くかかるのは、4回とも30秒待って落ちたときで、約2分20秒です。
+ *   そのあいだボタンは押せないまま「送っています…」です。
+ */
+const 送り直しの間ms = [3000, 6000, 12000];
+
+/** Google 側で落ちたときの文。★電波の話と分けます（アルバイトが自分の電波のせいだと思うため） */
+const GOOGLE側の文 = 'Google 側で受け取れませんでした（電波の問題ではありません）。少し待ってもう一度お試しください';
+const 電波の文 = '電波が届いていないようです。もう一度お試しください';
+
+/**
+ * 送れなかった理由を分けます（アプリ本体の js/sync.js `この失敗のたぐい()` と同じ分け方）
+ *
+ * ★shift/ は js/sync.js を読み込んでいないので、ここに小さく書いています。
+ *   2026-09-18 までは全部「電波が届いていないようです」でした。
+ *   本当は Google 側で落ちていても、アルバイトは自分の電波のせいだと思っていました。
+ *
+ *   渡す口   … 返事が JSON でない（404 のページなど）。Google がスクリプトの結果を渡す段で落ちています
+ *   返事なし … 30秒たっても返事が無い
+ *   電波     … 端末がオフライン、または fetch そのものが失敗した
+ *   （サーバーの答え … JSON の ok:false。これは失敗ではなく返事なので、ここには来ません）
+ */
+function 失敗のたぐい(e) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return '電波';
+  if (e && e.name === 'AbortError') return '返事なし';
+  if (e && e.name === '渡す口') return '渡す口';
+  return '電波';
+}
+
+/**
+ * 「混み合っています」の返事か（gas/シフト.gs `shiftPut_` の tryLock が20秒で取れなかったとき）
+ *
+ * ★鍵が取れずに返ったので、**何も書いていません。**送り直してよい返事です。
+ * ★文で見分けています。GAS に印（code）を足すと貼り直しが要るためです。
+ *   向こうの文を変えたら、ここも合わせてください。
+ */
+function 混み合いか(res) {
+  return !!(res && res.ok === false && /混み合って/.test(String(res.error || '')));
+}
+
+/** 1回だけ送って、JSON の返事を返します。JSON でなければ「渡す口」の失敗を投げます */
+async function 一回送る(text) {
+  const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), 返事の上限ms) : null;
   try {
     const res = await fetch(APP.syncUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      // ★見ている店舗も送ります。2店舗以上に入っている人だけ効きます
-      //   （サーバーは、その人が入っている店舗しか見ません）
-      body: JSON.stringify({ code: me.code, action: 'shift', store: me.store, ...body }),
+      body: text,
+      signal: ctl ? ctl.signal : undefined,
     });
-    return await res.json();
-  } catch (e) {
-    return { ok: false, error: '電波が届いていないようです。もう一度お試しください' };
+    // ★`res.json()` に任せると、404 のページで SyntaxError になり「電波」と見分けがつきません。
+    //   文字で受けてから読みます（js/sync.js `返事を読む()` と同じ）。
+    //   ★上限の時計は、中身を読み終えるまで止めません（中身の途中で止まることもあるため）
+    const body = await res.text();
+    let json = null;
+    try { json = JSON.parse(body); } catch (_) { json = null; }
+    if (!json || typeof json !== 'object') {
+      const err = new Error(`Google の返事が JSON ではありません（HTTP ${res.status}）`);
+      err.name = '渡す口';
+      err.status = res.status;
+      throw err;
+    }
+    return json;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+const 待つ = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * サーバーに頼みます。Google 側の失敗は、静かに送り直します
+ *
+ *   body … { mode: 'open' } など
+ *   opt.送り直さない … true なら1回だけ（裏で先に取っておく分。失敗しても本番で取り直すため）
+ *   opt.送り直すとき … 送り直す前に呼びます（回数を渡します）。待たせている画面に一言出すため
+ *
+ * ★送り直すのは「渡す口」「返事なし」「混み合っています」の3つだけ、3回までです。
+ *   電波が無いときと、サーバーの答え（募集していない・番号が使えない など）は送り直しません。
+ *   何度送っても同じ答えだからです。
+ *
+ * ★送り直してよい理由（2026-09-19 に gas/シフト.gs と gas/コード.gs の doPost を読んで数えました）：
+ *   ・`mode:'open'` は**読むだけ**です。ただし番号がまちがっていると、送り直した分だけ
+ *     「番号まちがい」の数え（`SHIFT_FAIL_KEY`、全体で1つ）が増えます。人が押し直したときと同じ増え方で、
+ *     正しい番号には起きません（正しい番号は、通るたびに数えを消します）。
+ *   ・`mode:'put'`（shiftPut_）は、**鍵の中で**行の索引をシートから読み直し、その人・その半月の行を
+ *     **「この内容にする」上書き**で書きます。2本走っても行は1つで、中身も同じです。
+ *   ・gas/シフト.gs には外への呼び出し（UrlFetchApp・MailApp）が1つもありません。
+ *     LINE やメールが2回飛ぶことはありません。
+ *   ★「渡す口」と「返事なし」では、送り直してよい理由が**違います**：
+ *     渡す口（404）… Google がスクリプトの結果を渡す段で落ちています。**スクリプトはもう終わっています。**
+ *     返事なし     … **スクリプトはまだ動いているかもしれません。**「もう終わっている」は言えません。
+ *                   それでもよいのは、上の2つ（鍵の中で読み直す上書き・外への呼び出しなし）が
+ *                   成り立つからです。**どちらかが崩れたら、返事なしは送り直さないでください。**
+ *   ★「提出する」の中身は、**押したときの形のまま**送り直します（`text` を1回だけ作ります）。
+ */
+async function call(body, opt) {
+  if (!APP.syncUrl) return { ok: false, error: '接続先が設定されていません' };
+  const o = opt || {};
+  // ★見ている店舗も送ります。2店舗以上に入っている人だけ効きます
+  //   （サーバーは、その人が入っている店舗しか見ません）
+  const text = JSON.stringify({ code: me.code, action: 'shift', store: me.store, ...body });
+  let 最後 = null;
+  for (let 回 = 0; ; 回 += 1) {
+    let たぐい = '';
+    try {
+      const res = await 一回送る(text);
+      if (!混み合いか(res)) return res;
+      たぐい = '混み合い';
+      最後 = res;
+    } catch (e) {
+      たぐい = 失敗のたぐい(e);
+      if (たぐい === '電波') return { ok: false, error: 電波の文, たぐい };
+    }
+    if (o.送り直さない || 回 >= 送り直しの間ms.length) {
+      // ★混み合いは、サーバーの文（「少し待ってもう一度」）をそのまま出します
+      if (たぐい === '混み合い') return { ...最後, たぐい };
+      return { ok: false, error: GOOGLE側の文, たぐい };
+    }
+    if (typeof o.送り直すとき === 'function') o.送り直すとき(回 + 1);
+    await 待つ(送り直しの間ms[回]);
   }
 }
 
@@ -160,11 +282,17 @@ async function submitPin() {
   const code = el('gatePin').value.trim();
   if (!code) return setErr('gateErr', '番号を入れてください');
 
-  el('gateGo').disabled = true;
+  // ★Google 側で落ちると静かに送り直すので、悪い夜は1分をこえて待つことがあります。
+  //   押せないボタンに「すすむ」と出たままだと、固まったように見えるので字を変えます
+  const go = el('gateGo');
+  const 元の字 = go.textContent;
+  go.disabled = true;
+  go.textContent = '確かめています…';
   setErr('gateErr', '');
   me.code = code;
   const res = await call({ mode: 'open' });
-  el('gateGo').disabled = false;
+  go.disabled = false;
+  go.textContent = 元の字;
 
   if (!res.ok) {
     me.code = '';
@@ -413,7 +541,9 @@ function 先に取っておく() {
   const いま = me.store;
   me.stores.forEach((id) => {
     if (id === いま || 店舗の控え[id]) return;
-    call({ mode: 'open', store: id }).then((res) => {
+    // ★裏で取る分は送り直しません（悪い夜に Google への呼び出しを増やさないため）。
+    //   取れなくても、切り替えたときに送り直し付きで取り直します
+    call({ mode: 'open', store: id }, { 送り直さない: true }).then((res) => {
       if (res && res.ok && res.store === id) 店舗の控え[id] = res;
     });
   });
@@ -1351,14 +1481,32 @@ async function send() {
   if (空.length) {
     return setErr('sendErr', `時刻を選んでいない日があります：${空.join('、')}。何時から入れるかを選んでください。`);
   }
-  el('send').disabled = true;
+  // ★Google 側で落ちると静かに送り直すので、悪い夜は1分をこえて待つことがあります
+  //   （→ call）。そのあいだボタンは押せないまま「送っています…」にします
+  const btn = el('send');
+  const 元の字 = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '送っています…';
+  // ★送ったときの姿を控えます。待っているあいだも日付のボタンは押せるので、
+  //   返事が来たときに「送った中身」と「画面の中身」が違うことがあります
+  const 送った中身 = JSON.stringify([picked, notes]);
+  const 送った先 = `${me.store}|${period ? period.key : ''}`;
 
   const res = await call({ mode: 'put', days: picked, notes });
-  el('send').disabled = false;
+  btn.disabled = false;
+  btn.textContent = 元の字;
 
+  // ★待っているあいだに店舗を切り替えた・番号を入れ直した、なら、この返事は
+  //   今の画面のものではありません。当てません（別の店舗を「出しました」にしないため）
+  if (`${me.store}|${period ? period.key : ''}` !== 送った先 || !me.code) return;
   if (!res.ok) return setErr('sendErr', res.error || '出せませんでした');
   sentAt = res.sentAt || new Date().toISOString();
   renderPeriod();
+  if (JSON.stringify([picked, notes]) !== 送った中身) {
+    // ★届いたのは押したときの中身です。あとから直した分は、まだ届いていません
+    setErr('sendErr', '送っているあいだに直したところは、まだ届いていません。もう一度「提出する」を押してください。');
+    return;
+  }
   // 出した内容の一覧まで画面を送って、届いたことが目で分かるようにします
   el('doneBox').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
@@ -1410,7 +1558,13 @@ async function boot() {
   // ★ここで番号の画面を出してしまうと、毎回それが一瞬見えて
   //   「また入れるのか」と思わせてしまいます
   show('boot');
-  const res = await call({ mode: 'open' });
+  // ★Google 側で落ちて送り直すときは、そう書き足します。ぐるぐるだけが長く続くと、
+  //   固まったと思って閉じられてしまうためです
+  const res = await call({ mode: 'open' }, {
+    送り直すとき: () => {
+      el('bootText').textContent = '読み込んでいます…（Google 側の返事が遅いので、送り直しています）';
+    },
+  });
   if (res.ok) { applyOpen(res); return; }
 
   // ★番号そのものが違うと言われたときだけ、覚えているものを忘れます。
