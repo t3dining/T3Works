@@ -3165,6 +3165,8 @@ body[data-mode="mine"] .nippou.mine-only { display: block; }
 .stores-big-btn--check { --pick: #2b7fd4; }
 /* 人のこと（面接マニュアル）。オレンジ（2026-09-18） */
 .stores-big-btn--people { --pick: #d9822b; }
+/* 渡すもの（QRコード・URL）。灰色（2026-09-18）。★この欄の一番下に置く決まりです（index.html） */
+.stores-big-btn--share { --pick: #66717f; }
 
 /* ===================== 面接マニュアル =====================
    T3Dining の欄から開く、上に重ねるパネルです（js/interview.js）。
@@ -3291,6 +3293,34 @@ html.is-interview-open, html.is-interview-open body { overflow: hidden; }
   cursor: default; background: var(--surface-2); color: var(--text-weak); border: 1px solid var(--line);
 }
 .interview__foot-note { margin: 8px 0 0; font-size: 12.5px; line-height: 1.7; color: var(--text-sub); }
+
+/* ===================== QRコード・URL =====================
+   js/share.js。入れ物は上の .interview を使い回し、色だけ灰色にします */
+.share-panel { --people: #66717f; }
+.share-cards { display: grid; gap: 14px; max-width: 720px; margin: 0 auto; }
+@media (min-width: 640px) { .share-cards { grid-template-columns: 1fr 1fr; } }
+.share-card {
+  padding: 16px; text-align: center;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.share-card__title { margin: 0 0 6px; font-size: 16px; font-weight: 800; }
+.share-card__lead { margin: 0 0 12px; font-size: 13px; line-height: 1.7; color: var(--text-sub); text-align: left; }
+/* ★QR は白い台の上に。暗い画面でも読み取れるように、絵そのものに白い余白が入っています */
+.share-card__qr {
+  display: block; width: 200px; height: 200px; margin: 0 auto 8px;
+  background: #fff; border-radius: 8px; image-rendering: pixelated;
+}
+.share-card__how { margin: 0 0 10px; font-size: 12.5px; line-height: 1.7; color: var(--text-sub); }
+.share-card__url {
+  display: block; width: 100%; margin-bottom: 10px; resize: none; overflow: hidden;
+  font-size: 12.5px; line-height: 1.5; text-align: center; word-break: break-all;
+}
+.share-card__copy { width: 100%; min-height: 46px; font-size: 15px; font-weight: 800; }
+.share-card__note { margin: 10px 0 0; font-size: 12px; line-height: 1.7; color: var(--text-sub); text-align: left; }
+.share-note { max-width: 720px; margin: 14px auto 0; font-size: 12.5px; line-height: 1.8; color: var(--text-sub); }
+/* 面接マニュアルの中のシフト提出（一番下の「チェックを全て外す」の上） */
+.interview__share { max-width: 720px; margin: 0 auto 16px; }
+.interview__share:empty { display: none; }
 
 /* マネージの「見え方を確かめる」 */
 .interview-preview { margin-top: 10px; padding: 12px; border-radius: var(--radius); background: var(--bg); }

@@ -105,6 +105,22 @@ const APP = {
 };
 
 /**
+ * ワークスを**配るとき**の URL と、その QR コード（2026-09-18、ko-dai さんの指示）
+ *
+ * ★T3Dining の欄の一番下「QRコード・URL」で出します（js/share.js）。
+ *   シフト提出の分は、シフトの見出しの `SHIFT_SHARE_URL` ／ `SHIFT_QR_IMG` を使います（同じ考え方です）。
+ * ★うしろの `?openExternalBrowser=1` は **LINE の決まりごと**です。LINE の中のブラウザでは
+ *   合言葉や番号を覚えておけず、ホーム画面にも足せないので、LINE で読んでも Safari などで開くようにします。
+ *   アプリはこの印を読まないので、動きは変わりません（js/update.js は元の印を残したまま自分の印を足します）。
+ * ★**QR の絵（`img/works-qr.png`）はこの URL から作ってあります。**
+ *   URL を変えたら、`swift 素材/ワークスのQRを作る.swift` で作り直してください。
+ *   道具はここを読んで作り、読み直して1文字も同じか確かめます。
+ * ★**合言葉も番号も入れません。**全員が同じ QR を使います。
+ */
+const WORKS_SHARE_URL = 'https://t3dining.github.io/T3Works/?openExternalBrowser=1';
+const WORKS_QR_IMG = 'img/works-qr.png';
+
+/**
  * 業務上の「今日」
  *
  * 朝 APP.dayStartHour 時より前は、前の日として扱います。

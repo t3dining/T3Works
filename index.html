@@ -13,8 +13,8 @@
 <link rel="icon" type="image/png" sizes="512x512" href="img/works-icon-512.png?v=dddd764f">
 <link rel="icon" type="image/png" sizes="64x64" href="img/works-icon-64.png?v=0f9cbed2">
 <title>T3 Works｜T3Dining株式会社</title>
-<link rel="stylesheet" href="css/style.css?v=94b0469b">
-<meta name="app-version" content="43c41bc3">
+<link rel="stylesheet" href="css/style.css?v=07178534">
+<meta name="app-version" content="9f9571cc">
 </head>
 <body>
 
@@ -87,6 +87,12 @@
            ・バグるのこと     … バグるの色     .stores-big-btn--baguru
            ・確認の記録       … 青             .stores-big-btn--check
            ・人のこと         … オレンジ       .stores-big-btn--people（面接マニュアル）
+           ・渡すもの         … 灰色           .stores-big-btn--share（QRコード・URL）
+
+         ★★「QRコード・URL」（storesShareBtn）は、この欄の**一番下**に置きます
+           （ko-dai さんの指示・2026-09-18。指示がない限り動かしません）。
+           **新しいボタンは、必ずその上に足してください。**
+           一番下でないと、公開の道具（道具/公開用を作る.py の check_t3dining_last）が止めます
            ・これから増える分 … 新しい色を決めて、その仲間で使い回してください
 
          ★並べる順番は「同じ仲間どうしを続けて」置くこと。
@@ -159,6 +165,17 @@
     </button>
 
     <!-- ストーリーズ作成は T3 Owner（owner/）に移しました -->
+
+    <!-- ★★ここが T3Dining の欄の一番下です。「QRコード・URL」より下に、ボタンを足さないでください
+         （ko-dai さんの指示・2026-09-18）。開くのは js/share.js です -->
+    <button type="button" class="stores-big-btn stores-big-btn--share" id="storesShareBtn">
+      <span class="stores-big-btn__icon" aria-hidden="true">📲</span>
+      <span class="stores-big-btn__text">
+        <span class="stores-big-btn__name">QRコード・URL</span>
+        <span class="stores-big-btn__sub">ワークスとシフト提出を、人に渡すとき</span>
+      </span>
+      <span class="stores-big-btn__arrow" aria-hidden="true">›</span>
+    </button>
   </section>
 
   <!-- ===== 業務選択（店舗を選んだあとの画面） ===== -->
@@ -1550,6 +1567,8 @@
   <div class="interview__scroll">
     <p class="interview__lead" id="interviewLead"></p>
     <div class="interview__body" id="interviewBody"></div>
+    <!-- シフト提出のQRコードとURL（2026-09-18、ko-dai さんの指示）。中身は js/share.js が入れます -->
+    <div class="interview__share" id="interviewShare"></div>
     <!-- ★面接が終わったら押すボタン（2026-09-18、ko-dai さんの指示）。
          一番下まで聞き終えた手の位置に置きます。上の「チェックを消す」と同じ動きです -->
     <div class="interview__foot is-hidden" id="interviewFoot">
@@ -1559,7 +1578,24 @@
   </div>
 </div>
 
-<script src="js/config.js?v=55167f43"></script>
+<!-- ===== QRコード・URL（T3Dining の欄の一番下から開く、上に重ねるパネル） =====
+     ★入れ物の見た目は面接マニュアルの .interview を使い回します。出し入れは js/share.js だけです -->
+<div class="interview share-panel is-hidden" id="sharePanel" role="dialog" aria-modal="true" aria-labelledby="shareTitle">
+  <div class="interview__bar">
+    <button type="button" class="interview__close" id="shareClose" aria-label="閉じる">✕</button>
+    <h2 class="interview__title" id="shareTitle">QRコード・URL</h2>
+  </div>
+  <div class="interview__scroll">
+    <p class="interview__lead">人にアプリを渡すときに使います。相手のスマホのカメラで読み取ってもらうか、URLをコピーしてLINEで送ってください。</p>
+    <div class="share-cards" id="shareBody"></div>
+    <p class="share-note">
+      QRコードにもURLにも、合言葉や番号は入っていません。全員が同じものを使います。<br>
+      URLはLINEの中ではなく、Safari（Android は Chrome）で開くようになっています。
+    </p>
+  </div>
+</div>
+
+<script src="js/config.js?v=9a8fb38b"></script>
 <script src="js/storage.js?v=0d89917e"></script>
 <script src="js/sync.js?v=f9396ead"></script>
 <script src="js/update.js?v=c530219e"></script>
@@ -1568,5 +1604,6 @@
 <script src="js/shift-sheet.js?v=2b29c50a"></script>
 <script src="js/app.js?v=324cb605"></script>
 <script src="js/interview.js?v=a0114594"></script>
+<script src="js/share.js?v=9836d630"></script>
 </body>
 </html>
