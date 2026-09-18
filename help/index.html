@@ -268,7 +268,7 @@
   .help-q, .help-lead, .help-first, .help-sec__head { box-shadow: none; }
 }
 </style>
-<meta name="app-version" content="c8bdc06e">
+<meta name="app-version" content="f977d4e4">
 </head>
 <body>
 
@@ -290,7 +290,7 @@
   <p class="help-lead">
     T3 Works は、6店舗の閉店作業・掃除・教育・シフトを、<b>みんなの端末で同じように見るため</b>のアプリです。
     入力したものは、他の人の端末にも届きます。<br>
-    はじめて使う人は <b>1 番</b>から、困ったときは <b>10 番</b>から読んでください。<br><b>数字が3つ出てきます</b>（合言葉・あなたの番号・シフトの番号）。取りちがえやすいので、1番の表で見くらべてください。
+    はじめて使う人は <b>1 番</b>から、困ったときは <b>11 番</b>から読んでください。<br><b>数字が3つ出てきます</b>（合言葉・あなたの番号・シフトの番号）。取りちがえやすいので、1番の表で見くらべてください。
   </p>
 
   <ul class="help-toc">
@@ -303,7 +303,8 @@
     <li class="help-toc__item"><a href="#s7"><span class="help-toc__n">7</span>記録を見る<span class="help-toc__sub">あとから見る</span></a></li>
     <li class="help-toc__item"><a href="#s8"><span class="help-toc__n">8</span>お金まわり<span class="help-toc__sub">立て替え・キャッチ</span></a></li>
     <li class="help-toc__item"><a href="#s9"><span class="help-toc__n">9</span>面接マニュアル<span class="help-toc__sub">面接で聞くこと</span></a></li>
-    <li class="help-toc__item"><a href="#s10"><span class="help-toc__n">10</span>困ったとき<span class="help-toc__sub">よくある3つ</span></a></li>
+    <li class="help-toc__item"><a href="#s10"><span class="help-toc__n">10</span>QRコード・URL<span class="help-toc__sub">アプリを人に渡す</span></a></li>
+    <li class="help-toc__item"><a href="#s11"><span class="help-toc__n">11</span>困ったとき<span class="help-toc__sub">よくある3つ</span></a></li>
   </ul>
 
   <section class="help-sec" id="s1">
@@ -328,6 +329,9 @@
     <p>
       URLをもらったら、まずホーム画面に置いてください。
       <b>次からは、アイコンを押すだけで開きます。</b>
+    </p>
+    <p style="font-size:13px;color:var(--text-sub);">
+      （URLを渡す側の人は、10番の「QRコード・URL」を使います）
     </p>
     <p><b>iPhone で Safari を使うとき</b>（おすすめ）</p>
     <ol class="help-steps">
@@ -528,7 +532,7 @@
       こうだいに聞いてください。<br>
       <b>番号の画面が出ないまま、画面の上の印が赤くなるときは、</b>アプリが古いままです。
       「新しい版があります」と出ていれば押してください。出ていなければ、アプリを一度閉じて開き直します
-      （10番の「困ったとき」にも書いてあります）。
+      （11番の「困ったとき」にも書いてあります）。
     </div>
 
     <h3>数字が3つ出てきます。混ざらないように</h3>
@@ -1225,9 +1229,8 @@
             style="display:block;width:220px;height:220px;margin:0 auto 10px;">
           <p class="modal__note">スマホのカメラで読み取ると、シフト提出のページが開きます。<br>
             番号は、ひとりずつ別に送ってください。</p>
-          <input type="text" class="field__input" readonly
-            value="https://t3dining.github.io/T3Works/shift/?openExternalBrowser=1"
-            style="font-size:12.5px;text-align:center;margin-bottom:12px;">
+          <textarea class="field__input" rows="2" readonly
+            style="font-size:12.5px;text-align:center;margin-bottom:12px;resize:none;">https://t3dining.github.io/T3Works/shift/?openExternalBrowser=1</textarea>
           <div class="modal__actions modal__actions--confirm">
             <button type="button" class="btn">閉じる</button>
             <button type="button" class="btn btn--primary">URLをコピー</button>
@@ -1250,7 +1253,8 @@
       <p>QRコードにもURLにも、番号は入っていません。<b>番号は1人ずつ、別に送ってください。</b></p>
     </div>
     <div class="help-note">
-      このボタンは<b>マインのシフトの画面だけ</b>に出ます。QRコードとURLは、どのお店でも同じです（誰のシフトかは番号で決まります）。
+      このボタンは<b>マインのシフトの画面だけ</b>に出ます。QRコードとURLは、どのお店でも同じです（誰のシフトかは番号で決まります）。<br>
+      店舗を選ぶ画面の下の<b>「QRコード・URL」</b>（10番）からも、同じQRコードとURLを出せます。
     </div>
   </section>
 
@@ -1429,6 +1433,18 @@
                 </div>
               </section>
             </div>
+            <!-- js/share.js が #interviewShare に入れる、シフト提出の札（題は「シフト提出のページを渡す」） -->
+            <div class="interview__share">
+            <section class="share-card">
+              <h3 class="share-card__title">シフト提出のページを渡す</h3>
+              <p class="share-card__lead">アルバイトがシフトの希望を出すページです。開いたら、その人のシフトの番号を入れてもらいます。</p>
+              <img class="share-card__qr" src="../img/shift-qr.png?v=3509f79d" alt="シフト提出ページのQRコード" width="200" height="200">
+              <p class="share-card__how">スマホのカメラで読み取ると開きます。LINEで送るときは「URLをコピー」を押して貼ります。</p>
+              <textarea class="field__input share-card__url" rows="2" readonly>https://t3dining.github.io/T3Works/shift/?openExternalBrowser=1</textarea>
+              <button type="button" class="btn btn--primary share-card__copy">URLをコピー</button>
+              <p class="share-card__note">シフトの番号は、1人ずつ別に送ってください（アプリの番号とは別のものです）。</p>
+            </section>
+            </div>
             <div class="interview__foot">
               <button type="button" class="interview__reset-all">チェックを全て外す</button>
               <p class="interview__foot-note">面接が終わったら押してください。次の人のときに ✓ が残りません。</p>
@@ -1440,6 +1456,8 @@
     </div>
 
     <ul class="help-list">
+      <li>一番下の<b>「シフト提出のページを渡す」</b>… 面接のあと、ここから提出ページのQRコードかURLを渡せます（10番と同じ札です）。
+        シフトの番号は、1人ずつ別に送ってください</li>
       <li><b>「聞く」の吹き出し</b>… 相手に聞くことです</li>
       <li><b>赤い字</b>… 大事なことです</li>
       <li>閉じるときは、左上の<b>「✕」</b>を押します</li>
@@ -1466,7 +1484,95 @@
   </section>
 
   <section class="help-sec" id="s10">
-    <div class="help-sec__head"><span class="help-sec__n">10</span><h2 class="help-sec__title">困ったとき</h2></div>
+    <div class="help-sec__head"><span class="help-sec__n">10</span><h2 class="help-sec__title">QRコード・URL</h2></div>
+    <!-- ★2026-09-18、本部が作った「QRコード・URL」（js/share.js）。
+         ★ko-dai さんの決まり：T3Dining の欄の一番下は、いつも「QRコード・URL」。**使い方で T3Dining の欄を並べて書くときも一番下**。
+           だからこの章は、T3Dining の欄を説明する 7〜9章の**あと**に置いています。新しい章はこの前に足すこと。
+         絵は index.html の #sharePanel と js/share.js の 札() と同じ作りです -->
+    <p>
+      新しく入った人に、<b>アプリ（ワークス）</b>や<b>シフト提出のページ</b>を渡すときに使います。
+    </p>
+
+    <h3>開き方</h3>
+    <p>
+      店舗を選ぶ画面の下、<b>「T3Dining」の欄の一番下</b>にある<b>「QRコード・URL」</b>（灰色）を押します。
+      ワークスにもマインにもあります。
+    </p>
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <button type="button" class="stores-big-btn stores-big-btn--share" style="margin:0;">
+          <span class="stores-big-btn__icon" aria-hidden="true">📲</span>
+          <span class="stores-big-btn__text">
+            <span class="stores-big-btn__name">QRコード・URL</span>
+            <span class="stores-big-btn__sub">ワークスとシフト提出を、人に渡すとき</span>
+          </span>
+          <span class="stores-big-btn__arrow" aria-hidden="true">›</span>
+        </button>
+      </div>
+    </div>
+
+    <h3>渡し方</h3>
+    <p>開くと、<b>ワークス</b>と<b>シフト提出</b>の2枚の札が並びます。渡したい方を使います。</p>
+    <div class="help-shot">
+      <div class="help-shot__body" style="padding:0;">
+        <div class="interview share-panel" style="position:static;inset:auto;z-index:auto;">
+          <div class="interview__bar" style="padding:10px 12px;">
+            <button type="button" class="interview__close" aria-label="閉じる">✕</button>
+            <h2 class="interview__title">QRコード・URL</h2>
+          </div>
+          <div class="interview__scroll" style="overflow:visible;">
+            <p class="interview__lead">人にアプリを渡すときに使います。相手のスマホのカメラで読み取ってもらうか、URLをコピーしてLINEで送ってください。</p>
+            <div class="share-cards">
+            <section class="share-card">
+              <h3 class="share-card__title">ワークス（アプリ）</h3>
+              <p class="share-card__lead">アプリ本体です。開いたら、合言葉と、その人の番号を入れてもらいます。</p>
+              <img class="share-card__qr" src="../img/works-qr.png?v=facd8cdc" alt="ワークスのQRコード" width="200" height="200">
+              <p class="share-card__how">スマホのカメラで読み取ると開きます。LINEで送るときは「URLをコピー」を押して貼ります。</p>
+              <textarea class="field__input share-card__url" rows="2" readonly>https://t3dining.github.io/T3Works/?openExternalBrowser=1</textarea>
+              <button type="button" class="btn btn--primary share-card__copy">URLをコピー</button>
+              <p class="share-card__note">合言葉と番号は、QRコードやURLとは別に伝えてください。</p>
+            </section>
+            <section class="share-card">
+              <h3 class="share-card__title">シフト提出</h3>
+              <p class="share-card__lead">アルバイトがシフトの希望を出すページです。開いたら、その人のシフトの番号を入れてもらいます。</p>
+              <img class="share-card__qr" src="../img/shift-qr.png?v=3509f79d" alt="シフト提出ページのQRコード" width="200" height="200">
+              <p class="share-card__how">スマホのカメラで読み取ると開きます。LINEで送るときは「URLをコピー」を押して貼ります。</p>
+              <textarea class="field__input share-card__url" rows="2" readonly>https://t3dining.github.io/T3Works/shift/?openExternalBrowser=1</textarea>
+              <button type="button" class="btn btn--primary share-card__copy">URLをコピー</button>
+              <p class="share-card__note">シフトの番号は、1人ずつ別に送ってください（アプリの番号とは別のものです）。</p>
+            </section>
+            </div>
+            <p class="share-note">
+              QRコードにもURLにも、合言葉や番号は入っていません。全員が同じものを使います。<br>
+              URLはLINEの中ではなく、Safari（Android は Chrome）で開くようになっています。
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <ul class="help-list">
+      <li><b>その場で読み取ってもらう</b>… 相手のスマホのカメラで、QRコードを読み取ってもらいます</li>
+      <li><b>LINEで送る</b>… 「<b>URLをコピー</b>」を押して、LINEに貼って送ります。
+        このURLは、LINEの中ではなく Safari（Android は Chrome）で開くようになっています</li>
+      <li>コピーできないスマホでは、ボタンが「<b>選んだURLを長押しでコピー</b>」に変わります。URLを長押ししてコピーしてください</li>
+      <li>閉じるときは、左上の<b>「✕」</b>を押します</li>
+    </ul>
+
+    <div class="help-important">
+      <span class="help-important__label">合言葉と番号は、別に伝えてください</span>
+      <p>
+        QRコードにもURLにも、合言葉や番号は入っていません。
+        <b>ワークスの合言葉と番号、シフトの番号は、1人ずつ別に伝えます。</b>アプリの番号とシフトの番号は別のものです（1番の表）。
+      </p>
+    </div>
+    <div class="help-note">
+      受け取った人には、1番の「ホーム画面に置く」（シフトは6番）のとおり、ホーム画面に置いてもらってください。
+    </div>
+  </section>
+
+  <section class="help-sec" id="s11">
+    <div class="help-sec__head"><span class="help-sec__n">11</span><h2 class="help-sec__title">困ったとき</h2></div>
 
     <div class="help-q">
       <p class="help-q__title">他の人が入れたものが、自分の画面に出てこない</p>
