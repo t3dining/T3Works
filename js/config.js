@@ -6459,6 +6459,45 @@ function shiftSubmitUrl(code) {
   return u.href;
 }
 
+/* -------- ヘルプ要請・人員過多（店舗どうしで人を貸し借りする） --------
+ *
+ * ★2026-09-18、ko-dai さんの指示。**こじゃれ・炭まろ・ちゃこる・おいでんテラスの4店舗だけ**。
+ *   組む画面の日付ごとに「ヘルプ要請」（人がほしい）と「人員過多」（人が余る）を出せて、
+ *   キッチンかホールかと人数を選びます。**4店舗どうしで見られます**（「ヘルプ要請を見る」）。
+ *
+ * ★店舗は**名指し**です。枠の形（仕込み／営業）で決めていません。枠はマネージで
+ *   変えられますが、「どの店舗で人を貸し借りするか」は別の話だからです。
+ *
+ * ★入れ先は `_helpreq/店舗id-YYYY-MM`（月ごとに1行）。同期はふつうの記録と同じ道で、
+ *   **GAS は触っていません**（GAS は item を丸ごと保存し、どの端末にも全店舗の行を配ります）。
+ *   ★`_shift` で始まる名前にはしていません。`_shift/` を前方一致で数えるところがあるので、
+ *     まぎれないようにしました。
+ * ★1項目＝1日×種類×持ち場。キーは `YYYY-MM-DD|help|k`、中身は `{ n: 人数, at }`。
+ *   **細かく分けてあるので、キッチンとホールを別の人が同時に直しても消し合いません。**
+ *   取り消しは `n: 0` にします（消えたことも同期で届くように。削除はしません）。
+ */
+const SHIFT_HELP_STORES = ['kojare', 'sumimaro', 'chacoru', 'oiden'];
+const HELP_REQ_STORE = '_helpreq';
+const HELP_REQ_KINDS = [
+  { id: 'help', name: 'ヘルプ要請' },
+  { id: 'over', name: '人員過多' },
+];
+/** 1回に出せる、一番多い人数 */
+const HELP_REQ_MAX = 9;
+
+/** その店舗でヘルプ要請・人員過多を使うか */
+function shiftHelpOn(storeId) {
+  return SHIFT_HELP_STORES.includes(storeId);
+}
+/** 入れ先の行（店舗・月ごと） */
+function helpReqKey(storeId, dateStr) {
+  return `${storeId}-${String(dateStr).slice(0, 7)}`;
+}
+/** 行の中の1項目 */
+function helpReqItem(dateStr, kindId, laneId) {
+  return `${dateStr}|${kindId}|${laneId}`;
+}
+
 /**
  * 提出ページを**配るとき**の URL と、その QR コード（2026-09-18、ko-dai さんの指示）
  *

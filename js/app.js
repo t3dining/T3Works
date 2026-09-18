@@ -9837,6 +9837,8 @@ function renderShift() {
 
   // 足りない日をLINEに送る文。★表を直せば数も文も変わります
   shiftShortCopyBox(rec);
+  // ヘルプ要請・人員過多（4店舗だけ）の「ヘルプ要請を見る」
+  helpReqBtnSync();
 }
 
 /**
@@ -9976,8 +9978,316 @@ function shiftGridBlock(rec, wishes, days) {
   });
   table.appendChild(memo);
 
+  // ★ヘルプ要請・人員過多（4店舗だけ → SHIFT_HELP_STORES）
+  if (shiftHelpOn(state.storeId)) table.appendChild(shiftHelpRow(days));
+
   wrap.appendChild(table);
   return wrap;
+}
+
+/* -------- ヘルプ要請・人員過多（2026-09-18、ko-dai さんの指示） --------
+ *
+ * こじゃれ・炭まろ・ちゃこる・おいでんテラスの4店舗だけ（SHIFT_HELP_STORES）。
+ *   日付ごと … 表の一番下の「ヘルプ」の行に「ヘルプ要請」「人員過多」のボタン。
+ *              押すとキッチンかホールかと人数を選びます。出したものはボタンの上に並び、
+ *              押せば直せます（0人にすると取り消し）。
+ *   店舗どうし … 上の「ヘルプ要請を見る」で、**ほかの3店舗**が出しているものを
+ *              日付ごとに見られます（どの店舗が・何人・キッチンかホールか）。
+ * ★見た目は、すでにある .patty-box／.shift-patty／.memo-tags／.memo-tag／.modal を
+ *   使い回しています（css/style.css は本部のもので、足していません）。
+ *   色だけ、ヘルプ要請を赤（--ng）、人員過多を緑（--ok）にして見分けます。
+ * ★記録の形は js/config.js の「ヘルプ要請・人員過多」。
+ */
+const HELP_REQ_COLOR = { help: 'var(--ng)', over: 'var(--ok)' };
+
+function helpReqKindName(id) {
+  const k = HELP_REQ_KINDS.find((v) => v.id === id);
+  return k ? k.name : id;
+}
+function helpReqLaneName(id) {
+  const l = SHIFT_LANES.find((v) => v.id === id);
+  return l ? l.name : id;
+}
+
+/** その店舗・その日に出ているもの。0人のもの（取り消したもの）は入れません */
+function helpReqOf(storeId, dateStr) {
+  const items = Store.getDay(HELP_REQ_STORE, helpReqKey(storeId, dateStr)).items || {};
+  const out = [];
+  HELP_REQ_KINDS.forEach((k) => SHIFT_LANES.forEach((l) => {
+    const v = items[helpReqItem(dateStr, k.id, l.id)];
+    const n = v ? Math.floor(Number(v.n)) : 0;
+    if (n > 0) out.push({ kind: k.id, lane: l.id, n });
+  }));
+  return out;
+}
+
+/** その日・その種類・その持ち場の人数（出していなければ 0） */
+function helpReqCount(storeId, dateStr, kindId, laneId) {
+  const items = Store.getDay(HELP_REQ_STORE, helpReqKey(storeId, dateStr)).items || {};
+  const v = items[helpReqItem(dateStr, kindId, laneId)];
+  return v ? Math.max(0, Math.floor(Number(v.n)) || 0) : 0;
+}
+
+/**
+ * ほかの店舗が出しているもの（今日から先だけ）
+ *
+ * ★自分の店舗の分は入れません。自分の分は、組む画面の表にもう出ているからです。
+ * ★並びは 日付 → 店舗（SHIFT_HELP_STORES の順）→ 種類 → 持ち場。
+ */
+function helpReqOthers(meId) {
+  const 店の順 = (id) => SHIFT_HELP_STORES.indexOf(id);
+  const 種の順 = (id) => HELP_REQ_KINDS.findIndex((v) => v.id === id);
+  const 場の順 = (id) => SHIFT_LANES.findIndex((v) => v.id === id);
+  const out = [];
+  const keys = Store.keysUnder(HELP_REQ_STORE);
+  SHIFT_HELP_STORES.forEach((sid) => {
+    if (sid === meId) return;
+    keys.filter((k) => k.startsWith(`${sid}-`)).forEach((key) => {
+      const items = Store.getDay(HELP_REQ_STORE, key).items || {};
+      Object.keys(items).forEach((ik) => {
+        const [d, kind, lane] = ik.split('|');
+        const n = Math.floor(Number((items[ik] || {}).n)) || 0;
+        if (n <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(d || '') || d < TODAY_STR) return;
+        if (種の順(kind) < 0 || 場の順(lane) < 0) return;
+        out.push({ d, store: sid, kind, lane, n });
+      });
+    });
+  });
+  out.sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0)
+    || 店の順(a.store) - 店の順(b.store) || 種の順(a.kind) - 種の順(b.kind)
+    || 場の順(a.lane) - 場の順(b.lane));
+  return out;
+}
+
+/** 表の一番下の「ヘルプ」の行 */
+function shiftHelpRow(days) {
+  const tr = document.createElement('tr');
+  const th = document.createElement('th');
+  th.className = 'shift-grid__slot shift-grid__slot--memo';
+  th.textContent = 'ヘルプ';
+  tr.appendChild(th);
+  days.forEach((dateStr) => {
+    const td = document.createElement('td');
+    td.colSpan = SHIFT_LANES.length;
+    td.className = 'shift-grid__memo';
+    if (shiftClosedOn(dateStr)) {
+      td.classList.add('is-closed');
+      tr.appendChild(td);
+      return;
+    }
+    // 出しているもの（押すと直せます）
+    const 出した = helpReqOf(state.storeId, dateStr);
+    if (出した.length) {
+      const list = document.createElement('div');
+      list.className = 'memo-tags';
+      出した.forEach((r) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'memo-tag is-on';
+        b.style.borderColor = HELP_REQ_COLOR[r.kind];
+        b.style.color = HELP_REQ_COLOR[r.kind];
+        b.style.background = `color-mix(in srgb, ${HELP_REQ_COLOR[r.kind]} 12%, transparent)`;
+        b.textContent = `${helpReqKindName(r.kind)} ${helpReqLaneName(r.lane)}${shiftZen(r.n)}人`;
+        b.addEventListener('click', () => openHelpReq(dateStr, r.kind, r.lane));
+        list.appendChild(b);
+      });
+      td.appendChild(list);
+    }
+    // 「ヘルプ要請」「人員過多」
+    const acts = document.createElement('div');
+    acts.className = 'patty-box';
+    HELP_REQ_KINDS.forEach((k) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'shift-patty';
+      b.textContent = k.name;
+      b.addEventListener('click', () => openHelpReq(dateStr, k.id));
+      acts.appendChild(b);
+    });
+    td.appendChild(acts);
+    tr.appendChild(td);
+  });
+  return tr;
+}
+
+/**
+ * ヘルプ要請・人員過多を出す／直す小窓
+ *
+ * ★持ち場（キッチン／ホール）を選ぶと、その持ち場でいま出している人数が入ります。
+ *   0人か空で「決める」と取り消しです。
+ */
+function openHelpReq(dateStr, kindId, laneId) {
+  let m = document.getElementById('helpReqModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'helpReqModal';
+    m.className = 'modal is-hidden';
+    m.innerHTML = `
+      <div class="modal__backdrop" data-help-req-close></div>
+      <div class="modal__panel modal__panel--confirm" role="dialog" aria-modal="true" aria-labelledby="helpReqTitle">
+        <h2 class="modal__title" id="helpReqTitle"></h2>
+        <div class="field">
+          <span class="field__label">キッチンかホールか</span>
+          <div class="seg" id="helpReqLanes"></div>
+        </div>
+        <label class="field">
+          <span class="field__label" id="helpReqCountLabel">何人か</span>
+          <input type="text" class="field__input" id="helpReqCount" inputmode="numeric"
+            autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+            placeholder="0" style="text-align:center;">
+        </label>
+        <p class="modal__note">0人にすると取り消します。ほかの3店舗の「ヘルプ要請を見る」に出ます。</p>
+        <div class="modal__actions modal__actions--confirm">
+          <button type="button" class="btn" data-help-req-close>やめる</button>
+          <button type="button" class="btn btn--primary" id="helpReqGo">決める</button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+    m.querySelectorAll('[data-help-req-close]').forEach((x) => {
+      x.addEventListener('click', () => m.classList.add('is-hidden'));
+    });
+    m.querySelector('#helpReqGo').addEventListener('click', () => {
+      const at = m._at;
+      if (!at || !at.lane) return;
+      const raw = toHalfWidthNumber(String(m.querySelector('#helpReqCount').value || '')).trim();
+      const n = Math.min(HELP_REQ_MAX, Math.max(0, Math.floor(Number(raw)) || 0));
+      // ★出していないものを0人で「決める」だけなら、書きません（要らない同期を増やさないため）
+      if (n > 0 || helpReqCount(at.store, at.d, at.kind, at.lane) > 0) {
+        Store.setItem(HELP_REQ_STORE, helpReqKey(at.store, at.d), helpReqItem(at.d, at.kind, at.lane),
+          { n, at: new Date().toISOString() });
+      }
+      m.classList.add('is-hidden');
+      renderKeepScroll();
+    });
+    m.querySelector('#helpReqCount').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !imeEnter(e)) m.querySelector('#helpReqGo').click();
+    });
+  }
+  // ★店舗は開いたときのものを控えます。小窓を開いたまま店舗を移っても、取りちがえません
+  m._at = { store: state.storeId, d: dateStr, kind: kindId, lane: laneId || '' };
+  const 描く = () => {
+    const at = m._at;
+    m.querySelector('#helpReqTitle').textContent = `${shiftDayLabel(at.d, DOW)}　${helpReqKindName(at.kind)}`;
+    m.querySelector('#helpReqTitle').style.color = HELP_REQ_COLOR[at.kind];
+    m.querySelector('#helpReqCountLabel').textContent = at.kind === 'help'
+      ? '何人ほしいか' : '何人出せるか';
+    const box = m.querySelector('#helpReqLanes');
+    box.innerHTML = '';
+    SHIFT_LANES.forEach((l) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'seg__btn' + (at.lane === l.id ? ' is-on' : '');
+      b.textContent = l.name;
+      b.addEventListener('click', () => {
+        at.lane = l.id;
+        const now = helpReqCount(at.store, at.d, at.kind, l.id);
+        m.querySelector('#helpReqCount').value = now ? String(now) : '';
+        描く();
+        m.querySelector('#helpReqCount').focus();
+      });
+      box.appendChild(b);
+    });
+    // 持ち場を選ぶまでは「決める」を押せません（どちらか分からないまま出さないため）
+    m.querySelector('#helpReqGo').disabled = !at.lane;
+  };
+  const now = laneId ? helpReqCount(state.storeId, dateStr, kindId, laneId) : 0;
+  m.querySelector('#helpReqCount').value = now ? String(now) : '';
+  描く();
+  m.classList.remove('is-hidden');
+}
+
+/**
+ * 組む画面の上に「ヘルプ要請を見る」（4店舗だけ）
+ *
+ * ★**自分の段に置きます。**いまの4つのボタン（募集を始める・提出を見る・
+ *   希望を取り込む・これまでのシフト表）と同じ段に足すと、スマホでは5つが
+ *   1列に押し込まれて、どれも縦書きのようになりました（2026-09-18 に確かめた）。
+ * ★段ごと出し入れします。`.shift-top__acts` は display:flex なので、
+ *   hidden では消えません（作者の CSS が勝つため）。style.display で切ります。
+ */
+function helpReqBtnSync() {
+  const 前の段 = document.querySelector('#shiftTop .shift-top__acts');
+  if (!前の段) return;
+  let row = document.getElementById('helpReqActs');
+  const on = shiftHelpOn(state.storeId);
+  if (!row) {
+    if (!on) return;
+    row = document.createElement('div');
+    row.id = 'helpReqActs';
+    row.className = 'shift-top__acts';
+    const b0 = document.createElement('button');
+    b0.type = 'button';
+    b0.id = 'helpReqListBtn';
+    b0.className = 'btn';
+    b0.addEventListener('click', openHelpReqList);
+    row.appendChild(b0);
+    前の段.insertAdjacentElement('afterend', row);
+  }
+  row.style.display = on ? '' : 'none';
+  if (!on) return;
+  const b = document.getElementById('helpReqListBtn');
+  // ★ほかの店舗から出ていれば、数を添えます。開かなくても気づけるように
+  const n = helpReqOthers(state.storeId).filter((r) => r.kind === 'help').length;
+  b.textContent = n ? `ヘルプ要請を見る（${n}件）` : 'ヘルプ要請を見る';
+}
+
+/** ほかの3店舗が出しているもの（日付ごと） */
+function openHelpReqList() {
+  let m = document.getElementById('helpReqListModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'helpReqListModal';
+    m.className = 'modal is-hidden';
+    m.innerHTML = `
+      <div class="modal__backdrop" data-help-list-close></div>
+      <div class="modal__panel modal__panel--wide" role="dialog" aria-modal="true" aria-labelledby="helpReqListTitle">
+        <h2 class="modal__title" id="helpReqListTitle">ヘルプ要請を見る</h2>
+        <p class="modal__note" id="helpReqListNote"></p>
+        <div id="helpReqListBody"></div>
+        <div class="modal__actions modal__actions--confirm" style="margin-top:14px;">
+          <button type="button" class="btn" data-help-list-close>閉じる</button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+    m.querySelectorAll('[data-help-list-close]').forEach((x) => {
+      x.addEventListener('click', () => m.classList.add('is-hidden'));
+    });
+  }
+  const list = helpReqOthers(state.storeId);
+  const ほか = SHIFT_HELP_STORES.filter((id) => id !== state.storeId).map((id) => getStore(id).name);
+  m.querySelector('#helpReqListNote').textContent = `${ほか.join('・')}が出しているものです（今日から先）。`;
+  const body = m.querySelector('#helpReqListBody');
+  body.innerHTML = '';
+  if (!list.length) {
+    const p = document.createElement('p');
+    p.textContent = 'いまは、ほかの店舗から出ているものはありません。';
+    p.style.cssText = 'margin:8px 0;color:var(--text-sub);';
+    body.appendChild(p);
+  }
+  let 前の日 = '';
+  list.forEach((r) => {
+    if (r.d !== 前の日) {
+      前の日 = r.d;
+      const h = document.createElement('p');
+      h.textContent = shiftDayLabel(r.d, DOW);
+      h.style.cssText = 'margin:12px 0 4px;font-weight:700;';
+      body.appendChild(h);
+    }
+    const line = document.createElement('div');
+    line.style.cssText = 'display:flex;gap:10px;align-items:baseline;padding:5px 2px;'
+      + 'border-bottom:1px solid var(--line);';
+    const 店 = document.createElement('span');
+    店.textContent = getStore(r.store).name;
+    店.style.cssText = 'flex:0 0 7em;font-weight:700;';
+    const 種 = document.createElement('span');
+    種.textContent = helpReqKindName(r.kind);
+    種.style.cssText = `flex:0 0 5.5em;font-weight:700;color:${HELP_REQ_COLOR[r.kind]};`;
+    const 中 = document.createElement('span');
+    中.textContent = `${helpReqLaneName(r.lane)} ${shiftZen(r.n)}人`;
+    line.append(店, 種, 中);
+    body.appendChild(line);
+  });
+  m.classList.remove('is-hidden');
 }
 
 /** 表の1マス（その日・その枠・その持ち場） */
