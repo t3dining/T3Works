@@ -1340,6 +1340,44 @@ const ShiftMemoTags = {
 };
 
 /**
+ * 面接マニュアル（全店舗で共通。マネージで直します）
+ *
+ * ★中身は**ここにもコードにも書きません。**スプレッドシート側（合言葉の内側）に入り、
+ *   同期で届いたものだけを端末に置きます。人の名前・金額・マイナンバーの扱いが
+ *   入っているためです（公開物に書かない決まり）。元は「面接マニュアル _印刷用.pdf」（2026-09-18）
+ * ★`{ text, at }` の形で持ちます。文を空にしても**値そのものは空になりません。**
+ *   同期の取り込み（`_applyPulled`）は空の値を飛ばすので、文字列のままだと
+ *   「全部消した」がほかの端末に届かないためです
+ * ★見せ方と書き方の決まりは js/interview.js にあります
+ */
+const InterviewManual = {
+  _key: APP.storageKey + ':interviewManual',
+  最大: 20000,
+
+  /** 入っているもの。**一度も届いていなければ null**（空の文とは別です） */
+  get() {
+    try {
+      const v = JSON.parse(localStorage.getItem(this._key) || 'null');
+      if (v && typeof v === 'object' && typeof v.text === 'string') return v;
+    } catch (e) {
+      /* 壊れていたら「まだ無い」と同じに扱います */
+    }
+    return null;
+  },
+
+  text() { const v = this.get(); return v ? v.text : ''; },
+
+  save(text) {
+    const clean = {
+      text: String(text || '').replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '').trim().slice(0, this.最大),
+      at: new Date().toISOString(),
+    };
+    localStorage.setItem(this._key, JSON.stringify(clean));
+    return clean;
+  },
+};
+
+/**
  * 年間の売上目標（店舗ごと。マネージで登録します）
  *
  * ★もとは js/config.js に金額が直書きされていて、GitHub Pages で

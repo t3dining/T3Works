@@ -13,8 +13,8 @@
 <link rel="icon" type="image/png" sizes="512x512" href="img/works-icon-512.png?v=dddd764f">
 <link rel="icon" type="image/png" sizes="64x64" href="img/works-icon-64.png?v=0f9cbed2">
 <title>T3 Works｜T3Dining株式会社</title>
-<link rel="stylesheet" href="css/style.css?v=c6816aa3">
-<meta name="app-version" content="3b863a82">
+<link rel="stylesheet" href="css/style.css?v=8f3a5281">
+<meta name="app-version" content="5440f93f">
 </head>
 <body>
 
@@ -86,6 +86,7 @@
            ・お金のこと       … 緑（--money）  .stores-big-btn--money
            ・バグるのこと     … バグるの色     .stores-big-btn--baguru
            ・確認の記録       … 青             .stores-big-btn--check
+           ・人のこと         … オレンジ       .stores-big-btn--people（面接マニュアル）
            ・これから増える分 … 新しい色を決めて、その仲間で使い回してください
 
          ★並べる順番は「同じ仲間どうしを続けて」置くこと。
@@ -104,6 +105,16 @@
       <span class="stores-big-btn__text">
         <span class="stores-big-btn__name">週間掃除の達成状況</span>
         <span class="stores-big-btn__sub">2週ごとの進み具合を、全店舗まとめて見る</span>
+      </span>
+      <span class="stores-big-btn__arrow" aria-hidden="true">›</span>
+    </button>
+    <!-- 面接マニュアル（2026-09-18）。開くのは js/interview.js です（js/app.js には書いていません）。
+         ★中身はスプレッドシート側（合言葉の内側）にあり、ここには書きません -->
+    <button type="button" class="stores-big-btn stores-big-btn--people" id="storesInterviewBtn">
+      <span class="stores-big-btn__icon" aria-hidden="true">🤝</span>
+      <span class="stores-big-btn__text">
+        <span class="stores-big-btn__name">面接マニュアル</span>
+        <span class="stores-big-btn__sub">アルバイトの面接で、聞くことと伝えること</span>
       </span>
       <span class="stores-big-btn__arrow" aria-hidden="true">›</span>
     </button>
@@ -1527,13 +1538,29 @@
   </div>
 </div>
 
+<!-- ===== 面接マニュアル（T3Dining の欄から開く、上に重ねるパネル） =====
+     ★画面（view）にはしていません。出し入れは js/interview.js だけで完結します。
+     ★中身（文）はここに書きません。同期で届いたものを js/interview.js が入れます -->
+<div class="interview is-hidden" id="interviewPanel" role="dialog" aria-modal="true" aria-labelledby="interviewTitle">
+  <div class="interview__bar">
+    <button type="button" class="interview__close" id="interviewClose" aria-label="閉じる">✕</button>
+    <h2 class="interview__title" id="interviewTitle">面接マニュアル</h2>
+    <button type="button" class="interview__reset is-hidden" id="interviewReset">チェックを消す</button>
+  </div>
+  <div class="interview__scroll">
+    <p class="interview__lead" id="interviewLead"></p>
+    <div class="interview__body" id="interviewBody"></div>
+  </div>
+</div>
+
 <script src="js/config.js?v=708e2c88"></script>
-<script src="js/storage.js?v=f31370dc"></script>
-<script src="js/sync.js?v=7570ff1f"></script>
+<script src="js/storage.js?v=0d89917e"></script>
+<script src="js/sync.js?v=f9396ead"></script>
 <script src="js/update.js?v=c530219e"></script>
 <!-- 会議資料の中身。スプレッドシートから取り込んだ数字と議事メモです -->
 <!-- シフト表を絵に描くところ。提出ページ（shift/）でも同じものを使います -->
 <script src="js/shift-sheet.js?v=2b29c50a"></script>
 <script src="js/app.js?v=be7ec26f"></script>
+<script src="js/interview.js?v=00c613a5"></script>
 </body>
 </html>

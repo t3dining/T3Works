@@ -23,6 +23,7 @@ function 設定の呼び名(n) {
     shiftStaff: 'シフトの名簿', salesTargets: '年間の売上目標',
     staffAccounts: '社員のアカウント',
     shiftMemoTags: 'メモの決まり文句',
+    interviewManual: '面接マニュアル',
   };
   return 表[n] || n;
 }
@@ -761,6 +762,7 @@ const Sync = {
         nippouFolders: NippouFolders._key,
         salesTargets: SalesTargets._key,
         shiftMemoTags: ShiftMemoTags._key,
+        interviewManual: InterviewManual._key,
         closedDows: Closed._dowsKey,
         closedExceptions: Closed._exKey,
       };
@@ -1124,6 +1126,14 @@ function summaryFor(key) {
   ShiftMemoTags.save = function (map) {
     const clean = _saveMemoTags(map);
     Sync.enqueue({ t: 'setting', n: 'shiftMemoTags', v: clean });
+    return clean;
+  };
+
+  // ★面接マニュアル。人の名前や金額が入るので、公開物には書かずにここから同期に乗せます（2026-09-18）
+  const _saveInterview = InterviewManual.save.bind(InterviewManual);
+  InterviewManual.save = function (text) {
+    const clean = _saveInterview(text);
+    Sync.enqueue({ t: 'setting', n: 'interviewManual', v: clean });
     return clean;
   };
 

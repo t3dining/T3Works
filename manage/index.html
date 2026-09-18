@@ -12,9 +12,9 @@
 <link rel="apple-touch-icon" href="../img/manage-icon-180.png?v=ac18efea">
 <link rel="icon" type="image/png" sizes="64x64" href="../img/manage-icon-64.png?v=2b8a9145">
 <title>T3 Works Manage｜T3Dining株式会社</title>
-<link rel="stylesheet" href="../css/style.css?v=c6816aa3">
+<link rel="stylesheet" href="../css/style.css?v=8f3a5281">
 <link rel="stylesheet" href="css/admin.css?v=444d3c60">
-<meta name="app-version" content="3b863a82">
+<meta name="app-version" content="5440f93f">
 </head>
 <body class="no-daytabs">
 
@@ -193,6 +193,44 @@
         <button type="button" class="btn" id="saveNippouTest">書き先を保存</button>
         <span class="admin-saved is-hidden" id="nippouTestSaved">保存しました</span>
       </div>
+    </details>
+  </section>
+
+  <!-- ===== 面接マニュアル（全店舗で共通。2026-09-18） =====
+       ★動きは ../js/interview.js にあります（manage/js/admin.js には書いていません）。
+       ★文はスプレッドシート側（合言葉の内側）に入ります。**ここに見本として本物の文を書かないこと**
+         （このファイルは誰でも読めます）。下の placeholder も作り話です -->
+  <section class="admin-block" id="interviewBlock">
+    <div class="admin-block__head">
+      <h2 class="admin-block__title">面接マニュアル</h2>
+      <span class="admin-count" id="interviewCount"></span>
+    </div>
+    <p class="admin-note">
+      ワークスとマインの「T3Dining」の欄にある<b>「面接マニュアル」</b>に出る文です。全店舗で共通です。<br>
+      文は<b>合言葉の内側</b>（スプレッドシート側）に入ります。人の名前や金額を書いても、アプリを入れていない人には見えません。
+    </p>
+    <details class="admin-tool">
+      <summary>書き方（行の頭の記号で決まります）</summary>
+      <p class="admin-note">
+        <b>【見出し】</b> … 大きな区切り（例：【まず聞くこと】【採用なら】）<br>
+        <b>◆ 項目</b> … 聞くこと・伝えること。面接中に押すと ✓ が付きます<br>
+        <b>→ 説明</b> … 項目の下の説明<br>
+        <b>・ 細かく</b> … 説明のさらに下<br>
+        <b>！ 大事なこと</b> … 赤で目立たせます<br>
+        <b>？ 聞くこと</b> … 応募者に聞くこと（吹き出しで出ます）<br>
+        記号の無い行は、ふつうの文になります。PDF の ❖ ➢ ■ のまま貼っても読めます。
+      </p>
+    </details>
+    <textarea id="interviewInput" class="field__input field__input--area" rows="16"
+      placeholder="【まず聞くこと】&#10;◆ 聞くこと&#10;→ その説明&#10;&#10;【採用なら】&#10;◆ 伝えること&#10;！ 大事なこと&#10;（ここは見本です）"></textarea>
+    <div class="admin-actions">
+      <button type="button" class="btn btn--primary" id="interviewSave">面接マニュアルを保存</button>
+      <span class="admin-saved is-hidden" id="interviewSaved">保存しました</span>
+    </div>
+    <p class="admin-note" id="interviewState"></p>
+    <details class="admin-tool" open>
+      <summary>見え方を確かめる（保存する前の文でも出ます）</summary>
+      <div class="interview-preview" id="interviewPreview"></div>
     </details>
   </section>
 
@@ -737,9 +775,10 @@
      現場のアプリ（ワークス・マイン）には持たせません。番号は合言葉だからです -->
 <script>window.T3_ADMIN_PAGE = true;</script>
 <script src="../js/config.js?v=708e2c88"></script>
-<script src="../js/storage.js?v=f31370dc"></script>
-<script src="../js/sync.js?v=7570ff1f"></script>
+<script src="../js/storage.js?v=0d89917e"></script>
+<script src="../js/sync.js?v=f9396ead"></script>
 <script src="../js/update.js?v=c530219e"></script>
 <script src="js/admin.js?v=c8f03598"></script>
+<script src="../js/interview.js?v=00c613a5"></script>
 </body>
 </html>

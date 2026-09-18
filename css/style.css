@@ -3163,6 +3163,124 @@ body[data-mode="mine"] .nippou.mine-only { display: block; }
 .stores-big-btn--baguru { --pick: #bf5480; }
 /* 確認の記録（クローズの提出記録・週間掃除の達成状況）。青 */
 .stores-big-btn--check { --pick: #2b7fd4; }
+/* 人のこと（面接マニュアル）。オレンジ（2026-09-18） */
+.stores-big-btn--people { --pick: #d9822b; }
+
+/* ===================== 面接マニュアル =====================
+   T3Dining の欄から開く、上に重ねるパネルです（js/interview.js）。
+   ★z-index は 50。ヘッダー（30）と「新しい版」の帯（45）より上、
+     確認の画面（.modal 60）より下です。**番号を聞く画面がパネルの上に出る**ようにしてあります。
+   ★マネージの「見え方を確かめる」も、下の .interview-sec などをそのまま使います（.interview-preview） */
+.interview, .interview-preview { --people: #d9822b; }
+.interview {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; flex-direction: column;
+  background: var(--bg); color: var(--text);
+}
+.interview.is-hidden { display: none; }
+html.is-interview-open, html.is-interview-open body { overflow: hidden; }
+.interview__bar {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
+  padding: calc(env(safe-area-inset-top) + 10px) 12px 10px;
+  background: var(--header-bg); color: var(--header-fg);
+  border-bottom: 3px solid var(--people);
+}
+.interview__close {
+  flex: 0 0 auto; width: 40px; height: 40px; border: 0; border-radius: 10px;
+  background: rgba(255, 255, 255, .14); color: inherit; font-size: 17px; font-weight: 700; cursor: pointer;
+}
+.interview__title { flex: 1 1 auto; margin: 0; font-size: 17px; font-weight: 800; }
+.interview__reset {
+  flex: 0 0 auto; padding: 8px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, .4); background: transparent; color: inherit;
+  font-size: 12.5px; font-weight: 700;
+}
+.interview__reset.is-hidden { display: none; }
+.interview__scroll {
+  flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  padding: 14px 16px calc(env(safe-area-inset-bottom) + 32px);
+}
+.interview__lead, .interview__body { max-width: 720px; margin-left: auto; margin-right: auto; }
+.interview__lead { margin-top: 0; margin-bottom: 12px; font-size: 13px; line-height: 1.8; color: var(--text-sub); }
+.interview__lead:empty { display: none; }
+.interview__progress {
+  display: inline-block; margin-left: 4px; padding: 1px 10px; border-radius: 999px;
+  background: color-mix(in srgb, var(--people) 16%, var(--surface)); color: var(--text); font-size: 12px;
+}
+
+/* 区切り（【まず聞くこと】【採用なら】…）を1枚のカードにします */
+.interview-sec {
+  margin-bottom: 14px; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.interview-sec__title {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: 0; padding: 11px 16px 11px 13px;
+  border-left: 4px solid var(--people); border-bottom: 1px solid var(--line-2);
+  background: color-mix(in srgb, var(--people) 9%, var(--surface));
+  font-size: 15.5px; font-weight: 800;
+}
+.interview-sec__count { flex: 0 0 auto; font-size: 12px; font-weight: 700; color: var(--text-sub); }
+
+/* 項目（◆）。左の丸を押すと ✓ */
+.interview-item { display: flex; gap: 12px; padding: 13px 16px; border-top: 1px solid var(--line-2); }
+.interview-sec > .interview-item:first-child,
+.interview-sec__title + .interview-item { border-top: 0; }
+.interview-item__check {
+  position: relative; flex: 0 0 auto; width: 30px; height: 30px; margin-top: -3px; padding: 0;
+  border: 2px solid var(--line); border-radius: 50%; background: var(--surface); cursor: pointer;
+}
+.interview-item__check[aria-pressed="true"] { background: var(--ok); border-color: var(--ok); }
+.interview-item__check[aria-pressed="true"]::after {
+  content: ''; position: absolute; left: 8.5px; top: 3.5px; width: 7px; height: 13px;
+  border: solid #fff; border-width: 0 3px 3px 0; transform: rotate(45deg);
+}
+.interview-item__dot {
+  flex: 0 0 auto; width: 10px; height: 10px; margin-top: 7px; border-radius: 50%; background: var(--people);
+}
+.interview-item__body { flex: 1 1 auto; min-width: 0; }
+.interview-item__title { margin: 0; font-size: 15px; font-weight: 700; line-height: 1.6; }
+.interview-item.is-done .interview-item__title,
+.interview-item.is-done .interview-line { color: var(--text-weak); }
+
+/* 項目の下の説明（→）・さらに下（・）・大事（！） */
+.interview-lines { list-style: none; margin: 5px 0 0; padding: 0; }
+.interview-lines--loose { margin: 0; padding: 8px 16px; }
+.interview-line { margin: 4px 0; font-size: 14px; line-height: 1.75; }
+.interview-line--sub { position: relative; padding-left: 20px; }
+.interview-line--sub::before {
+  content: '→'; position: absolute; left: 0; top: 0; color: var(--people); font-weight: 800;
+}
+.interview-line--sub2 { position: relative; padding-left: 36px; font-size: 13.5px; color: var(--text-sub); }
+.interview-line--sub2::before { content: '・'; position: absolute; left: 20px; top: 0; }
+.interview-line--em {
+  margin: 8px 0; padding: 8px 12px; border-left: 4px solid var(--ng); border-radius: 0 8px 8px 0;
+  background: color-mix(in srgb, var(--ng) 10%, var(--surface)); color: var(--ng); font-weight: 700;
+}
+.interview-item.is-done .interview-line--em { color: var(--text-weak); border-left-color: var(--line); }
+
+/* 応募者に聞くこと（？）。吹き出しのように */
+.interview-ask {
+  display: flex; gap: 10px; align-items: flex-start; margin: 10px 16px 12px; padding: 12px 14px;
+  border-radius: 12px; background: color-mix(in srgb, var(--accent) 11%, var(--surface));
+  font-size: 14px; font-weight: 700; line-height: 1.6;
+}
+.interview-ask__tag {
+  flex: 0 0 auto; margin-top: 1px; padding: 2px 9px; border-radius: 999px;
+  background: var(--accent); color: #fff; font-size: 11px; font-weight: 800;
+}
+
+.interview-empty {
+  padding: 20px 18px; background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius);
+  font-size: 13.5px; line-height: 1.8; color: var(--text-sub);
+}
+.interview-empty p { margin: 0 0 6px; }
+.interview-empty__title { font-size: 15px; font-weight: 800; color: var(--text); }
+
+/* マネージの「見え方を確かめる」 */
+.interview-preview { margin-top: 10px; padding: 12px; border-radius: var(--radius); background: var(--bg); }
+.interview-preview .interview-sec:last-child { margin-bottom: 0; }
 /* インスタのこと（ストーリーズ作成）。紫 */
 
 /* ===================== シフト =====================
