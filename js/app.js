@@ -9743,9 +9743,9 @@ function shiftLinkPicker(person) {
     b.disabled = ここ;
     if (ここ) b.style.opacity = '.6';
     b.addEventListener('click', () => {
-      const next = new Set(いま);
-      if (on) next.delete(s.id); else next.add(s.id);
-      shiftSetLinked(state.storeId, person.n, person.c, [...next]);
+      // ★人は番号で見ます。足す先に同じ名前の別の人がいたら、ここで聞きます
+      //   （→ shiftToggleLinked。マネージと同じもの。2026-09-18、本部の残り③の①）
+      if (!shiftToggleLinked(state.storeId, person, s.id)) return;
       renderKeepScroll();
     });
     box.appendChild(b);

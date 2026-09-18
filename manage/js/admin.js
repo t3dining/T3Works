@@ -1728,8 +1728,13 @@ function renderShiftCodes() {
     again.className = 'btn btn--small';
     again.textContent = '作り直す';
     again.addEventListener('click', () => {
-      if (!window.confirm(`${p.n}さんの番号を作り直します。\n前の番号では入れなくなります。`)) return;
-      ShiftStaff.reissue(storeId, p.n);
+      // ★他店舗にも所属している人は、向こうの名簿の番号も**いっしょに**替わります
+      //   （→ shiftReissue。2026-09-18、本部の残り③の②）
+      const よその店 = shiftLinkedStores(p.c).filter((id) => id !== storeId)
+        .map((id) => (getStore(id) || {}).name || id);
+      if (!window.confirm(`${p.n}さんの番号を作り直します。\n前の番号では入れなくなります。`
+        + (よその店.length ? `\n\n${よその店.join('・')}の名簿の番号も、いっしょに新しい番号に変わります。` : ''))) return;
+      shiftReissue(storeId, p.n);
       renderShiftStaff();
     });
 
@@ -1795,9 +1800,9 @@ function shiftLinkPicker(storeId, person) {
     // ★いまいる店舗は外せません。外すと、押している本人が消えてしまいます
     b.disabled = ここ;
     b.addEventListener('click', () => {
-      const next = new Set(いま);
-      if (on) next.delete(st.id); else next.add(st.id);
-      shiftSetLinked(storeId, person.n, person.c, [...next]);
+      // ★人は番号で見ます。足す先に同じ名前の別の人がいたら、ここで聞きます
+      //   （→ shiftToggleLinked。2026-09-18、本部の残り③の①）
+      if (!shiftToggleLinked(storeId, person, st.id)) return;
       renderShiftStaff();
     });
     wrap.appendChild(b);
@@ -2049,11 +2054,27 @@ function saveShiftStaff() {
  */
 
 /** '17,17.5, 18' → ['17','17.5','18']（数でないものは落とします） */
+/**
+ * 「選べる時刻」の欄を読む → { times: ['11', '11.5'], bad: ['11時10分'] }
+ *
+ * ★前は `11` `11.5` の形しか読めず、**`11:00` と打つと黙って捨てて**いました
+ *   （2026-09-18、本部の残り③の③）。いまは `shiftTimeFrom`（config.js）で
+ *   `11:00` `1130` `11時30分` なども読みます（`11時半` は読めないので、聞き直します）。
+ * ★読めないもの・15分きざみでないもの・24時以降は `bad` に入れて返します。
+ *   保存する前に聞き直すためです（黙って捨てない）。
+ */
 function shiftTimesFromText(text) {
-  return String(text || '')
-    .split(/[,、\s]+/)
-    .map((v) => v.trim())
-    .filter((v) => v !== '' && isFinite(Number(v)) && Number(v) >= 0 && Number(v) < 24);
+  const times = [];
+  const bad = [];
+  String(text || '').split(/[,、\s]+/).map((v) => v.trim()).filter((v) => v !== '')
+    .forEach((v) => {
+      const t = shiftTimeFrom(v);
+      const n = Number(t);
+      const 十五分 = t !== null && Math.abs(n * 4 - Math.round(n * 4)) < 1e-9;
+      if (t === null || !(n >= 0 && n < 24) || !十五分) bad.push(v);
+      else if (!times.includes(t)) times.push(t);
+    });
+  return { times, bad };
 }
 
 /* -------- メモの決まり文句 --------
@@ -2359,12 +2380,24 @@ function renderShiftRangeNote(storeId) {
   const box = document.createElement('div');
   box.className = 'shift-slot';
 
+  // ★境目の時刻は、**決める所（shiftSlotByTime）と同じ shiftTimeBounds** から作ります。
+  //   前は 11:00・16:30・17:00 と書き込んであり、決め方を直しても説明だけ古いまま
+  //   残る形でした（2026-09-18、本部の残り③の③）。
+  //   ランチの終わりは「夜の境目の1つ前に選べる時刻」（刻み＝st.step）です
+  const b = shiftTimeBounds(storeId);
+  const 刻み = Number(st.step) > 0 ? Number(st.step) : 0.5;
+  const 時 = (x) => shiftTimeText(shiftTimeKey(x));
+  const 行 = [];
+  const 名 = (id) => (getShiftSlot(storeId, id) || {}).name || id;
+  if (b.昼から > 0) 行.push(`${時(b.昼から)}より前＝${名('open')}`);
+  if (b.夜 - 刻み >= b.昼から) 行.push(`${時(b.昼から)}〜${時(b.夜 - 刻み)}＝${名('lunch')}`);
+  行.push(`${時(b.夜)}以降＝${名('dinner')}`);
   const p1 = document.createElement('p');
   p1.className = 'admin-note';
   p1.innerHTML = 'この店舗は<b>出勤〜退勤の時刻を入れる</b>やり方です。'
     + 'アルバイトは枠を選ばず、時刻だけを出します。<br>'
     + 'どの行に入るかは<b>出勤時刻</b>で決まります'
-    + '（11:00より前＝立ち上げ、11:00〜16:30＝ランチ、17:00以降＝ディナー）。<br>'
+    + `（${行.join('、')}）。<br>`
     + '出してもらった時刻が<b>そのままシフト表に入り</b>、あとから名前を押して直せます。';
   box.appendChild(p1);
 
@@ -2386,7 +2419,7 @@ function renderShiftRangeNote(storeId) {
   p2.className = 'admin-note';
   p2.innerHTML = 'この時刻<b>より前</b>に出勤して、この時刻<b>より後</b>まで残る人を'
     + '通しとみなし、シフト表で<b>名前を灰色に塗ります</b>。'
-    + '<b>17</b> なら 17:00、<b>17.5</b> なら 17:30 です。<br>'
+    + '<b>17:00</b> や <b>17:30</b> のように打ちます（<b>17</b>・<b>17.5</b> でも同じです）。<br>'
     + 'アルバイトの画面には出ません。';
   box.appendChild(p2);
 
@@ -2395,33 +2428,62 @@ function renderShiftRangeNote(storeId) {
 
 function saveShiftSlots() {
   const storeId = state.storeId;
+  // ★★**先に全部の欄を確かめてから**書きます（2026-09-18、本部の残り③の③）。
+  //   前は、読めない時刻を**黙って捨てて**、そのあと「保存しました」を出していました
+  //   （`17:00` と打つと境目が保存されない、など）。いまは1つでも読めなければ
+  //   何も書かずに、どの欄かを出して止めます。
+  const 書く = [];
+  const だめ = [];
   el.shiftSlotList.querySelectorAll('.shift-slot').forEach((row) => {
     const get = (k) => {
       const f = row.querySelector(`[data-k="${k}"]`);
       return f ? (f.type === 'checkbox' ? f.checked : f.value.trim()) : '';
     };
+    const 枠名 = get('name') || row.dataset.slot;
     // ★use は書きません。どの枠を使うかはコードで決まります
     const 直す = { name: get('name'), hint: get('hint') };
     // ★時刻の欄は、時刻を入れる店舗では出していません。
     //   出していない欄を空で書くと、前に入れてあった時刻を消してしまいます
     if (row.querySelector('[data-k="times"]')) {
-      const times = shiftTimesFromText(get('times'));
-      const pick = get('pick');
+      const { times, bad } = shiftTimesFromText(get('times'));
+      if (bad.length) だめ.push(`${枠名}の「選べる時刻」：${bad.join('、')}`);
+      if (!times.length && !bad.length) だめ.push(`${枠名}の「選べる時刻」が空です`);
+      const pickRaw = get('pick');
+      const pick = pickRaw ? shiftTimeFrom(pickRaw) : '';
+      if (pickRaw && pick === null) だめ.push(`${枠名}の「ふだんの時刻」：${pickRaw}`);
       直す.times = times;
       // ★ふだんの時刻は、選べる時刻の中から選びます。
       //   外れていると「選べない時刻で入っている人」ができてしまいます
       直す.pick = times.includes(pick) ? pick : (times[0] || '');
     }
-    Store.setItem(SHIFT_SET_STORE, storeId, shiftSlotSetKey(row.dataset.slot), 直す);
+    書く.push([row.dataset.slot, 直す]);
   });
 
-  // 通し（灰色）の境目
+  // 通し（灰色）の境目。ちょうどか半（17:00・17:30）だけです
   const 境目 = document.getElementById('shiftLunchTo');
+  let 境目の値 = null;
   if (境目) {
-    const v = 境目.value.trim();
-    if (/^\d{1,2}(\.5)?$/.test(v)) {
-      Store.setItem(SHIFT_SET_STORE, storeId, SHIFT_STYLE_KEY, { lunchTo: v });
+    const raw = 境目.value.trim();
+    const t = shiftTimeFrom(raw);
+    const n = Number(t);
+    if (t === null || !(n >= 1 && n < 24) || Math.abs(n * 2 - Math.round(n * 2)) > 1e-9) {
+      だめ.push(`「通し（灰色）の境目」：${raw || '（空）'}（17:00 や 17:30 のように、ちょうどか半で）`);
+    } else {
+      境目の値 = t;
     }
+  }
+
+  if (だめ.length) {
+    window.alert('つぎの欄が読めないので、保存していません。\n直してから、もう一度「保存」を押してください。\n\n'
+      + だめ.map((x) => `・${x}`).join('\n')
+      + '\n\n時刻は 11:00 や 11:30 のように打ちます（15分きざみ）。');
+    return;
+  }
+  書く.forEach(([slotId, 直す]) => {
+    Store.setItem(SHIFT_SET_STORE, storeId, shiftSlotSetKey(slotId), 直す);
+  });
+  if (境目の値 !== null) {
+    Store.setItem(SHIFT_SET_STORE, storeId, SHIFT_STYLE_KEY, { lunchTo: 境目の値 });
   }
   renderShiftSlots();
   el.shiftSlotSaved.classList.remove('is-hidden');

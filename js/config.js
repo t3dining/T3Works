@@ -5122,26 +5122,39 @@ function shiftShowsFullMark(storeId) {
 function shiftSlotByTime(t, storeId) {
   const n = Number(t);
   if (!isFinite(n)) return null;
-  // ★境目は**その店舗の設定**から取ります。11 と 17 を書き固めていました
-  //   （2026-09-13 まで）。マネージで「Fの境目」やランチの時刻を直しても
-  //   **入る行だけが動かない**ので、設定と表が食いちがいます。
-  //   **落ちません。**「ランチの行に16時の人がいる」という形になるだけです。
-  //   ★storeId を渡さなければ、今までどおり 17 と 11 で動きます
-  //     （初めの設定がその値なので、いまの6店舗では出かたが変わりません）。
-  // ★`Number('')` は **0** です（NaN ではありません）。`isFinite` だけで
-  //   見ると、設定が空のときに境目が0時になり、**何時でもディナー**に
-  //   なりました（2026-09-13、この直しを試していて出しました）。
-  //   読めない・0以下は「決めていない」とみなして、今までの値に戻します
+  // ★境目は**その店舗の設定**から取ります（→ shiftTimeBounds）。
+  //   11 と 17 を書き固めていたときは、マネージで「Fの境目」やランチの時刻を
+  //   直しても**入る行だけが動かず**、設定と表が食いちがいました（2026-09-13）。
+  const b = shiftTimeBounds(storeId);
+  if (n >= b.夜) return 'dinner';
+  if (n >= b.昼から) return 'lunch';
+  return 'open';
+}
+
+/**
+ * 時刻を入れる店舗（popo）で、出勤時刻からどの行に入るかの境目
+ *
+ *   昼から … これより前に出勤＝立ち上げ（ランチの枠の一番早い時刻）
+ *   夜    … これ以降に出勤＝ディナー（マネージの「通し（灰色）の境目」）
+ *
+ * ★**決める所（shiftSlotByTime）と、マネージの説明文が、同じこの1つを読みます**
+ *   （2026-09-18、本部の残り③の③）。説明文に 11:00・16:30・17:00 と
+ *   書き込んであり、決め方を直しても説明だけ古いまま残る形でした。
+ * ★`Number('')` は **0** です（NaN ではありません）。`isFinite` だけで
+ *   見ると、設定が空のときに境目が0時になり、**何時でもディナー**に
+ *   なりました（2026-09-13）。読めない・0以下は「決めていない」とみなして、
+ *   今までの値（11／17）に戻します。storeId を渡さなくても同じです。
+ */
+function shiftTimeBounds(storeId) {
   const 数 = (v, もとの) => {
     const x = Number(v);
     return isFinite(x) && x > 0 ? x : もとの;
   };
-  const 夜 = 数(shiftStyleOf(storeId).lunchTo, 17);
   const 昼 = shiftSlotsOf(storeId).find((v) => v.id === 'lunch');
-  const 昼から = 数(昼 && (昼.times || [])[0], 11);
-  if (n >= 夜) return 'dinner';
-  if (n >= 昼から) return 'lunch';
-  return 'open';
+  return {
+    昼から: 数(昼 && (昼.times || [])[0], 11),
+    夜: 数(shiftStyleOf(storeId).lunchTo, 17),
+  };
 }
 
 /**
@@ -5840,29 +5853,122 @@ function shiftLinkedStores(code) {
  * ★入れる店舗には**同じ名前・同じ番号**で足し、外す店舗からは消します。
  * ★もとの店舗は必ず残します（そこから押しているので、外せてしまうと
  *   その人がどこにも居なくなります）。
- * ★足す先にすでに同じ名前の人がいたら、**その人の番号をこちらに合わせます**
- *   （別々に登録されていた同じ人を、1人にまとめる形です）。
+ * ★★**人は番号で見ます。名前では見ません**（2026-09-18 に直しました。本部の残り③の①）。
+ *   前は「足す先に同じ名前の人がいたら、その人の番号をこちらに合わせる」
+ *   「外す店舗に同じ名前の人がいたら消す」になっていて、**同じ名前の別の人**の
+ *   番号を書き換えたり、名簿から消したりしていました。画面では気づけません。
+ * ★足す先に**同じ名前で別の番号の人**がいるときは、押した人に聞いてから
+ *   （→ shiftLinkNameClash）、「同じ人」と決めた店舗（`mergeInto`）だけ1人にまとめます。
+ *   まとめないなら、その店舗には足しません。名簿は1店舗の中で名前が重なれない
+ *   （ShiftStaff.save が後ろの人を落とす）ので、別の人なら名前を変えてもらいます。
  */
-function shiftSetLinked(fromStore, name, code, stores) {
+function shiftSetLinked(fromStore, name, code, stores, mergeInto) {
   const map = ShiftStaff.all();
   const want = new Set([fromStore, ...(stores || [])]);
+  const まとめる = new Set(mergeInto || []);
+  const 同じ番号 = (p) => String(p.c || '') === String(code);
 
   STORES.forEach((s) => {
     const id = s.id;
     const list = (map[id] || []).slice();
-    const at = list.findIndex((p) => String(p.c || '') === String(code)
-      || (id !== fromStore && p.n === name));
+    const at = list.findIndex(同じ番号);
 
     if (want.has(id)) {
-      if (at < 0) list.push({ n: name, c: code, s: false, p: '' });
-      else list[at] = { ...list[at], n: name, c: code };
+      if (at >= 0) {
+        // もう入っている。名前だけそろえます（ほかの人と同じ名前になるときは、そろえません）
+        if (!list.some((p, i) => i !== at && p.n === name)) list[at] = { ...list[at], n: name };
+      } else {
+        const 同名 = id === fromStore ? -1 : list.findIndex((p) => p.n === name);
+        if (同名 >= 0) {
+          if (!まとめる.has(id)) return;   // 聞いていない・まとめないと決めた → 足さない
+          // 番号が変わるので、送りずみの印は外します（送り直しが要るため）
+          list[同名] = { ...list[同名], n: name, c: code, s: false };
+        } else {
+          list.push({ n: name, c: code, s: false, p: '' });
+        }
+      }
     } else if (at >= 0 && id !== fromStore) {
-      list.splice(at, 1);
+      list.splice(at, 1);   // ★外すのは、番号が同じ人だけです
     }
     if (list.length) map[id] = list;
     else delete map[id];
   });
   return ShiftStaff.save(map);
+}
+
+/**
+ * 足す先に、同じ名前で**別の番号**の人がいるか
+ *
+ * ★いれば、その店舗のその人（無ければ null）。同じ番号の人がもういれば null です
+ *   （すでに同じ人として入っているため）。「他店舗にも所属」を押したときに、
+ *   足す前にこれで聞きます。
+ */
+function shiftLinkNameClash(storeId, name, code) {
+  const list = ShiftStaff.all()[storeId] || [];
+  if (list.some((p) => String(p.c || '') === String(code))) return null;
+  return list.find((p) => p.n === name) || null;
+}
+
+/**
+ * 「他店舗にも所属」で1店舗を足す／外す（ワークス・マイン・マネージで同じもの）
+ *
+ * ★足す先に同じ名前の別の番号の人がいたら、ここで聞きます。
+ *   同じ人なら1人にまとめ、別の人なら足しません（名前を変えてからもう一度）。
+ * ★返り値：変えたら true、やめたら false
+ */
+function shiftToggleLinked(fromStore, person, storeId) {
+  const いま = new Set(shiftLinkedStores(person.c));
+  const 外す = いま.has(storeId);
+  const next = new Set(いま);
+  let まとめる = [];
+  if (外す) {
+    next.delete(storeId);
+  } else {
+    const clash = shiftLinkNameClash(storeId, person.n, person.c);
+    if (clash) {
+      const 店 = getStore(storeId) || {};
+      const ok = window.confirm(`${店.name || storeId}の名簿に、同じ名前の「${person.n}」さんがもういます。\n\n`
+        + `同じ人なら「OK」を押してください。1人にまとめます。\n`
+        + `★${店.name || storeId}で配っていた番号は使えなくなり、この人の番号に変わります。\n\n`
+        + `別の人なら「キャンセル」を押して、どちらかの名前を変えてから`
+        + `（例：${person.n}（${店.short || ''}））選び直してください。`);
+      if (!ok) return false;
+      まとめる = [storeId];
+    }
+    next.add(storeId);
+  }
+  shiftSetLinked(fromStore, person.n, person.c, [...next], まとめる);
+  return true;
+}
+
+/**
+ * その人の番号を作り直す（前の番号では入れなくなります）
+ *
+ * ★★**他店舗にも所属している店の名簿も、同じ新しい番号に替えます**
+ *   （2026-09-18 に直しました。本部の残り③の②）。
+ *   前（`ShiftStaff.reissue`、js/storage.js）は**その店の名簿だけ**替えていて、
+ *   向こうの名簿には古い番号が残りました。GAS は番号で店を見るので、
+ *   **古い番号のままその店で入れて、新しい番号ではその店に入れない**形でした。
+ * ★js/storage.js は本部のファイルなので、直した方をここに置いています。
+ * ★返り値：替えた店舗の id（その人が入っている全部）
+ */
+function shiftReissue(storeId, name) {
+  const map = ShiftStaff.all();
+  const who = (map[storeId] || []).find((p) => p.n === name);
+  if (!who) return [];
+  const 前 = String(who.c || '');
+  const 新 = makeShiftCode(ShiftStaff.codes());
+  const 替えた = [];
+  Object.keys(map).forEach((id) => (map[id] || []).forEach((p) => {
+    if (p === who || (前 && String(p.c || '') === 前)) {
+      p.c = 新;
+      // 番号が変わったら、送りずみの印は外します（送り直しが要るため）
+      p.s = false;
+      if (!替えた.includes(id)) 替えた.push(id);
+    }
+  }));
+  ShiftStaff.save(map);
+  return 替えた;
 }
 
 /** その店舗でシフトを組むか（名簿だけの店舗と見分けます） */
