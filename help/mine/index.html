@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>マインの使い方</title>
+<link rel="icon" type="image/png" sizes="64x64" href="../../img/mine-icon-64.png?v=ea09f133">
+<link rel="stylesheet" href="../../css/style.css?v=0739ea85">
+<link rel="stylesheet" href="../css/help.css?v=fa512f83">
+<!-- ★マイン（T3 Works Mine）の使い方。管理する人向けです（2026-09-19、ko-dai さんの指示で作りました）。
+     ★ワークスと同じ画面の使い方は「ワークスの使い方」（../）にあります。ここは、管理する人だけが使う所を書きます。
+       マインにしか無いもの（body の data-mode="mine" と .mine-only で出し分け）と、
+       ワークスにもあるが管理する人が使う所（シフトの名簿・会議資料の光熱費と議事録）です。
+     ★見た目と動きは ../css/help.css と ../js/help.js（4つの使い方で同じもの）。
+     ★公開の道具が PDF「マニュアル/マインの使い方.pdf」を作ります（道具/公開する.py の `使い方の本`）。
+     ★人の名前・番号・金額・合言葉は書きません。例は ◯ にします -->
+<meta name="app-version" content="bb10d869">
+</head>
+<body>
+
+<header class="help-header">
+  <div class="help-header__inner">
+    <span class="help-header__title">マインの使い方</span>
+    <a class="help-back" id="helpBack" href="../../mine/">アプリに戻る</a>
+  </div>
+</header>
+
+<div class="help-page">
+
+  <div class="help-print-title">
+    <div class="help-print-title__main">マインの使い方</div>
+    <div class="help-print-title__sub" id="helpPrintSub">管理する人向け</div>
+  </div>
+
+  <ul class="help-others" aria-label="ほかの使い方">
+    <li class="help-others__label">使い方</li>
+    <li><a href="../">ワークス</a></li>
+    <li><a href="./" aria-current="page">マイン</a></li>
+    <li><a href="../drive/">配達記録</a></li>
+    <li><a href="../story/">ストーリーズ作成</a></li>
+  </ul>
+
+  <p class="help-lead">
+    マイン（T3 Works Mine）は、<b>ワークスと同じ中身に、管理する人の分を足したアプリ</b>です。
+    クローズや掃除など、現場と同じ画面の使い方は「<a href="../">ワークスの使い方</a>」を見てください。<br>
+    ここには、<b>管理する人だけが使う所</b>を書いています。
+  </p>
+
+  <ul class="help-toc">
+    <li class="help-toc__item"><a href="#s1"><span class="help-toc__n">1</span>はじめに<span class="help-toc__sub">オーナー・マイン・マネージ</span></a></li>
+    <li class="help-toc__item"><a href="#s2"><span class="help-toc__n">2</span>シフトの名簿と番号<span class="help-toc__sub">アルバイトに番号を配る</span></a></li>
+    <li class="help-toc__item"><a href="#s3"><span class="help-toc__n">3</span>会議資料<span class="help-toc__sub">日報から取り込む・光熱費・議事録</span></a></li>
+    <li class="help-toc__item"><a href="#s4"><span class="help-toc__n">4</span>現金支払い管理表<span class="help-toc__sub">文字数の見かた</span></a></li>
+    <li class="help-toc__item"><a href="#s5"><span class="help-toc__n">5</span>ほかのアプリへ<span class="help-toc__sub">配達記録・ストーリーズ・マネージ</span></a></li>
+  </ul>
+
+  <!-- ============================================================
+       1. はじめに
+       ★オーナーの札は owner/index.html、マインのヘッダーのボタンは index.html（🏠 ホーム・⇄）の実物どおりです
+       ============================================================ -->
+  <section class="help-sec" id="s1">
+    <div class="help-sec__head"><span class="help-sec__n">1</span><h2 class="help-sec__title">はじめに</h2></div>
+
+    <h3>3つのアプリ</h3>
+    <ul class="help-marks">
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">T3 Owner（オーナー）</span>
+        <span class="help-marks__desc">入口の画面です。ここから、マイン・マネージ・配達記録などを開きます。<b>ホーム画面に置くのは、オーナーだけで大丈夫です。</b></span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">T3 Works Mine（マイン）</span>
+        <span class="help-marks__desc">ワークスと同じ中身に、管理する人の分を足したものです。</span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">T3 Works Manage（マネージ）</span>
+        <span class="help-marks__desc">確認項目・担当者・定休日などの設定を変えるアプリです。<b>管理用の合言葉</b>が要ります。</span>
+      </span></li>
+    </ul>
+
+    <h3>オーナーの画面</h3>
+    <p>上から、次の札が並んでいます。</p>
+    <ol class="help-steps">
+      <li><b>T3 Works Mine</b> … オーナー専用アプリ</li>
+      <li><b>T3 Works Manage</b> … 項目・担当者・定休日の設定</li>
+      <li><b>配達記録</b> … バグるの交通費（店舗タブレット用）</li>
+      <li><b>ストーリーズ作成</b> … インスタ用の画像を選んで保存する</li>
+      <li><b>シフト提出（アルバイト画面）</b> … アルバイトに配るページ（番号が要ります）</li>
+      <li><b>全店舗の提出記録</b> … 6店舗が今日分を出したかを見る（マインの提出記録を直接開きます）</li>
+    </ol>
+
+    <h3>マインのヘッダー</h3>
+    <ul class="help-marks">
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name">🏠 ホーム</span>
+        <span class="help-marks__desc">オーナーの画面に戻ります。</span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name">⇄</span>
+        <span class="help-marks__desc">マネージに切り替えます。マネージの「⇄ T3 Works」を押すと、マインに戻ります。</span>
+      </span></li>
+    </ul>
+    <p>スマホでは、ヘッダーのボタンが印だけ（🏠 ⇄ 📋 ⚙）になります。📋 は提出記録、⚙ は設定です。</p>
+
+    <h3>現場の人に渡すのはワークス</h3>
+    <p>
+      現場のスタッフには、<b>ワークスのURL</b>を渡してください。マインのURLは渡しません。
+      店舗を選ぶ画面の一番下の「<b>QRコード・URL</b>」から出せるのも、ワークスのURLです（<a href="../#s10">ワークスの使い方 10番</a>）。
+    </p>
+    <div class="help-note">
+      同じ端末では、ワークスとマインで<b>合言葉と番号が共通</b>です。どちらかで入れれば、もう片方でも入っています。
+    </div>
+  </section>
+
+  <!-- ============================================================
+       2. シフトの名簿と番号
+       ★js/app.js の renderShiftRoster・shiftCodeList の実物どおりです（ワークスにもマインにもあります）。
+         組む・QR・ヘルプの出し合いは、ワークスの使い方の6番にあります
+       ============================================================ -->
+  <section class="help-sec" id="s2">
+    <div class="help-sec__head"><span class="help-sec__n">2</span><h2 class="help-sec__title">シフトの名簿と番号</h2></div>
+
+    <p>
+      アルバイトがシフトの希望を出すには、<b>1人に1つの番号</b>が要ります。
+      番号は、シフトの画面の一番上にある「<b>シフトに入る人</b>」で作ります。
+    </p>
+
+    <h3>名簿を開く</h3>
+    <ol class="help-steps">
+      <li>店舗を選んで「<b>シフト</b>」を開きます</li>
+      <li>一番上の「シフトに入る人」で、「<b>名前と番号を出す</b>」を押します（まだ誰もいなければ「名前を登録する」）</li>
+    </ol>
+    <div class="help-note">
+      名前と番号は、<b>押したときだけ</b>出ます。店舗を変えたり、別のアプリに移ったりすると、また閉じます。
+    </div>
+
+    <h3>名前を入れて、番号を作る</h3>
+    <ol class="help-steps">
+      <li>枠の中に、<b>1行に1人</b>ずつ名前を書きます</li>
+      <li>「<b>名前を保存</b>」を押します。1人ずつに番号が作られます</li>
+    </ol>
+    <div class="help-important">
+      <span class="help-important__label">名前を消すとき・直すとき</span>
+      <p>
+        <b>消した名前を戻すと、番号は新しくなります。</b>前の番号では入れません。
+        名前を打ちまちがえて直したときも同じです。消える人がいるときは、保存の前に聞かれます。<br>
+        名前を消しても、組みおわったシフトはそのまま残ります。
+      </p>
+    </div>
+    <div class="help-note">
+      「★この端末では、名前・番号・チェックを直しても保存されません」と赤く出たときは、名簿を直すのに<b>管理用の合言葉</b>が要ります（マネージと同じもの）。見るだけなら、そのままで大丈夫です。
+    </div>
+
+    <h3>番号を配る</h3>
+    <p>保存すると、下に「<b>配る番号</b>」が並びます。</p>
+    <ol class="help-steps">
+      <li>番号は「••••••」で隠れています。「<b>見る</b>」で出し、「隠す」でまた隠します</li>
+      <li>「<b>コピー</b>」で番号を写して、本人に LINE などで送ります</li>
+      <li>送ったら、<b>名前の左のチェック</b>を付けます。「送りずみ ◯ / ◯人」と数が出て、全員に送ると「全員に送りました」になります</li>
+    </ol>
+    <div class="help-important">
+      <span class="help-important__label">番号は本人だけのもの</span>
+      <p>番号を知っていれば、その人として希望を出せてしまいます。<b>他の人に見せないでください。</b></p>
+    </div>
+    <p>
+      提出ページのURLは<b>全員おなじ</b>です。QRコードとURLの渡し方は、<a href="../#s6">ワークスの使い方 6番</a>にあります。
+    </p>
+
+    <h3>2つの店舗に入る人</h3>
+    <p>
+      その人の行の「<b>他店舗にも所属</b>」を押して、店舗を選びます。
+      選んだ店舗の名簿にも<b>同じ番号で</b>入るので、二重に登録しなくて済みます。
+      その人は、提出ページで店舗を切り替えられるようになります。
+    </p>
+
+    <h3>アルバイトの画面を見る</h3>
+    <p>
+      「<b>見本（テスト用）を作る</b>」を押すと、名簿に見本の人が1人入ります。
+      その行の「<b>アルバイトの画面を見る</b>」を押すと、アルバイトと同じ提出ページが開きます。
+    </p>
+    <div class="help-note">
+      見本の人は、シフトを組む画面には出ません（マネージでは見えます）。
+    </div>
+
+    <p>シフトを組む・確定する・ほかの店舗とヘルプを出し合うは、<a href="../#s6">ワークスの使い方 6番</a>を見てください。</p>
+  </section>
+
+  <!-- ============================================================
+       3. 会議資料
+       ★「日報から取り込む」は index.html の .mine-only（マインだけ）。文は js/app.js の日報の取り込みの実物どおりです。
+         光熱費（utilModal）と議事録（meetingNotes）は、ワークスにもあります
+       ============================================================ -->
+  <section class="help-sec" id="s3">
+    <div class="help-sec__head"><span class="help-sec__n">3</span><h2 class="help-sec__title">会議資料</h2></div>
+
+    <p>
+      T3Dining の欄の「<b>会議資料</b>」は、月ごとの売上・原価と人件費・光熱費を、今年と昨年でならべた表です。
+      <b>数字を入れるのは、管理する人</b>です。
+    </p>
+
+    <h3>日報から取り込む（マインだけ）</h3>
+    <p>
+      売上・原価・人件費は、各店舗の日報から読みます。表の上の「<b>日報から取り込む</b>」を押してください。
+      横に「◯年◯月と、◯年◯月の日報を読みます（◯店舗）」と、今年と昨年のどの月を読むかが出ます。
+    </p>
+    <ol class="help-steps">
+      <li>先に、マネージの「<b>日報フォルダ</b>」に、店舗ごとの日報のフォルダを登録しておきます（無いと「マネージの「日報フォルダ」に登録すると使えます」と出て、押せません）</li>
+      <li>読んでいるあいだは「<b>読んでいます…</b>」と出ます</li>
+      <li>終わると、店舗ごとに結果が並びます。✓ が付いた店舗は取り込めています</li>
+    </ol>
+    <ul class="help-marks">
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">まだ数字が入っていません</span>
+        <span class="help-marks__desc">その月の日報に、まだ売上がありません。日報が入ってから、もう一度押します。</span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">★売上が読めません・★原価が読めません など</span>
+        <span class="help-marks__desc">おかしな数字は取り込まずに止めています。日報の形が変わったかもしれません。アプリを直す人に知らせてください。</span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">読めません・取り込めませんでした</span>
+        <span class="help-marks__desc">日報のファイルが見つからないか、開けなかったときです。マネージの日報フォルダと、その月の日報があるかを確かめてから、もう一度押します。</span>
+      </span></li>
+    </ul>
+    <div class="help-note">
+      数字が入っていない月は、ワークスでもマインでも「この月の数字は、まだ入っていません。」とだけ出ます。
+      <b>その月を埋められるのは、マインの「日報から取り込む」だけ</b>です。<br>
+      読んでいるあいだに月を変えても、押したときの月に入ります。手で入れた光熱費は、取り込んでも上書きされません。
+    </div>
+
+    <h3>光熱費を入れる</h3>
+    <p>光熱費は日報に無いので、手で入れます。</p>
+    <ol class="help-steps">
+      <li>表の上の「<b>光熱費</b>」を押すと、「<b>光熱費を入れる</b>」が出ます</li>
+      <li>「今年」か「昨年」を選びます</li>
+      <li>店舗ごとに、ガス・水道・電気の<b>金額</b>と<b>使用量</b>を入れて「<b>保存する</b>」を押します</li>
+    </ol>
+    <p>金額はその月に払ったもの、使用量は検針票の数です。使用量は分かる分だけで大丈夫です。合計と、売上に対する率はアプリが計算します。</p>
+
+    <h3>議事録</h3>
+    <ol class="help-steps">
+      <li>枠の中に、<b>そのまま書けます</b>。手を止めると<b>ひとりでに保存</b>され、他の端末にも届きます</li>
+      <li>一番下の<b>空いている枠</b>に書くと、議題が1つ増えます。1つの議題の中で改行してもかまいません</li>
+      <li>中身を全部消して枠から出ると、その議題は消えます</li>
+    </ol>
+    <p>
+      前の月に議事録があると、表の上に「<b>◯月会議の議題</b>」として1行ずつ並びます。
+      会議のはじめに「できたか」を確かめるのに使います。「先月を開く ›」で、その月へ移ります。
+    </p>
+  </section>
+
+  <!-- ============================================================
+       4. 現金支払い管理表
+       ★文字数の行は js/app.js の現金支払い管理表（マインだけ）。上限は js/config.js の CELL_MAX・CELL_SOFT
+       ============================================================ -->
+  <section class="help-sec" id="s4">
+    <div class="help-sec__head"><span class="help-sec__n">4</span><h2 class="help-sec__title">現金支払い管理表</h2></div>
+
+    <p>
+      立て替えの入れ方は、<a href="../#s8">ワークスの使い方 8番</a>と同じです。
+      マインでは、まとめの下に小さく「<b>◯ / 50,000 文字（余裕 ◯倍）</b>」と出ます。
+    </p>
+    <p>
+      立て替えの記録は、<b>1か月分を1つにまとめて</b>保存しています。1つに入るのは5万文字までです。
+      この行は、その月があとどれくらい入るかを見るためのもので、見るだけです。
+    </p>
+    <div class="help-important">
+      <span class="help-important__label">赤くなったら</span>
+      <p>
+        4万文字を超えると赤くなり、「★4万文字を超えました。区切りを足す時期です」と出ます。
+        5万文字を超えると、<b>その月の分が保存できなくなります。</b>赤くなったら、アプリを直す人に知らせてください。
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       5. ほかのアプリへ
+       ============================================================ -->
+  <section class="help-sec" id="s5">
+    <div class="help-sec__head"><span class="help-sec__n">5</span><h2 class="help-sec__title">ほかのアプリへ</h2></div>
+
+    <h3>配達記録</h3>
+    <p>
+      マインの T3Dining の欄の「<b>🛵 配達記録（バグる）</b>」から開けます（オーナーの画面からも開けます）。
+      このとき配達記録に出る「🏠 ホーム」は、<b>オーナーの画面</b>に戻ります。
+      使い方は「<a href="../drive/">配達記録の使い方</a>」にあります。
+    </p>
+
+    <h3>ストーリーズ作成</h3>
+    <p>
+      オーナーの画面の「<b>ストーリーズ作成</b>」から開きます（マインにはありません）。
+      使い方は「<a href="../story/">ストーリーズ作成の使い方</a>」にあります。
+    </p>
+
+    <h3>マネージ</h3>
+    <p>
+      確認項目・担当者・定休日・番号などの変え方は、T3Works フォルダーの「<b>引き継ぎ</b>」の中の
+      「<b>マネージを使う人へ</b>」にあります。
+    </p>
+  </section>
+
+</div>
+
+<script src="../js/help.js?v=bb8f9518"></script>
+
+</body>
+</html>

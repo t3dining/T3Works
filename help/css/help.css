@@ -1,0 +1,272 @@
+/* 使い方（help/）の見た目。4つの使い方（ワークス・マイン・配達記録・ストーリーズ作成）で同じものを読みます。
+   ★2026-09-19 に help/index.html の <style> からそのまま出しました。アプリの見た目（css/style.css）のあとに読みます */
+/* ===================== 使い方ページ =====================
+   見た目は ../css/style.css（アプリ本体）に合わせています。
+   ここに書くのは、このページだけの並べ方です。 */
+.help-header {
+  position: sticky; top: 0; z-index: 30;
+  background: var(--header-bg); color: var(--header-fg);
+  padding-top: env(safe-area-inset-top);
+}
+.help-header__inner {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; max-width: 760px; margin: 0 auto;
+}
+.help-header__title { font-size: 15px; font-weight: 700; margin-right: auto; }
+.help-back {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px;
+  background: rgba(255,255,255,.1); color: #fff;
+  border: 1px solid rgba(255,255,255,.16); border-radius: 999px;
+  padding: 6px 13px; font: inherit; font-size: 12.5px;
+  text-decoration: none; cursor: pointer;
+}
+.help-back:active { background: rgba(255,255,255,.2); }
+
+.help-page { max-width: 760px; margin: 0 auto; padding: 16px 14px 60px; }
+
+.help-lead {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 14px 16px; margin-bottom: 18px;
+  font-size: 14px; line-height: 1.75;
+}
+
+/* ---- 目次 ---- */
+/* ほかの使い方へ（4つの使い方の頭に同じ並びで置きます。今のページは色を付けます）。印刷には出しません */
+.help-others {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px;
+  list-style: none; margin: 0 0 16px; padding: 0; font-size: 13.5px;
+}
+.help-others__label { color: var(--text-sub); font-weight: 700; margin-right: 2px; }
+.help-others a {
+  display: inline-flex; align-items: center; min-height: 36px; padding: 0 13px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
+  color: var(--text); text-decoration: none; font-weight: 700;
+}
+.help-others a[aria-current="page"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.help-toc {
+  list-style: none; margin: 0 0 24px; padding: 0;
+  display: flex; flex-direction: column; gap: 1px;
+}
+.help-toc__item a {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 11px 13px; border-radius: 9px;
+  background: var(--surface); border: 1px solid var(--line);
+  color: var(--text); text-decoration: none; font-size: 14.5px; font-weight: 700;
+}
+.help-toc__item a:active { background: var(--surface-2); }
+.help-toc__n {
+  flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--accent); color: #fff;
+  font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums;
+}
+.help-toc__sub { font-size: 12px; font-weight: 600; color: var(--text-weak); margin-left: auto; }
+
+/* ---- 章 ----
+   ★見出しは青い帯にしています（2026-09-16、ko-dai さん「もう少し目立つように」）。
+     小見出し（h3 の左の青い線）と見分けがつくように、帯と白い字にしました */
+.help-sec { margin: 0 0 44px; scroll-margin-top: 64px; }
+.help-sec__head {
+  display: flex; align-items: center; gap: 12px;
+  margin: 0 0 12px; padding: 14px 16px;
+  background: var(--accent); color: #fff;
+  border-radius: 14px; box-shadow: var(--shadow);
+}
+.help-sec__n {
+  flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #fff; color: var(--accent);
+  font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums;
+}
+.help-sec__title { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: .02em; color: #fff; }
+
+/* ---- 章の目次 ----
+   ★中身は js/help.js が、その章の小見出し（h3 と「困ったとき」の質問）から組み立てます。
+     手で書くと、小見出しを足したり入れ替えたりしたときに目次だけ古くなるためです。
+     画面の絵（.help-shot）の中の見出しは拾いません */
+.help-sec-toc {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 12px; margin: 0 0 20px; overflow: hidden;
+}
+.help-sec-toc__label {
+  padding: 8px 14px 7px; background: var(--surface-2);
+  border-bottom: 1px solid var(--line-2);
+  font-size: 11.5px; font-weight: 800; letter-spacing: .04em; color: var(--text-weak);
+}
+.help-sec-toc__list { list-style: none; margin: 0; padding: 0; }
+.help-sec-toc__list li + li { border-top: 1px solid var(--line-2); }
+.help-sec-toc__list a {
+  display: flex; align-items: center; gap: 8px; min-height: 44px; box-sizing: border-box;
+  padding: 10px 14px; color: var(--text); text-decoration: none;
+  font-size: 14px; font-weight: 700; line-height: 1.45;
+}
+.help-sec-toc__list a::after {
+  content: '›'; margin-left: auto; padding-left: 6px;
+  color: var(--text-weak); font-size: 19px; font-weight: 400; line-height: 1;
+}
+.help-sec-toc__list a:active { background: var(--surface-2); }
+/* 飛んだ先の見出しが、上に貼りついた帯の下に隠れないように */
+.help-jump { scroll-margin-top: 72px; }
+
+.help-q {
+  background: var(--surface); border: 1px solid var(--line);
+  border-left: 4px solid var(--ng);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 14px 16px; margin-bottom: 14px;
+}
+.help-q__title {
+  margin: 0 0 10px; font-size: 15.5px; font-weight: 800; line-height: 1.5;
+  color: color-mix(in srgb, var(--ng) 80%, var(--text));
+}
+.help-q p { margin: 0 0 9px; font-size: 14px; line-height: 1.8; }
+.help-q p:last-child { margin-bottom: 0; }
+
+/* 一番多い原因 */
+.help-first {
+  background: color-mix(in srgb, var(--ok) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--ok) 30%, var(--line));
+  border-radius: 10px; padding: 11px 13px; margin: 0 0 11px;
+}
+.help-first__label {
+  display: block; font-size: 11.5px; font-weight: 800; letter-spacing: .04em;
+  color: var(--ok); margin-bottom: 4px;
+}
+.help-first p { margin: 0; font-size: 14px; line-height: 1.75; font-weight: 700; }
+
+/* 手順 */
+/* 点の箇条書き（番号の要らないもの）。字の大きさは .help-steps にそろえます */
+.help-list { margin: 0 0 12px; padding-left: 1.3em; }
+.help-list li { padding: 3px 0; font-size: 14px; line-height: 1.7; }
+.help-steps { margin: 0 0 9px; padding-left: 0; list-style: none; counter-reset: step; }
+.help-steps li {
+  position: relative; padding: 7px 0 7px 32px; font-size: 14px; line-height: 1.7;
+  counter-increment: step;
+}
+.help-steps li::before {
+  content: counter(step);
+  position: absolute; left: 0; top: 7px;
+  width: 22px; height: 22px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--line); color: var(--text-sub);
+  font-size: 11.5px; font-weight: 800;
+}
+
+/* 印の一覧 */
+.help-marks { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.help-marks__row { display: flex; align-items: flex-start; gap: 11px; }
+.help-marks__text { min-width: 0; }
+.help-marks__name { font-size: 14px; font-weight: 800; line-height: 1.4; }
+.help-marks__desc { font-size: 12.5px; color: var(--text-sub); line-height: 1.65; }
+
+.help-note {
+  font-size: 12.5px; color: var(--text-sub); line-height: 1.75;
+  background: var(--surface-2); border-radius: 8px; padding: 9px 11px; margin: 9px 0 0;
+}
+.help-note b { color: var(--text); }
+
+.help-todo {
+  background: var(--surface-2); border: 1px dashed var(--line);
+  border-radius: var(--radius); padding: 16px;
+  font-size: 13.5px; color: var(--text-sub); line-height: 1.7;
+}
+
+/* ---- 画面の絵 ----
+   ★写真（PNG）ではなく、**アプリと同じ HTML と CSS で組み立てています。**
+     ../css/style.css をそのまま読んでいるので、見た目は実物と同じです。
+     ★写真にしないのは、**アプリの見た目を直したとき、写真だけが古くなる**からです
+     （シフトの「時刻を説明文に書き写さないこと」と同じ考えです）。
+     拡大しても崩れず、PDFにしても綺麗で、ダークモードにも付いてきます。 */
+.help-shot {
+  margin: 12px 0 14px;
+  border: 1px solid var(--line); border-radius: 14px;
+  background: var(--bg); overflow: hidden;
+}
+.help-shot__bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 11px; background: var(--header-bg); color: var(--header-fg);
+  font-size: 11.5px; font-weight: 700;
+}
+.help-shot__bar .sync-chip { width: 22px; height: 22px; margin-left: auto; }
+.help-shot__bar .sync-chip svg { width: 13px; height: 13px; }
+.help-shot__body { padding: 11px; }
+.help-shot__cap {
+  padding: 7px 11px; background: var(--surface-2);
+  border-top: 1px solid var(--line-2);
+  font-size: 11.5px; color: var(--text-sub); line-height: 1.6;
+}
+/* 絵の中は本物より少し小さく（説明の中に収めるため） */
+.help-shot .store-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.help-shot .store-card { padding: 11px 8px 9px; gap: 6px; }
+.help-shot .logo-chip--card { width: 42px; height: 42px; }
+.help-shot .store-card__name { font-size: 14px; }
+.help-shot .task-card { padding: 12px 8px 10px; gap: 6px; }
+.help-shot .task-card__icon { width: 48px; height: 48px; font-size: 22px; border-radius: 13px; }
+.help-shot .task-card__name { font-size: 14.5px; }
+.help-shot .task-card__sub { font-size: 11px; }
+.help-shot .submit-btn { font-size: 14px; padding: 11px 16px; }
+.help-shot .section { margin-bottom: 0; }
+
+/* 指でどこを押すかの矢印 */
+.help-point {
+  display: flex; align-items: center; gap: 8px;
+  margin: 9px 0 0; font-size: 13.5px; font-weight: 700; line-height: 1.6;
+}
+.help-point::before { content: '👆'; font-size: 17px; flex: 0 0 auto; }
+
+/* 大事なひとこと */
+.help-important {
+  background: color-mix(in srgb, var(--ng) 7%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--ng) 28%, var(--line));
+  border-radius: 10px; padding: 12px 14px; margin: 12px 0;
+}
+.help-important__label {
+  display: block; font-size: 11.5px; font-weight: 800; letter-spacing: .04em;
+  color: var(--ng); margin-bottom: 5px;
+}
+.help-important p { margin: 0; font-size: 14px; line-height: 1.8; font-weight: 700; }
+
+/* ★画面の絵（.help-shot__body）の中の p には効かせません。
+     効くと `.confirm__message` や `.pin-error` より強くなり、絵の字だけ実物より大きくなります
+     ★`:where()` で包むのは、強さ（詳細度）を前と同じにするためです。包まないと、
+       あとに書いた `margin: 0` の決まりに勝ってしまい、絵の外の余白が5か所変わります */
+.help-sec p:not(:where(.help-shot__body p)) { font-size: 14.5px; line-height: 1.9; margin: 0 0 12px; }
+/* ★絵の中の h3（アプリの見出し）には効かせません。p と同じ考えで、:where() で強さを前と同じにしています */
+.help-sec h3:not(:where(.help-shot__body h3)) {
+  margin: 24px 0 10px; font-size: 16px; font-weight: 800;
+  padding-left: 11px; border-left: 4px solid var(--accent);
+}
+
+/* ---- 印刷（PDFにするとき） ----
+   ★PDF は公開のたびに作り直し、T3Works フォルダーの「マニュアル/」に置きます（2026-09-19、ko-dai さん。前は一番上の「使い方.pdf」）。
+     ページと PDF の対応は 道具/公開する.py の `使い方の本`（help/index.html → ワークスの使い方.pdf、help/mine/ → マイン、help/drive/ → 配達記録、help/story/ → ストーリーズ作成）。
+     作るのは公開の道具（本部の持ち物）です。ここは見た目だけを決めます。
+   ★前は「章の途中で切らない」（.help-sec に break-inside: avoid）にしていました。
+     章はどれも1ページより長いので、**章がまるごと次のページへ送られ、ページの下半分が白く**なっていました。
+     いまは「章は新しいページから始める」にして、切らないのは絵・注意の箱・手順の1つずつだけにしています */
+.help-print-title { display: none; }
+@page { size: A4; margin: 14mm 12mm; }
+@media print {
+  .help-others { display: none !important; }
+  body { background: #fff; font-size: 11pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .help-header, .help-back { display: none !important; }
+  .help-page { max-width: none; padding: 0; }
+
+  /* 1ページ目の題名（画面では出しません。日付と版は js/help.js が入れます） */
+  .help-print-title {
+    display: block; margin: 0 0 14pt; padding-bottom: 8pt;
+    border-bottom: 3px solid var(--accent);
+  }
+  .help-print-title__main { font-size: 22pt; font-weight: 800; }
+  .help-print-title__sub { margin-top: 4pt; font-size: 9pt; color: var(--text-sub); }
+
+  /* 目次は PDF にも出します（押すとその章へ飛べます） */
+  .help-toc__item, .help-sec-toc__list li { break-inside: avoid; }
+  .help-sec-toc__list a { min-height: 0; padding: 6pt 12pt; }
+
+  .help-sec { break-before: page; margin-bottom: 0; }
+  .help-sec__head, .help-sec h3, .help-q__title { break-after: avoid; }
+  .help-shot, .help-important, .help-note, .help-first, .help-marks__row, .help-steps li { break-inside: avoid; }
+  .help-q, .help-lead, .help-first, .help-sec__head { box-shadow: none; }
+}

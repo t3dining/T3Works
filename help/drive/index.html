@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>配達記録の使い方</title>
+<link rel="icon" type="image/png" sizes="64x64" href="../../img/drive-icon-64.png?v=7088d4ae">
+<link rel="stylesheet" href="../../css/style.css?v=0739ea85">
+<link rel="stylesheet" href="../css/help.css?v=fa512f83">
+<!-- ★配達記録（drive/）の使い方。バグるで配達するアルバイト向けです（2026-09-19、ko-dai さんの指示で作りました）。
+     ★文は drive/index.html・drive/js/drive.js・js/config.js（driveRound・driveYen）・js/sync.js の実物どおりです。
+     ★金額の例は作った数です。本物の名前・距離・金額・番号・合言葉は書きません。
+     ★公開の道具が PDF「マニュアル/配達記録の使い方.pdf」を作ります（道具/公開する.py の `使い方の本`） -->
+<meta name="app-version" content="bb10d869">
+</head>
+<body>
+
+<header class="help-header">
+  <div class="help-header__inner">
+    <span class="help-header__title">配達記録の使い方</span>
+    <a class="help-back" id="helpBack" href="../../drive/">アプリに戻る</a>
+  </div>
+</header>
+
+<div class="help-page">
+
+  <div class="help-print-title">
+    <div class="help-print-title__main">配達記録の使い方</div>
+    <div class="help-print-title__sub" id="helpPrintSub">バグるで配達する人向け</div>
+  </div>
+
+  <ul class="help-others" aria-label="ほかの使い方">
+    <li class="help-others__label">使い方</li>
+    <li><a href="../">ワークス</a></li>
+    <li><a href="../mine/">マイン</a></li>
+    <li><a href="./" aria-current="page">配達記録</a></li>
+    <li><a href="../story/">ストーリーズ作成</a></li>
+  </ul>
+
+  <p class="help-lead">
+    配達記録は、<b>デリバリーで走った距離を入れて、交通費を計算する</b>アプリです（バグる）。
+    お店のタブレットに入っています。<br>
+    <b>配達に行ったら、その都度</b>入れてください。金額はアプリが計算します。
+  </p>
+
+  <ul class="help-toc">
+    <li class="help-toc__item"><a href="#s1"><span class="help-toc__n">1</span>はじめに<span class="help-toc__sub">合言葉と番号</span></a></li>
+    <li class="help-toc__item"><a href="#s2"><span class="help-toc__n">2</span>走った距離を入れる<span class="help-toc__sub">配達のたびに</span></a></li>
+    <li class="help-toc__item"><a href="#s3"><span class="help-toc__n">3</span>金額のきまり<span class="help-toc__sub">5kmごとに100円</span></a></li>
+    <li class="help-toc__item"><a href="#s4"><span class="help-toc__n">4</span>見る・直す<span class="help-toc__sub">合計と、まちがえたとき</span></a></li>
+    <li class="help-toc__item"><a href="#s5"><span class="help-toc__n">5</span>困ったとき<span class="help-toc__sub">送れない・名前が出ない</span></a></li>
+  </ul>
+
+  <!-- ============================================================
+       1. はじめに
+       ★合言葉と番号の画面は drive/index.html の pinModal・drive.js の openPinModal／submitPin の実物どおりです
+       ============================================================ -->
+  <section class="help-sec" id="s1">
+    <div class="help-sec__head"><span class="help-sec__n">1</span><h2 class="help-sec__title">はじめに</h2></div>
+
+    <h3>合言葉と番号</h3>
+    <p>はじめて開いたときだけ、「<b>合言葉（PIN）を入力してください</b>」と出ます。</p>
+    <ol class="help-steps">
+      <li>上の欄に<b>合言葉</b>を入れます（「表示」を押すと、打った字が見えます）</li>
+      <li>下の「番号（6桁）」に<b>番号</b>を入れます。<b>お店のタブレットには、お店の番号</b>を入れます</li>
+      <li>「<b>開く</b>」を押します</li>
+    </ol>
+    <p>一度入れれば、その端末では次から聞かれません。<b>合言葉も番号も、分からないときはこうだいに聞いてください。</b></p>
+
+    <ul class="help-marks">
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">PINが違います</span>
+        <span class="help-marks__desc">合言葉を確かめて、もう一度入れます。<b>10回続けてまちがえると、10分ほど受け付けません。</b></span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">この番号は登録されていません</span>
+        <span class="help-marks__desc">渡された6桁を確かめてください。</span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">番号を入れてください</span>
+        <span class="help-marks__desc">合言葉が入っている端末では、番号だけ聞かれることがあります。番号を入れて「開く」を押します。</span>
+      </span></li>
+    </ul>
+
+    <div class="help-note">
+      どの番号が入っているかは、右上の「<b>⚙ 設定</b>」の「番号」で見られます。
+    </div>
+  </section>
+
+  <!-- ============================================================
+       2. 走った距離を入れる
+       ★入れる画面は drive/index.html の入力の小窓と drive.js（経由地・もう1回分・確かめ）の実物どおりです
+       ============================================================ -->
+  <section class="help-sec" id="s2">
+    <div class="help-sec__head"><span class="help-sec__n">2</span><h2 class="help-sec__title">走った距離を入れる</h2></div>
+
+    <h3>入れかた</h3>
+    <ol class="help-steps">
+      <li>「<b>🛵 走った距離を入れる</b>」を押します</li>
+      <li>「<b>走った日</b>」を確かめます。はじめから今日が入っています（<b>朝6時より前は、前の日</b>になります）</li>
+      <li>「<b>名前</b>」で、自分の名前を押します</li>
+      <li>「<b>走った距離（km）</b>」を入れます（下の「1か所だけのとき」「何か所か回ったとき」）</li>
+      <li>「<b>記録する</b>」を押します</li>
+    </ol>
+    <p>記録すると、画面が閉じて、下の表に入ります。</p>
+
+    <h3>1か所だけのとき</h3>
+    <p>
+      <b>お店から配達先までの片道</b>だけを入れます。
+      帰りの分は足さなくて大丈夫です。<b>アプリが2倍にします</b>（「帰りも同じ ◯km（自動）」と出ます）。
+    </p>
+
+    <h3>何か所か回ったとき</h3>
+    <ol class="help-steps">
+      <li>「<b>＋ 経由地を追加</b>」を押します</li>
+      <li>「バグる → 1か所目 → 2か所目 → バグる」とつながった形に変わります</li>
+      <li><b>区間ごとに</b>距離を入れます。回った数だけ「＋ 経由地を追加」を押して足します</li>
+    </ol>
+    <p>この形では、<b>2倍にしません</b>。入れた区間を足したものが、その回の距離になります。</p>
+
+    <h3>1日に何回も行ったとき</h3>
+    <p>
+      「<b>＋ もう1回分入れる</b>」で、回を足してから「記録する」を押します。まとめて入れても、あとから1回ずつ入れてもかまいません。
+    </p>
+    <div class="help-note">
+      2回以上を「経由地なし（往復）」で入れると、「<b>◯回とも「経由地なし（往復）」になっています</b>」と聞かれます。<br>
+      1か所ずつ行って、そのつどお店に戻ったのなら「<b>1か所ずつです</b>」を押します。
+      1回でまとめて回ったのなら「キャンセル」を押して、「＋ 経由地を追加」でつないでください。
+    </div>
+
+    <h3>入れられないとき</h3>
+    <ul class="help-marks">
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">名前を選んでください</span>
+        <span class="help-marks__desc">「名前」で自分の名前を押してから、もう一度「記録する」を押します。</span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">200kmを超えています。入れ間違いではありませんか？</span>
+        <span class="help-marks__desc">1つの欄に200kmより大きい数は入れられません。桁や小数点を確かめてください。</span>
+      </span></li>
+    </ul>
+
+    <div class="help-important">
+      <span class="help-important__label">入れている途中で</span>
+      <p>画面の外の暗い所を押すと、<b>何も聞かれずに閉じて、入れた内容は消えます。</b>閉じたいときだけ押してください。</p>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       3. 金額のきまり
+       ★js/config.js の driveYen（1人1か月の合計距離から、5kmごとに100円・切り上げ）の実物どおり。例の数は作ったものです
+       ============================================================ -->
+  <section class="help-sec" id="s3">
+    <div class="help-sec__head"><span class="help-sec__n">3</span><h2 class="help-sec__title">金額のきまり</h2></div>
+
+    <p>
+      金額は、1回ごとではなく、<b>1人の1か月の合計距離</b>から計算します。
+      <b>5kmごとに100円</b>で、100円未満は<b>切り上げ</b>です。
+    </p>
+    <div class="help-note">
+      例：1か月に合わせて 23km 走ったとき … 23 ÷ 5 = 4.6 → 切り上げて 5 → <b>500円</b>
+    </div>
+    <p>距離は 0.1km まで数えます。毎月の交通費の知らせは、<b>翌月1日の15時</b>に、その時点の記録で送られます。</p>
+  </section>
+
+  <!-- ============================================================
+       4. 見る・直す
+       ★表と「編集」「×」は drive.js の renderTotals・renderLog・openEdit・askDelete の実物どおりです
+       ============================================================ -->
+  <section class="help-sec" id="s4">
+    <div class="help-sec__head"><span class="help-sec__n">4</span><h2 class="help-sec__title">見る・直す</h2></div>
+
+    <h3>この月の交通費</h3>
+    <p>
+      一番上に、<b>この月の交通費</b>の合計が出ます。その下は、走った距離・配達した人数・回数です。
+      「‹」「›」で前の月・次の月、「<b>今月</b>」で今月に戻ります。
+    </p>
+
+    <h3>名前ごとの合計</h3>
+    <p>「<b>📋 名前ごとの合計</b>」に、1人ずつの合計距離と合計金額が並びます。まだ走っていない人は、うすく出ます。</p>
+
+    <h3>1回ずつの記録</h3>
+    <p>
+      「<b>🧾 1回ずつの記録</b>」に、人ごとに、日ごとの距離が並びます。
+      1日に何回か行った日は「◯回」、経由地を入れた日は「経由地」と付きます。
+    </p>
+
+    <h3>まちがえたとき</h3>
+    <ul class="help-marks">
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">編集</span>
+        <span class="help-marks__desc">その人の<b>その日の分をまとめて</b>開きます。日・名前・距離を直して「<b>直す</b>」を押します。日を変えると、別の月にも移せます。</span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">×</span>
+        <span class="help-marks__desc">その日の分を消します。「この記録を消します。よろしいですか？」で「<b>消す</b>」を押します。<b>元には戻せません。</b></span>
+      </span></li>
+    </ul>
+    <div class="help-important">
+      <span class="help-important__label">直すときは</span>
+      <p>
+        距離の欄が1つでも<b>空のまま</b>「直す」を押すと、その回は<b>消えます</b>。全部の欄に入っているか見てから押してください。<br>
+        経由地を消したときは、残った距離が合っているかも見てください。
+      </p>
+    </div>
+    <div class="help-note">
+      <b>先月の分は、1日の15時より前に</b>直してください。そのあとに直しても、その月の知らせには入りません。
+    </div>
+  </section>
+
+  <!-- ============================================================
+       5. 困ったとき
+       ★印と帯の文は js/sync.js（この失敗はなにか・legendHtml）と drive.js の実物どおり。ワークスの使い方11番と同じ仕組みです
+       ============================================================ -->
+  <section class="help-sec" id="s5">
+    <div class="help-sec__head"><span class="help-sec__n">5</span><h2 class="help-sec__title">困ったとき</h2></div>
+
+    <div class="help-q">
+      <p class="help-q__title">名前が出てこない</p>
+      <p>
+        「⚠️ 配達する人が、まだ1人も登録されていません」と出たときは、名前の登録が要ります。<b>こうだいに伝えてください。</b><br>
+        この端末を使いはじめたばかりのときは、右上の印が ✓ になってから、アプリを開き直すと名前が出ます。
+      </p>
+    </div>
+
+    <div class="help-q">
+      <p class="help-q__title">右上の印・赤い帯</p>
+      <p>右上の丸い印が、記録を送れているかを表しています。押すと、その場で送ります。</p>
+      <ul class="help-marks">
+        <li class="help-marks__row"><span class="help-marks__text">
+          <span class="help-marks__name">✓</span>
+          <span class="help-marks__desc">送れています。</span>
+        </span></li>
+        <li class="help-marks__row"><span class="help-marks__text">
+          <span class="help-marks__name">回っている印</span>
+          <span class="help-marks__desc">送っています。少し待つと ✓ に変わります。</span>
+        </span></li>
+        <li class="help-marks__row"><span class="help-marks__text">
+          <span class="help-marks__name">↑</span>
+          <span class="help-marks__desc">まだ送れていない分があります。電波の届く所で、アプリを開いたままにしてください。</span>
+        </span></li>
+        <li class="help-marks__row"><span class="help-marks__text">
+          <span class="help-marks__name">!</span>
+          <span class="help-marks__desc">送れていません。理由が赤い帯に出ます。</span>
+        </span></li>
+      </ul>
+      <div class="help-first">
+        <span class="help-first__label">まず知っておいてください</span>
+        <p>どの理由で出ていても、<b>入れた記録が消えることはありません。</b>つながり次第、自動で送られます。</p>
+      </div>
+      <p>
+        「電波が届いていません」なら、つながる場所へ移れば送られます。
+        「サーバーが返事をしません」「サーバー側で結果を受け取れませんでした」は、電波の問題ではありません。待てば自動で送り直します。
+        「今日の上限に達しました」は、朝9時に戻ります。続くときは、こうだいに伝えてください。
+      </p>
+    </div>
+
+    <div class="help-q">
+      <p class="help-q__title">「新しい版があります」と出た</p>
+      <p>画面の下に出ます。「<b>更新する</b>」を押してください。入れた記録は消えません。</p>
+    </div>
+
+    <div class="help-q">
+      <p class="help-q__title">日付や月が、前のままになっている</p>
+      <p>
+        アプリを開いたままにしていると、朝6時や月をまたいでも、「走った日」や「今月」が前のままのことがあります。
+        <b>入れる前に「走った日」を確かめてください。</b>アプリを開き直すと、今日に戻ります。
+      </p>
+    </div>
+  </section>
+
+</div>
+
+<script src="../js/help.js?v=bb8f9518"></script>
+
+</body>
+</html>

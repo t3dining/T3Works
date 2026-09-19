@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ストーリーズ作成の使い方</title>
+<link rel="icon" type="image/png" sizes="64x64" href="../../img/owner-icon-64.png?v=ce05c3fc">
+<link rel="stylesheet" href="../../css/style.css?v=0739ea85">
+<link rel="stylesheet" href="../css/help.css?v=fa512f83">
+<!-- ★ストーリーズ作成（story/）と、インスタの自動投稿の使い方。管理する人向けです（2026-09-19、ko-dai さんの指示で作りました）。
+     ★アプリの文は story/index.html・story/js/story.js、自動投稿は 自動投稿/投稿する.py・workflows/daily-post.yml・
+       story/設定.json（1日の枚数・投稿する時刻）・gas/通知.gs（startStoryPost・インスタの LINE）の実物どおりです。
+     ★Mac の道具は ダブルクリック/ の2つの .command の頭の説明どおりです。
+     ★トークンや合言葉の値、GitHub の中の名前は書きません。
+     ★公開の道具が PDF「マニュアル/ストーリーズ作成の使い方.pdf」を作ります（道具/公開する.py の `使い方の本`） -->
+<meta name="app-version" content="bb10d869">
+</head>
+<body>
+
+<header class="help-header">
+  <div class="help-header__inner">
+    <span class="help-header__title">ストーリーズ作成の使い方</span>
+    <a class="help-back" id="helpBack" href="../../story/">アプリに戻る</a>
+  </div>
+</header>
+
+<div class="help-page">
+
+  <div class="help-print-title">
+    <div class="help-print-title__main">ストーリーズ作成の使い方</div>
+    <div class="help-print-title__sub" id="helpPrintSub">管理する人向け</div>
+  </div>
+
+  <ul class="help-others" aria-label="ほかの使い方">
+    <li class="help-others__label">使い方</li>
+    <li><a href="../">ワークス</a></li>
+    <li><a href="../mine/">マイン</a></li>
+    <li><a href="../drive/">配達記録</a></li>
+    <li><a href="./" aria-current="page">ストーリーズ作成</a></li>
+  </ul>
+
+  <p class="help-lead">
+    インスタのストーリーズ用の画像は、<b>Mac で作って</b>、アプリに並べてあります。<br>
+    バグるは、その画像から<b>毎日自動で投稿</b>しています。
+    ストーリーズ作成のアプリは、<b>手で投稿したいとき</b>に画像を選んで保存するためのものです。
+  </p>
+
+  <ul class="help-toc">
+    <li class="help-toc__item"><a href="#s1"><span class="help-toc__n">1</span>はじめに<span class="help-toc__sub">開きかた</span></a></li>
+    <li class="help-toc__item"><a href="#s2"><span class="help-toc__n">2</span>画像を保存する<span class="help-toc__sub">手で投稿するとき</span></a></li>
+    <li class="help-toc__item"><a href="#s3"><span class="help-toc__n">3</span>自動投稿<span class="help-toc__sub">毎日10時台と17時台</span></a></li>
+    <li class="help-toc__item"><a href="#s4"><span class="help-toc__n">4</span>画像を作り直す<span class="help-toc__sub">Mac でやること</span></a></li>
+    <li class="help-toc__item"><a href="#s5"><span class="help-toc__n">5</span>困ったとき<span class="help-toc__sub">LINE の知らせ</span></a></li>
+  </ul>
+
+  <!-- ============================================================
+       1. はじめに
+       ★入口は owner/index.html の「ストーリーズ作成」の札だけです（マイン・ワークスからは外してあります）
+       ============================================================ -->
+  <section class="help-sec" id="s1">
+    <div class="help-sec__head"><span class="help-sec__n">1</span><h2 class="help-sec__title">はじめに</h2></div>
+
+    <h3>開きかた</h3>
+    <p>
+      オーナー（T3 Owner）の画面の「<b>📸 ストーリーズ作成</b>」を押します。
+      合言葉は聞かれません。「<b>🏠 ホーム</b>」で、オーナーの画面に戻ります。
+    </p>
+    <div class="help-note">
+      ホーム画面に置くのは、オーナーだけで大丈夫です（<a href="../mine/#s1">マインの使い方 1番</a>）。
+    </div>
+  </section>
+
+  <!-- ============================================================
+       2. 画像を保存する
+       ★画面の文は story/index.html と story/js/story.js（viewStores・viewList・viewDone）の実物どおりです
+       ============================================================ -->
+  <section class="help-sec" id="s2">
+    <div class="help-sec__head"><span class="help-sec__n">2</span><h2 class="help-sec__title">画像を保存する</h2></div>
+
+    <h3>保存のしかた</h3>
+    <ol class="help-steps">
+      <li>「<b>店舗を選んでください</b>」で、店舗を押します</li>
+      <li>画像が並びます。使いたい画像を押します</li>
+      <li>画像が大きく出ます。<b>画像を長押しして［写真に保存］</b>を選びます</li>
+      <li>インスタのアプリで、保存した画像をストーリーズに投稿します</li>
+    </ol>
+    <p>パソコンのときは、画像の下の「<b>パソコンならこちら（ダウンロード）</b>」で保存できます。</p>
+    <p>「‹ 他の画像を選ぶ」「‹ 店舗を選びなおす」で戻れます。</p>
+
+    <h3>画像の並びと札</h3>
+    <ol class="help-steps">
+      <li>その日のイベント（肉の日など）の画像が、一番上に来ます</li>
+      <li>次に、<b>期間限定・まとめ・おやすみ</b>（「本日定休日です」など）の画像が来ます</li>
+      <li>そのあとに、ほかの画像が並びます</li>
+    </ol>
+    <p>画像には、区分（紫）・イベント（赤）・テイクアウト（緑）の札が付きます。毎月29日（2月は9日）は、店舗の横に「<b>きょうは肉の日</b>」と出ます。</p>
+
+    <div class="help-important">
+      <span class="help-important__label">手で投稿したとき</span>
+      <p>
+        手で投稿した分は、<b>自動投稿は知りません。</b>同じ日に、同じ画像が自動でも出ることがあります。
+        バグるで手で投稿するときは、気をつけてください。
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       3. 自動投稿
+       ★story/設定.json（1日の枚数 2・投稿する時刻 10:00／17:00・毎日かならず出す区分 期間限定）、
+         自動投稿/投稿する.py（あけたい日数 14・popo は 自動投稿 false）、gas/通知.gs（定休日・臨時休業を渡す・LINE）の実物どおりです
+       ============================================================ -->
+  <section class="help-sec" id="s3">
+    <div class="help-sec__head"><span class="help-sec__n">3</span><h2 class="help-sec__title">自動投稿</h2></div>
+
+    <h3>何が出るか</h3>
+    <ul class="help-marks">
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">バグる</span>
+        <span class="help-marks__desc"><b>毎日10時台と17時台に1枚ずつ</b>（1日2枚）、アプリに並んでいる画像から自動で投稿します。<b>普段は何もしなくて大丈夫です。</b></span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">popo</span>
+        <span class="help-marks__desc">自動投稿はしていません。投稿するときは、2番のとおり手で投稿します。</span>
+      </span></li>
+    </ul>
+
+    <h3>画像の選ばれかた</h3>
+    <ol class="help-steps">
+      <li>一度出した画像は、<b>14日のあいだ</b>出しません</li>
+      <li>期間限定の画像は、毎日1枚出します</li>
+      <li>イベントの日（肉の日など）は、イベントの画像から出します</li>
+    </ol>
+
+    <h3>定休日と臨時休業の日</h3>
+    <p>
+      マネージの定休日・臨時休業の設定を見て、<b>朝に「本日定休日です」「本日臨時休業です」を1枚</b>出します。夕方は出しません。
+    </p>
+    <div class="help-note">
+      臨時休業は、<b>その日の朝10時より前に</b>マネージに入れておいてください。
+      それでも出ていなかったときは、ストーリーズ作成のアプリの「本日臨時休業です」を、手で投稿してください。
+    </div>
+  </section>
+
+  <!-- ============================================================
+       4. 画像を作り直す（Mac）
+       ★ダブルクリック/ストーリーズ画像を作り直す.command・素材から台紙を作る.command の頭の説明と画面の文どおりです
+       ============================================================ -->
+  <section class="help-sec" id="s4">
+    <div class="help-sec__head"><span class="help-sec__n">4</span><h2 class="help-sec__title">画像を作り直す</h2></div>
+
+    <p>
+      画像は Mac で作ります。T3Works フォルダーの「<b>ダブルクリック</b>」の中のファイルを、ダブルクリックして使います。
+      黒い画面が出ますが、<b>閉じずに待ってください。</b>何かを打つ必要はありません。最後に「何かキーを押すと閉じます」と出たら、終わりです。
+    </p>
+
+    <h3>ストーリーズ画像を作り直す</h3>
+    <p>値段・文言・営業時間・写真・デザインを変えたあとに使います。数分かかります。</p>
+    <ol class="help-steps">
+      <li>「▶ 1/2 画像を作っています」… 全部の画像を作り直します</li>
+      <li>「▶ 2/2 アプリとインスタに反映しています」… アプリに並べ、次の自動投稿から新しい画像になります</li>
+      <li>「<b>おわりました</b>」と出たら終わりです。アプリが古いままなら、開き直してください</li>
+    </ol>
+    <div class="help-note">
+      「✖ 画像づくりでつまずきました」「✖ 反映でつまずきました」と出たら、<b>その画面をそのままコピーして</b>知らせてください。<br>
+      「ほかの分野の直しが混ざっています」と出たときは、画像はもうできています。そのまま知らせてください。<br>
+      インスタは公開した画像を読みに来るので、作り直すのは<b>10時・17時の少し前を避けて</b>ください。
+    </div>
+
+    <h3>素材から台紙を作る</h3>
+    <p>
+      Canva で作った飾りを、T3Works フォルダーの「story」→「素材」→ 店舗のフォルダに入れたあとに使います。
+      ファイルの名前の頭（全面_・上帯_・下帯_・左上_・右上_・左下_・右下_）で、飾りを置く場所が決まります。頭が無いファイルは使いません。
+    </p>
+    <p>
+      終わると、見くらべのページができます。<b>ここではまだ、お店に出る画像は変わっていません。</b>
+      見くらべて良ければ知らせてください。本番に入れます。
+    </p>
+  </section>
+
+  <!-- ============================================================
+       5. 困ったとき
+       ★LINE の文は gas/通知.gs の実物どおりです（インスタの列に ◯ がある送り先へ。うまくいっている日は何も来ません）
+       ============================================================ -->
+  <section class="help-sec" id="s5">
+    <div class="help-sec__head"><span class="help-sec__n">5</span><h2 class="help-sec__title">困ったとき</h2></div>
+
+    <div class="help-q">
+      <p class="help-q__title">LINE に知らせが来た</p>
+      <p>自動投稿がうまくいっている日は、<b>何も来ません。</b>来たときは、次のどれかです。</p>
+      <ul class="help-marks">
+        <li class="help-marks__row"><span class="help-marks__text">
+          <span class="help-marks__name" style="display:block;">⚠️ インスタの自動投稿が止まっています</span>
+          <span class="help-marks__desc">その日の枚数が足りません。知らせの中の GitHub の画面から、手で動かせます。分からなければ、アプリを直す人に頼んでください。</span>
+        </span></li>
+        <li class="help-marks__row"><span class="help-marks__text">
+          <span class="help-marks__name" style="display:block;">⚠️ インスタ自動投稿の記録が読めませんでした</span>
+          <span class="help-marks__desc">公開が止まっているかもしれません。アプリを直す人に知らせてください。</span>
+        </span></li>
+        <li class="help-marks__row"><span class="help-marks__text">
+          <span class="help-marks__name" style="display:block;">⚠️ インスタの自動投稿を始められませんでした</span>
+          <span class="help-marks__desc">GitHub のトークンが切れているかもしれません。アプリを直す人に知らせてください。</span>
+        </span></li>
+        <li class="help-marks__row"><span class="help-marks__text">
+          <span class="help-marks__name" style="display:block;">🔑 GitHubのトークンが、あと◯日で切れます</span>
+          <span class="help-marks__desc">切れる30日前から来ます。入れ直し方は、T3Works フォルダーの「引き継ぎ.md」の4番にあります。</span>
+        </span></li>
+      </ul>
+    </div>
+
+    <div class="help-q">
+      <p class="help-q__title">アプリに「うまくいきませんでした。」と出る</p>
+      <p>画像の一覧を読めなかったときです。電波を確かめて、開き直してください。続くときは、アプリを直す人に知らせてください。</p>
+    </div>
+
+    <div class="help-q">
+      <p class="help-q__title">新しい画像が出てこない</p>
+      <p>このアプリには「新しい版があります」の知らせがありません。<b>アプリを閉じて、開き直してください。</b></p>
+    </div>
+  </section>
+
+</div>
+
+<script src="../js/help.js?v=bb8f9518"></script>
+
+</body>
+</html>
