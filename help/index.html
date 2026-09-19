@@ -268,7 +268,7 @@
   .help-q, .help-lead, .help-first, .help-sec__head { box-shadow: none; }
 }
 </style>
-<meta name="app-version" content="84ef17bd">
+<meta name="app-version" content="258dc314">
 </head>
 <body>
 
@@ -1591,15 +1591,15 @@
       <p><b>開いたままにしているとき</b>は、押さなくても自動で届きます。かかる時間は、開いている画面で変わります。</p>
 
       <ol class="help-steps">
-        <li>今日のクローズを開いている … <b>8秒</b>おきに取りに行きます</li>
-        <li>他の誰かが今まさに入力している … <b>3秒</b>おきになります（届いてから40秒間）</li>
+        <li>今日のクローズを開いている … <b>8秒</b>おきに取りに行きます（10分さわっていなければ60秒おき。さわると8秒おきに戻ります）</li>
+        <li>同じお店の他の誰かが、今まさに入力している … <b>3秒</b>おきになります（届いてから40秒間）</li>
         <li>それ以外の画面（別の日、提出記録など） … <b>60秒</b>おきです</li>
       </ol>
 
       <p class="help-note">
-        <b>なぜ毎秒にしないのか。</b>6店舗の端末が始終聞きに行くと、Google の1日に使える時間を
-        夕方までに使い切ってしまい、<b>誰も同期できなくなります。</b>
-        「誰かが今入力している」間だけ速くする、という配り方にしています。
+        <b>なぜ毎秒にしないのか。</b>6店舗の端末が始終聞きに行くと、サーバーが1日に受けられる回数を
+        使い切ってしまい、<b>誰も同期できなくなります。</b>
+        「同じお店の誰かが今入力している」間だけ速くする、という配り方にしています。
       </p>
 
       <p class="help-note">
@@ -1658,8 +1658,12 @@
           <span class="help-marks__desc">混み合っています。<b>電波の問題ではありません。</b>待っていると自動で送り直します。</span>
         </span></li>
         <li class="help-marks__row"><span class="help-marks__text">
-          <span class="help-marks__name">Google 側で結果を受け取れませんでした</span>
-          <span class="help-marks__desc">Google の中で止まっています。<b>こちらのアプリも電波も悪くありません。</b>自動で送り直します。</span>
+          <span class="help-marks__name">サーバー側で結果を受け取れませんでした</span>
+          <span class="help-marks__desc">サーバーの中で止まっています。<b>こちらのアプリも電波も悪くありません。</b>自動で送り直します。</span>
+        </span></li>
+        <li class="help-marks__row"><span class="help-marks__text">
+          <span class="help-marks__name">今日の上限に達しました</span>
+          <span class="help-marks__desc">今日の同期の回数を使い切りました。朝9時に戻り、自動で送られます。<b>それまで入力は端末に残り、消えません。</b>めったに出ないので、出たらこうだいに伝えてください。</span>
         </span></li>
         <li class="help-marks__row"><span class="help-marks__text">
           <span class="help-marks__name">合言葉（PIN）が違います</span>
@@ -1668,9 +1672,15 @@
       </ul>
 
       <p class="help-note">
-        <b>夜、続けて出ることがあります。</b>2026年9月から、Google 側で結果を渡す所が
-        止まりやすくなっています。<b>お店のやり方が悪いのでも、電波が悪いのでもありません。</b>
+        <b>何度も続けて出るとき。</b><b>お店のやり方が悪いのでも、電波が悪いのでもありません。</b>
         アプリは黙って3回送り直すようにしてあるので、たいていはそのまま通ります。
+        続くときは、設定の<b>「赤くなった記録」</b>を開いて、日時と理由をこうだいに伝えてください。
+      </p>
+
+      <p class="help-note">
+        <b>ジャーナルの「Google が混み合っています」は別のものです。</b>
+        ジャーナルの読み取りと日報に書くのは、今も Google を通ります。
+        そちらで出たときは、<a href="#s3">3番</a>のとおり、閉じずにそのまま待ってください。
       </p>
     </div>
 
