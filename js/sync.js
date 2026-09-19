@@ -49,6 +49,7 @@ function 設定の呼び名(n) {
 function この失敗のたぐい(e) {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return '電波なし';
   if (e && e.name === 'AbortError') return '返事なし';
+  if (e && e.name === '上限') return '上限';
   if (e && e.name === '渡す口') return '渡す口';
   return 'つながらない';
 }
@@ -62,6 +63,10 @@ function この失敗はなにか(e, 上限ms) {
     // ★`**` のような飾りは書きません。画面は textContent で出すので、そのまま文字になります
     return `サーバーが${Math.round(上限ms / 1000)}秒たっても返事をしません。`
       + '混み合っているだけで、電波の問題ではありません。少し待つと自動で送り直します';
+  }
+  if (たぐい === '上限') {
+    // ★Cloudflare の無料の1日の上限（10万回）。朝9時（00:00 UTC）に戻ります。送り直しても同じです
+    return '今日の上限に達しました。朝9時に戻ります（入力は消えません）';
   }
   if (たぐい === '渡す口') {
     return 'Google 側で結果を受け取れませんでした。電波の問題ではありません。'
@@ -83,6 +88,29 @@ function 日付の文字(d) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+/**
+ * 同期と ping を送る先
+ *
+ * ★2026-09-19（M4a）：Cloudflare を**この端末だけ**試しているあいだは cloudUrl へ送ります。
+ *   試す・やめるは、アプリの URL に ?cloud=1 ／ ?cloud=0 を付けて1回開きます（この端末の中だけに覚えます）。
+ *   全部の端末を移すとき（M4b）は、config.js の syncUrl そのものを Cloudflare にします。
+ */
+function 同期の口() {
+  try {
+    if (APP.cloudUrl && localStorage.getItem(APP.storageKey + ':cloud') === '1') return APP.cloudUrl;
+  } catch (e) { /* 覚えられない端末は、いつもの口へ */ }
+  return APP.syncUrl;
+}
+(function 試すかを覚える() {
+  try {
+    // ★URLSearchParams を使わずに読みます（試験の jsc に無いため。?cloud=1 だけ見ればよい）
+    const m = /[?&]cloud=([01])(?:&|$)/.exec(String(location.search || ''));
+    const q = m ? m[1] : null;
+    if (q === '1') localStorage.setItem(APP.storageKey + ':cloud', '1');
+    if (q === '0') localStorage.removeItem(APP.storageKey + ':cloud');
+  } catch (e) { /* 試験の中（location が無い）では何もしません */ }
+})();
+
 async function 返事を読む(res) {
   const text = await res.text();
   try {
@@ -91,6 +119,8 @@ async function 返事を読む(res) {
     const err = new Error(`Google の返事が JSON ではありません（HTTP ${res.status}）`);
     err.name = '渡す口';
     err.status = res.status;
+    // ★Cloudflare の1日の上限（10万回）を超えると、1027 という番号の HTML が返ります（2026-09-19〜）
+    if (res.status === 429 || /error code: 1027/.test(text)) err.name = '上限';
     throw err;
   }
 }
@@ -178,6 +208,18 @@ const Sync = {
   _loopTimer: null,
   /** いま「今日のクローズ」を見ているか。true のあいだは早く取りに行きます */
   hot: false,
+  /** いま見ている店舗（js/app.js が入れます。店舗を選ぶ前・マネージ・配達記録は ''） */
+  店舗: '',
+  /**
+   * 最後に画面をさわった時刻と、「さわっていない」と見なすまでの長さ
+   *
+   * ★今日のクローズを開いたまま置いておくと、ずっと8秒おきに聞きに行きます（1台で1日1万回）。
+   *   10分さわっていなければ60秒おきに落とし、さわったらすぐ戻します（2026-09-19）。
+   */
+  _最後にさわった: Date.now(),
+  さわらない上限: 600000,
+  /** 1日の上限（Cloudflare の 1027）に当たった時刻。当たっているあいだは5分おきにします */
+  _上限: 0,
   /**
    * 「ほかの端末が動いている」と分かっているあいだの終わり時刻
    *
@@ -501,6 +543,10 @@ const Sync = {
 
     const sending = this.outbox();
     const ops = this._withSummaries(sending);
+    // ★送った「ここまで読んだ」印。空なら全部を取りに行く回（初めての端末）です
+    const 送った印 = Store.meta('since') || '';
+    // ★返事に `more:true` が付いたら、続きをすぐ取りに行きます（Cloudflare は初めての端末に200件ずつ渡します）
+    let 続き = false;
     // ★あきらめるまでに何秒待ったか。記録に入れます（35秒なら時間切れと分かります）
     const この回の始まり = Date.now();
     // ★書くときは鍵待ち（25秒）があるので長く、読むだけなら短く（readHangMs を見てください）
@@ -520,11 +566,11 @@ const Sync = {
         pin: this.pin(),
         code: this.code(),
         action: 'sync',
-        since: Store.meta('since') || '',
+        since: 送った印,
         settingsAll: !this._settingsPulled,
         ops,
       });
-      const 送る = (重ね) => fetch(APP.syncUrl, {
+      const 送る = (重ね) => fetch(同期の口(), {
         method: 'POST',
         signal: stop.signal,
         // ★アプリを閉じても、送りかけたものを最後まで送り切ってもらいます。
@@ -594,8 +640,15 @@ const Sync = {
       //   2026-09-15 まで、自分で入れたチェックが自分の端末を40秒間3秒おきにしていました
       //   （端末を見分ける印が無いので、自分の行もそのまま返ってきます）。
       //   サーバーが直近10秒の行を何度か返すようになった（`readCursor_` の余白）ので、なおさら要ります
+      /* ★2026-09-19 から、**いま見ている店舗**（`Sync.店舗`）の記録が届いたときだけ速くします。
+           それまでは、どの店舗の記録でも全部の端末が40秒3秒おきになり、閉店の時間帯は
+           見ている端末が全部ずっと3秒おきでした（試算で1日の問い合わせの半分以上がこれ）。
+           ★続きを取っている最中（more）と、初めての全部取り（印が空）では速くしません */
+      続き = !!json.more;
       const 自分の = new Set(sending.map((op) => op.k).filter(Boolean));
-      const よそから = (json.records || []).some((r) => !自分の.has(r.k));
+      const 店 = this.店舗 ? this.店舗 + '/' : '';
+      const よそから = !!店 && !続き && 送った印 !== ''
+        && (json.records || []).some((r) => !自分の.has(r.k) && String(r.k).indexOf(店) === 0);
       if (よそから) {
         this._busyUntil = Date.now() + this.busyMs;
         this._loop();
@@ -608,6 +661,7 @@ const Sync = {
       this._settingsPulled = true;
       this.lastSyncAt = new Date();
       this.lastError = '';
+      this._上限 = 0;
       if (typeof render === 'function') render();
     } catch (e) {
       /* ★どちらなのかを分けます。**2026-09-13 まで分けていませんでした。**
@@ -619,8 +673,10 @@ const Sync = {
       const たぐい = この失敗のたぐい(e);
       this.lastError = この失敗はなにか(e, 上限);
       this._noteFail(たぐい, this.lastError, Date.now() - この回の始まり, e && e.status);
-      // ★電波が無いときだけは、送り直しても同じなので静かにしません（online で自動で送ります）
-      this._送り直せる = たぐい !== '電波なし';
+      // ★電波が無いときと、1日の上限のときは、送り直しても同じなので静かにしません
+      this._送り直せる = たぐい !== '電波なし' && たぐい !== '上限';
+      // ★上限のときは、朝9時まで取りに行く間隔を5分にします（`_loop`）。何度聞いても同じ答えです
+      if (たぐい === '上限' && !this._上限) { this._上限 = Date.now(); this._loop(); }
     } finally {
       this.running = false;
       this.runningSince = 0;
@@ -633,7 +689,9 @@ const Sync = {
         // ★送っているあいだに増えた分は、すぐ続けて送ります。
         //   前は成功していても15秒待っていたので、連続でチェックを入れると
         //   最後の何件かが15秒遅れて届いていました。
-        if (this.outbox().length) this.scheduleFlush(700);
+        // ★続きがあるなら、すぐ取りに行きます（初めての端末の全件）
+        if (続き) this.scheduleFlush(50);
+        else if (this.outbox().length) this.scheduleFlush(700);
       } else if (this._送り直せる && this._fails < this.静かな間.length) {
         /* ★静かな送り直し（`_fails` のコメントを見てください）。
              読むだけの同期でも送り直します。送り直さないと、次に取りに行く60秒後まで
@@ -754,7 +812,7 @@ const Sync = {
   async ping() {
     const 送った番号 = this.code();
     try {
-      const res = await fetch(APP.syncUrl, {
+      const res = await fetch(同期の口(), {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ pin: this.pin(), code: 送った番号, action: 'ping' }),
@@ -805,7 +863,9 @@ const Sync = {
     const stop = new AbortController();
     const timer = setTimeout(() => stop.abort(), 上限);
     const body = JSON.stringify({ pin: this.pin(), code: this.code(), action, ...extra });
-    const 送る = () => fetch(APP.syncUrl, {
+    // ★ジャーナル・日報は GAS に残ります（2026-09-19〜。同期と ping だけ Cloudflare）。
+    //   gasUrl が無い形（古い config.js）なら、今までどおり syncUrl へ
+    const 送る = () => fetch(APP.gasUrl || APP.syncUrl, {
       method: 'POST',
       signal: stop.signal,
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -1084,6 +1144,15 @@ const Sync = {
     });
     // 読み直し（更新するを押した・URLを開き直した）も同じです
     window.addEventListener('beforeunload', () => { this._とじかけ = true; });
+    // ★さわったら覚えます。しばらくさわっていなかった端末は、その場で間隔を取り直します
+    const さわった = () => {
+      const 眠っていた = Date.now() - this._最後にさわった >= this.さわらない上限;
+      this._最後にさわった = Date.now();
+      if (眠っていた) this._loop();
+    };
+    ['pointerdown', 'keydown', 'touchstart'].forEach((ev) => {
+      document.addEventListener(ev, さわった, { passive: true, capture: true });
+    });
     this._loop();
     this.scheduleFlush(300);
   },
@@ -1091,9 +1160,10 @@ const Sync = {
   /**
    * 取りに行く間隔を、見ている画面に合わせて変える
    *
-   *   ほかの端末が動いている     … 3秒おき（最後に届いてから40秒だけ）
-   *   今日のクローズを開いている … 8秒おき（誰かの提出がすぐ出ます）
+   *   ほかの端末が動いている     … 3秒おき（見ている店舗の記録が届いてから40秒だけ）
+   *   今日のクローズを開いている … 8秒おき（誰かの提出がすぐ出ます）。★10分さわっていなければ60秒おき
    *   ほかの画面              … 60秒おき
+   *   1日の上限に当たった      … 5分おき（朝9時に戻るまで）
    *   アプリが裏にいる         … 取りに行かない
    *
    * ★ずっと3秒おきにはしません。Apps Script には1日に動かせる
@@ -1106,7 +1176,8 @@ const Sync = {
   _loop() {
     clearTimeout(this._loopTimer);
     const busy = Date.now() < this._busyUntil;
-    const wait = document.hidden ? 30000 : busy ? 3000 : (this.hot ? 8000 : 60000);
+    const hot = this.hot && Date.now() - this._最後にさわった < this.さわらない上限;
+    const wait = document.hidden ? 30000 : this._上限 ? 300000 : busy ? 3000 : (hot ? 8000 : 60000);
     this._loopTimer = setTimeout(() => {
       if (!document.hidden) this.flush();
       this._loop();

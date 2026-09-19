@@ -96,6 +96,12 @@ const APP = {
   //   SETUP.md の手順で取得したURLをここに貼ると共有版になります。
   syncUrl: 'https://script.google.com/macros/s/AKfycbzzLm89vm45kaMHcAMPb9DsrYxFeZwW-Q6UDo2NITHEPBUK3hSslVWiLONEPGxpPCVW/exec',
 
+  // ★Cloudflare の口（2026-09-19〜、決裁.md「Cloudflare 移行」）
+  //   いまは**試したい端末だけ**がここへ同期します（アプリの URL に ?cloud=1 を付けて1回開く。?cloud=0 で戻す）。
+  //   Cloudflare は頼みを GAS へそのまま回すので、中身は今までと同じです。
+  //   ★全部の端末を移すときは、syncUrl をこの URL にし、今の syncUrl を gasUrl（ジャーナル・日報の送り先）に移します
+  cloudUrl: 'https://t3works-sync.t3dining.workers.dev/',
+
   // ★「今日」が切り替わる時刻（時）
   //   締め作業が0時をまたぐことが多いので、朝までは前の日あつかいにします。
   //   6 … 朝6時に翌日へ切り替わる（0 にすると 0時ちょうどで切り替わります）

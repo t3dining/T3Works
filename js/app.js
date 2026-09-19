@@ -12693,6 +12693,8 @@ function render() {
   //   （ずっと10秒おきにすると、Apps Script の1日の上限に当たります）
   const wasHot = Sync.hot;
   Sync.hot = isDay && ymd(state.y, state.m, state.d) === ymd(TODAY.y, TODAY.m, TODAY.d);
+  // ★見ている店舗。ほかの端末の記録が届いて速くなる（3秒おき）のは、この店舗の記録のときだけです（js/sync.js）
+  Sync.店舗 = state.storeId || '';
   if (Sync.hot !== wasHot && typeof Sync._loop === 'function') Sync._loop();
 
   if (isShift) renderShift();
