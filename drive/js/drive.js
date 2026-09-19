@@ -7,8 +7,9 @@
  *    ・支払う金額は、1件ごとではなく「その月の合計距離」から出します
  *      （5kmごとに100円・100円未満は切り上げ）
  *
- *  記録の入れ先は  _drive/2026-08  なので、同期の仕組み
- *  （スプレッドシート）はそのまま使えます。設定の追加もいりません。
+ *  記録の入れ先は  _drive/2026-08  なので、ほかの分野と同じ同期の仕組みを
+ *  そのまま使えます。設定の追加もいりません。
+ *  （★2026-09-19 から、同期の本体は Cloudflare です。スプレッドシートは5分ごとの写しです）
  *
  *  名前の追加・削除は T3 Works Manage（バグる → 交通費）で行います。
  * ============================================================ */
@@ -18,11 +19,32 @@ const ymd = (y, m, d) => `${y}-${pad2(m)}-${pad2(d)}`;
 const daysInMonth = (y, m) => new Date(y, m, 0).getDate();
 
 /* 「今日」は業務上の今日。朝6時（APP.dayStartHour）より前は前の日あつかいです。
-   夜中に帰ってきて入れても、その日の営業分として入ります */
-const today = businessDate();
-const TODAY = { y: today.getFullYear(), m: today.getMonth() + 1, d: today.getDate() };
+   夜中に帰ってきて入れても、その日の営業分として入ります。
+   ★使うたびに出し直します。前は開いたときに1回だけ決めていたので、
+     タブレットを開いたままにすると、朝6時や月をまたいでも
+     「走った日」の初めの値と「今月」が前のままでした（2026-09-19、マニュアルの指摘） */
+function 今日() {
+  const t = businessDate();
+  return { y: t.getFullYear(), m: t.getMonth() + 1, d: t.getDate() };
+}
 
-const state = { y: TODAY.y, m: TODAY.m };
+const state = (() => { const t = 今日(); return { y: t.y, m: t.m }; })();
+
+/* 画面に戻ってきたとき、「今月」を見ていたのに月が変わっていたら、新しい月へ移ります。
+   ★自分で前の月・次の月を開いていたときは動かしません。
+   ★入れる画面の「走った日」は書きかえません。日付を手で直している最中に、
+     画面に戻っただけで変わると困るためです（初めの値は開いたときに決めます） */
+let 見ていた今月 = { y: state.y, m: state.m };
+function 月が変わったら追う() {
+  const t = 今日();
+  const 前 = 見ていた今月;
+  見ていた今月 = { y: t.y, m: t.m };
+  if (前.y === t.y && 前.m === t.m) return;          // 月は変わっていません
+  if (state.y !== 前.y || state.m !== 前.m) return;  // 自分で別の月を見ています
+  state.y = t.y;
+  state.m = t.m;
+  render();
+}
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -39,7 +61,8 @@ const el = {
   syncWarn: $('syncWarn'),
   pinModal: $('pinModal'), pinInput: $('pinInput'), pinError: $('pinError'),
   pinMessage: $('pinMessage'), codeInput: $('codeInput'), codeLater: $('codeLater'),
-  codeInfo: $('codeInfo'),
+  codeInfo: $('codeInfo'), codeField: $('codeField'), pinCancel: $('pinCancel'),
+  helpLink: $('helpLink'), helpNote: $('helpNote'),
   appVersionText: $('appVersionText'),
   confirmDialog: $('confirmDialog'), confirmItem: $('confirmItem'),
   confirmMessage: $('confirmMessage'), confirmOk: $('confirmOk'),
@@ -290,7 +313,8 @@ let drvEditing = null;   // 直しているとき、その日のかたまり（�
 function openForm(group) {
   drvEditing = group || null;
   el.driveError.textContent = '';
-  el.drvDate.value = drvEditing ? drvEditing.d : ymd(TODAY.y, TODAY.m, TODAY.d);
+  const t = 今日();   // ★開いたときに出し直します（開いたままの日またぎで古くならないように）
+  el.drvDate.value = drvEditing ? drvEditing.d : ymd(t.y, t.m, t.d);
   drvName = drvEditing ? (drvEditing.by || '') : '';
 
   el.drvNames.innerHTML = '';
@@ -320,7 +344,46 @@ function openForm(group) {
   el.driveSave.textContent = drvEditing ? '直す' : '記録する';
 
   renderForm();
+  開いたときの中身 = フォームの中身();
   el.driveModal.classList.remove('is-hidden');
+}
+
+/* ------------------------------------------------------------
+ *  閉じる
+ *
+ *  ★外の暗い所（と Esc）で閉じるときは、入れた内容があれば聞きます。
+ *    前は聞かずに閉じて、入れた距離や名前が消えていました
+ *    （2026-09-19、マニュアルの指摘）。指が外に触れただけで起きます。
+ *  ★「やめる」ボタンは、はっきり押したものなので、今までどおりすぐ閉じます。
+ * ------------------------------------------------------------ */
+let 開いたときの中身 = '';
+
+/** いまの入れる画面の中身（日・名前・欄の文字）。開いたときと見くらべるためのものです */
+function フォームの中身() {
+  return JSON.stringify({
+    d: el.drvDate.value,
+    name: drvName,
+    rows: [...el.drvLegs.children].map((row) => [row.dataset.id || '',
+      ...[...row.querySelectorAll('.drive-route__input')].map((x) => x.value)]),
+  });
+}
+
+function フォームを閉じる() {
+  el.driveModal.classList.add('is-hidden');
+}
+
+async function 聞いてから閉じる() {
+  if (el.driveModal.classList.contains('is-hidden')) return;
+  if (フォームの中身() !== 開いたときの中身) {
+    const ok = await askConfirm({
+      item: '入れた内容は、まだ記録されていません',
+      message: '閉じると、入れた距離や名前は消えます。',
+      okLabel: '消して閉じる',
+      danger: true,
+    });
+    if (!ok) return;
+  }
+  フォームを閉じる();
 }
 
 /**
@@ -498,16 +561,60 @@ function tripKm(t) {
   return t.multi ? driveKm(...t.legs) : driveRound(t.legs[0]);
 }
 
-/** いま欄に入っているもの（距離が入っている回だけ）。id は元の記録の番号 */
+/**
+ * 1回分ずつ、欄の埋まり方を見ます
+ *
+ *   全部空   … 何も入れていない回（「＋ もう1回分入れる」を押したまま、など）
+ *   全部よい … どの欄にも 0 より大きい数が入っている回。記録できるのはこれだけです
+ *   一部だけ … 空の欄・0・読めない数がまざっている回
+ *
+ * ★前は「全部よい」回だけを拾って、ほかは**黙って外していました。**
+ *   直すときに経由地を足して空のまま「直す」を押すと、その回が元の月から消えていました
+ *   （交通費の記録が黙って消える。2026-09-19、マニュアルの指摘）。
+ *   いまは記録する前に止めます（`止める回`）。
+ */
+function tripRows() {
+  return [...el.drvLegs.children].map((row, i) => {
+    const inputs = [...row.querySelectorAll('.drive-route__input')];
+    // 全角で入っていても読めるよう、半角に直してから数字にします
+    const raw = inputs.map((x) => toHalfWidthNumber(x.value));
+    const legs = raw.map(Number);
+    const よい = legs.map((v, k) => raw[k] !== '' && v > 0);
+    const 形 = raw.every((v) => v === '') ? '全部空'
+      : よい.every(Boolean) ? '全部よい' : '一部だけ';
+    return {
+      no: i + 1, id: row.dataset.id || '', legs, multi: legs.length > 1, 形,
+      まだの欄: inputs.find((x, k) => !よい[k]) || null,   // 止めたとき、ここに合わせます
+    };
+  });
+}
+
+/** 記録できる回だけ（全部の欄に距離が入っている回）。id は元の記録の番号 */
 function legValues() {
-  return [...el.drvLegs.children]
-    .map((row) => {
-      // 全角で入っていても読めるよう、半角に直してから数字にします
-      const legs = [...row.querySelectorAll('.drive-route__input')]
-        .map((i) => Number(toHalfWidthNumber(i.value)));
-      return { id: row.dataset.id || '', legs, multi: legs.length > 1 };
-    })
-    .filter((t) => t.legs.length && t.legs.every((v) => v > 0));
+  return tripRows().filter((t) => t.形 === '全部よい');
+}
+
+/**
+ * 記録する前に止める回（理由つき）。無ければ空の配列
+ *
+ *   一部だけの回                 … そのまま記録すると、その回が消えます
+ *   元の記録がある回を空にした   … 黙って消さず、消すのは回の「×」だけにします
+ *                                  （1回しかない日は「走った距離を入れてください」で止まります）
+ * 新しく足して何も入れていない回は止めません。消える記録が無いためです。
+ */
+function 止める回(rows) {
+  return rows.flatMap((t) => {
+    if (t.形 === '一部だけ') {
+      return [{ t, なぜ: t.multi
+        ? `${t.no}回目の区間に、空いている欄（または0）があります。距離を入れるか、要らない経由地を「×」で消してください。`
+        : `${t.no}回目の距離が読めません。0より大きい数を入れてください。` }];
+    }
+    if (t.形 === '全部空' && t.id && rows.length > 1) {
+      return [{ t, なぜ: `${t.no}回目の距離が空になっています。入れ直してください。`
+        + 'この回をやめるときは、その回の「×」で消してください。' }];
+    }
+    return [];
+  });
 }
 
 /** 選んだ名前と、それぞれの回が何kmになるかを出します */
@@ -515,33 +622,36 @@ function renderForm() {
   [...el.drvNames.children].forEach((b) => b.classList.toggle('is-current', b.dataset.name === drvName));
 
   // 何回目かの番号を振り直し、その回が何kmになるかも出し直す
+  const rows = tripRows();
   [...el.drvLegs.children].forEach((row, i) => {
-    row.querySelector('.drive-trip__no').textContent = `${i + 1}回目`;
-    const legs = [...row.querySelectorAll('.drive-route__input')]
-      .map((x) => Number(toHalfWidthNumber(x.value)));
-    const multi = legs.length > 1;
-    const ok = legs.length && legs.every((v) => v > 0);
-    const km = ok ? tripKm({ legs, multi }) : 0;
+    const t = rows[i];
+    row.querySelector('.drive-trip__no').textContent = `${t.no}回目`;
+    const ok = t.形 === '全部よい';
+    const km = ok ? tripKm(t) : 0;
     // 帰り道の説明は、打っているそばから距離を出します
     const auto = row.querySelector('.drive-route__auto');
-    if (auto) auto.textContent = '帰りも同じ' + (legs[0] > 0 ? ' ' + kmText(legs[0]) : '') + '（自動）';
+    if (auto) auto.textContent = '帰りも同じ' + (t.legs[0] > 0 ? ' ' + kmText(t.legs[0]) : '') + '（自動）';
 
-    row.querySelector('.drive-trip__total').textContent = !ok
-      ? (multi ? '区間の距離をすべて入れてください' : '')
-      : multi
-        ? `${legs.length}区間 ／ 合計 ${kmText(km)}`
-        : `往復 ${kmText(km)}（入れた ${kmText(legs[0])} の2倍）`;
+    row.querySelector('.drive-trip__total').textContent = ok
+      ? (t.multi
+        ? `${t.legs.length}区間 ／ 合計 ${kmText(km)}`
+        : `往復 ${kmText(km)}（入れた ${kmText(t.legs[0])} の2倍）`)
+      : t.multi ? '区間の距離をすべて入れてください'
+        : t.形 === '一部だけ' ? '0より大きい数を入れてください' : '';
     row.querySelector('.drive-trip__total').classList.toggle('is-on', ok);
   });
   // 1回分しかないときは、回ごと消すボタンを出さない
   el.drvLegs.classList.toggle('is-single', el.drvLegs.children.length === 1);
 
-  const list = legValues();
+  const list = rows.filter((t) => t.形 === '全部よい');
+  const 止め = 止める回(rows);
   const total = driveKm(...list.map(tripKm));
-  if (!list.length) el.drvHint.textContent = '走った距離を入れてください';
+  // ★止まる回があるときは、それを先に言います。合計だけ出すと「記録できる」ように見えるためです
+  if (止め.length) el.drvHint.textContent = `${止め.map((x) => x.t.no).join('・')}回目に、まだ入っていない欄があります（このままでは記録できません）`;
+  else if (!list.length) el.drvHint.textContent = '走った距離を入れてください';
   else if (drvEditing) el.drvHint.textContent = `この日は ${list.length}回 ／ 合計 ${kmText(total)} に直します`;
   else el.drvHint.textContent = `${list.length}回分 ／ 合計 ${kmText(total)} として記録します`;
-  el.drvHint.classList.toggle('is-on', list.length > 0);
+  el.drvHint.classList.toggle('is-on', list.length > 0 && !止め.length);
 
   // 間違いが一番起きるのは「まとめて回ったのに、1回ずつに分けて入れた」とき。
   // 2回以上あって、どれにも経由地が無いときだけ声をかけます
@@ -555,10 +665,19 @@ function allRoundMulti(list) {
 
 async function saveEntry() {
   const d = el.drvDate.value;
-  const list = legValues();
+  const rows = tripRows();
+  const list = rows.filter((t) => t.形 === '全部よい');
 
   if (!d) { el.driveError.textContent = '走った日を入れてください。'; return; }
   if (!drvName) { el.driveError.textContent = '名前を選んでください。'; return; }
+  // ★空の欄がある回は、ここで止めます。通すと、その回は記録されず、
+  //   直すときは元の月からも消えます（下の「欄から消したもの」に数えられるため）
+  const 止め = 止める回(rows);
+  if (止め.length) {
+    el.driveError.textContent = 止め[0].なぜ;
+    if (止め[0].t.まだの欄) 止め[0].t.まだの欄.focus();
+    return;
+  }
   if (!list.length) { el.driveError.textContent = '走った距離を入れてください。'; return; }
   if (list.some((t) => t.legs.some((v) => v > 200))) {
     el.driveError.textContent = '200kmを超えています。入れ間違いではありませんか？';
@@ -686,8 +805,10 @@ function renderSyncStatus() {
  *
  * ヘッダーの赤い丸は「何かおかしい」しか言いません。理由の文は title
  * （指では出ません）と設定の奥にしかなく、タブレットでは読めませんでした。
- * 赤の理由は3つあって、やることが全部ちがいます。ここに出して、
+ * 赤の理由はいくつかあって、やることが全部ちがいます。ここに出して、
  * 見た人がそのまま伝えられるようにします。
+ * ★理由の文そのものは js/sync.js の `この失敗はなにか()` が正です。
+ *   ここに数や文を書き写さないこと（前に「3つ」と書き、増えたあと古くなりました）。
  *
  * 出す順番は、直さないと records が欠ける方から先に出します。
  *   1. サーバーが受け取れなかった  … 送れたように見えて中身が入っていません
@@ -731,23 +852,35 @@ function renderSyncWarn() {
      `js/sync.js` を共有しているので、マネージで「番号を必須にする」を押すと
      **配達記録もサーバーに止められます。**前は合言葉の画面しかなく、
      バグるのタブレットが赤いまま何もできなくなるところでした（2026-09-16、本部）。 */
-function openPinModal(message) {
+/* ★「PINを入れ直す」から開いたときだけ true。
+     前は同じ入口を通っていたので、PINが入っている端末では番号の欄しか出ず、
+     PINを入れ直せませんでした（2026-09-19、マニュアルの指摘） */
+let PINを入れ直す = false;
+
+function openPinModal(message, opts = {}) {
+  PINを入れ直す = !!opts.入れ直す;
   el.pinInput.value = '';
   el.pinError.textContent = message || '';
-  // ★PINが入っているなら、聞くのは番号だけです
-  const pin済み = !!Sync.pin();
-  el.pinInput.closest('.pin-row').classList.toggle('is-hidden', pin済み);
-  $('pinTitle').textContent = pin済み
-    ? '番号を入れてください' : '合言葉（PIN）を入力してください';
-  el.pinMessage.innerHTML = pin済み
-    ? 'この端末から記録を送るための番号です。<br>一度入れれば、この端末では次回から不要です。'
-    : '記録を全員で共有するために必要です。<br>一度入力すれば、この端末では次回から不要です。';
+  // ★PINが入っているなら、聞くのは番号だけです（「PINを入れ直す」のときを除きます）
+  const 番号だけ = !!Sync.pin() && !PINを入れ直す;
+  el.pinInput.closest('.pin-row').classList.toggle('is-hidden', 番号だけ);
+  // ★入れ直すときは番号の欄を出しません。番号は設定の「番号を入れる」から別に入れます
+  el.codeField.classList.toggle('is-hidden', PINを入れ直す);
+  $('pinTitle').textContent = PINを入れ直す ? '合言葉（PIN）を入れ直してください'
+    : 番号だけ ? '番号を入れてください' : '合言葉（PIN）を入力してください';
+  el.pinMessage.innerHTML = PINを入れ直す
+    ? '新しい合言葉を入れて「開く」を押します。<br>まちがっていたときは、いまの合言葉のままにします。'
+    : 番号だけ
+      ? 'この端末から記録を送るための番号です。<br>一度入れれば、この端末では次回から不要です。'
+      : '記録を全員で共有するために必要です。<br>一度入力すれば、この端末では次回から不要です。';
   el.codeInput.value = Sync.code();
   /* 「あとで」は、PINが通っていて、**サーバーがまだ番号を求めていない**あいだだけ出します。
      求められたあとに閉じても、同期できずに赤いままになるためです */
-  el.codeLater.classList.toggle('is-hidden', !pin済み || !!Sync.needStaffCode);
+  el.codeLater.classList.toggle('is-hidden', !番号だけ || !!Sync.needStaffCode);
+  // 「やめる」は入れ直すときだけです（はじめての合言葉は、入れるまで閉じません）
+  el.pinCancel.classList.toggle('is-hidden', !PINを入れ直す);
   el.pinModal.classList.remove('is-hidden');
-  setTimeout(() => (pin済み ? el.codeInput : el.pinInput).focus(), 50);
+  setTimeout(() => (番号だけ ? el.codeInput : el.pinInput).focus(), 50);
 }
 
 /** 設定の「番号」の行 */
@@ -760,7 +893,52 @@ function renderCodeInfo() {
       : '番号は入っていません。';
 }
 
+/**
+ * 「PINを入れ直す」
+ *
+ * ★確かめは `Sync.ping()` で1回だけします。
+ *   ・同期（flush）は、まちがったPINを受け取ると**端末のPINを消します**（js/sync.js の bad_pin）。
+ *     入れ直しをまちがえただけで、今まで動いていたPINまで無くなるので使いません。
+ *     ping はPINを消しません。だめだったら、入れ直す前のPINに戻します
+ *   ・まちがったPINの ping は、同期と同じ締め出しの数（pinFail）に数えられます。
+ *     10分に10回で**全店舗が約10分締め出されます。**自動で送り直さないこと。
+ *     二度押しで2回飛ばないよう、確かめ中は受け付けません（本部、2026-09-19）
+ */
+let PINを確かめ中 = false;
+
+async function PINを入れ替える() {
+  if (PINを確かめ中) return;
+  const pin = toHalfWidth(el.pinInput.value).trim();
+  if (!pin) { el.pinError.textContent = 'PINを入力してください。'; return; }
+  const 前のPIN = Sync.pin();
+  PINを確かめ中 = true;
+  el.pinError.textContent = '確認中…';
+  try {
+    Sync.setPin(pin);
+    const res = await Sync.ping();
+    // ★need_staff_code は「PINは合っている。番号が要る」という返事です
+    if (res.ok || res.code === 'need_staff_code') {
+      PINを入れ直す = false;
+      if (!res.ok) { openPinModal('合言葉は通りました。番号を入れてください。'); return; }
+      el.pinModal.classList.add('is-hidden');
+      Sync.start(); render();
+      Sync.scheduleFlush(0);
+      return;
+    }
+    // だめだったときは、入れ直す前のPINに戻します（消さずに残す）
+    if (前のPIN) Sync.setPin(前のPIN); else Sync.clearPin();
+    el.pinError.textContent = res.code === 'bad_pin'
+      ? 'PINが違います。入れ直す前のPINのままにしてあります。'
+      : res.code === 'locked'
+        ? 'PINの入力を続けて間違えたため、しばらく受け付けません（約10分）。入れ直す前のPINのままにしてあります。'
+        : `${res.error || '確かめられませんでした。'}（入れ直す前のPINのままにしてあります）`;
+  } finally {
+    PINを確かめ中 = false;
+  }
+}
+
 async function submitPin() {
+  if (PINを入れ直す) return PINを入れ替える();
   // 全角で入れても通るように、半角に直してから確かめます
   if (Sync.pin()) {
     // PINは通っています。番号だけ確かめます
@@ -807,14 +985,21 @@ function bindEvents() {
   $('drivePrev').addEventListener('click', () => shiftMonth(-1));
   $('driveNext').addEventListener('click', () => shiftMonth(1));
   $('driveThisMonth').addEventListener('click', () => {
-    state.y = TODAY.y; state.m = TODAY.m; render();
+    const t = 今日();   // ★押したときの今日です（開いたままでも古くなりません）
+    state.y = t.y; state.m = t.m; render();
   });
+  // 画面に戻ってきたとき（タブレットの画面が点いたとき）に、月が変わっていないか見ます
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) 月が変わったら追う(); });
+  window.addEventListener('pageshow', 月が変わったら追う);
 
   $('driveAddBtn').addEventListener('click', () => openForm());
   el.driveSave.addEventListener('click', saveEntry);
   el.drvAddLeg.addEventListener('click', () => { addTrip(true); renderForm(); });
+  /* 閉じる。外の暗い所は、入れた内容があれば聞いてから閉じます。
+     「やめる」ボタンは、はっきり押したものなので、すぐ閉じます */
   document.querySelectorAll('[data-close-drive]').forEach((n) => {
-    n.addEventListener('click', () => el.driveModal.classList.add('is-hidden'));
+    const 外 = n.classList.contains('modal__backdrop');
+    n.addEventListener('click', () => (外 ? 聞いてから閉じる() : フォームを閉じる()));
   });
 
   /* 確認ダイアログ */
@@ -841,7 +1026,26 @@ function bindEvents() {
   $('syncNow').addEventListener('click', () => Sync.flush());
   $('pinChange').addEventListener('click', () => {
     el.modal.classList.add('is-hidden');
-    openPinModal();
+    openPinModal('', { 入れ直す: true });
+  });
+  // 入れ直すのをやめる。PINは入れ直す前のまま（まだ何も変えていません）
+  el.pinCancel.addEventListener('click', () => {
+    if (PINを確かめ中) return;
+    PINを入れ直す = false;
+    el.pinModal.classList.add('is-hidden');
+  });
+  /* 使い方（help/drive/）。アプリの画面ではなく別のページです。
+     ★ホーム画面のアプリにはブラウザの「戻る」がありません。電波が無く、
+       まだ一度も開いたことがないと、戻る道のない「開けません」の画面で止まります。
+       そのときだけ開かずに、ここに理由を出します（開いたことがあれば控えで開けます） */
+  el.helpLink.addEventListener('click', async (e) => {
+    el.helpNote.textContent = '';
+    if (navigator.onLine !== false) return;
+    e.preventDefault();
+    let 控え = null;
+    try { 控え = await caches.match(el.helpLink.href, { ignoreSearch: true }); } catch (err) { /* 控えが使えない端末 */ }
+    if (控え) { location.href = el.helpLink.href; return; }
+    el.helpNote.textContent = '電波が届いていないので、使い方を開けません。電波のあるところで、もう一度押してください。';
   });
   $('codeChange').addEventListener('click', () => {
     el.modal.classList.add('is-hidden');
@@ -868,10 +1072,12 @@ function bindEvents() {
 
   el.syncChip.addEventListener('click', () => Sync.flush());
 
+  /* Esc … 上に出ているものから1つずつ閉じます。
+     ★入れる画面は、外を押したときと同じく、入れた内容があれば聞きます */
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    closeConfirm(false);
-    el.driveModal.classList.add('is-hidden');
+    if (!el.confirmDialog.classList.contains('is-hidden')) { closeConfirm(false); return; }
+    if (!el.driveModal.classList.contains('is-hidden')) { 聞いてから閉じる(); return; }
     el.modal.classList.add('is-hidden');
   });
 }

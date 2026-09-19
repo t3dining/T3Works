@@ -13,7 +13,7 @@
 <link rel="icon" type="image/png" sizes="64x64" href="../img/drive-icon-64.png?v=7088d4ae">
 <title>配達記録｜バグる</title>
 <link rel="stylesheet" href="../css/style.css?v=0739ea85">
-<meta name="app-version" content="bb10d869">
+<meta name="app-version" content="410f74b5">
 </head>
 <body class="no-daytabs app-drive" data-assets="../">
 
@@ -51,12 +51,11 @@
   <!-- 同期が止まっているときだけ出ます。
        ヘッダーの赤い丸だけでは「何が起きたか」が分かりません。丸の説明は
        title（指では出ません）と設定の奥にしかなく、タブレットでは読めませんでした。
-       赤の理由は4つあって、やることが全部ちがいます（js/sync.js）。
-         電波が届いていません                   … 待つだけ
-         サーバーが返事をしません               … 混み合っているだけ。電波の問題ではありません
-         Google 側で結果を受け取れませんでした  … Google が結果を渡す段で落とした。自動で送り直します（2026-09-15）
-         サーバーにつながりません               … 設定かサーバーの不調
-       ★2026-09-15 から、3回静かに送り直してから赤にします。帯もそのときだけ出ます
+       赤の理由はいくつかあって（電波・混み合い・その日の上限・サーバー側など）、
+       やることが全部ちがいます。
+       ★理由の文そのものは js/sync.js の この失敗はなにか() が正です。
+         ここに数や文を書き写さないでください（前に「4つ」「Google 側」と書き、古くなりました）
+       ★何回か静かに送り直してから赤にします。帯もそのときだけ出ます
        店内は電波が弱いので、どれなのかがここで読めないと手の打ちようがありません -->
   <p class="sync-warn is-hidden" id="syncWarn"></p>
 
@@ -238,6 +237,8 @@
     <div class="modal__actions modal__actions--confirm">
       <button type="button" class="btn btn--primary" id="pinOk">開く</button>
       <button type="button" class="btn" id="codeLater">番号はあとで</button>
+      <!-- 設定の「PINを入れ直す」から開いたときだけ出ます（drive.js の openPinModal） -->
+      <button type="button" class="btn is-hidden" id="pinCancel">やめる</button>
     </div>
   </div>
 </div>
@@ -247,6 +248,19 @@
   <div class="modal__backdrop" data-close></div>
   <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <h2 class="modal__title" id="modalTitle">この端末の設定</h2>
+
+    <!-- ★使い方（help/drive/）。アプリの画面ではなく別のページです（ワークスの「使い方を見る」と同じ形）。
+         中身はマニュアルの持ち物です。先頭に「アプリに戻る」があります。
+         見た目は本部の .help-link をそのまま使っています（差し色は配達記録の色になります） -->
+    <a class="help-link" id="helpLink" href="../help/drive/">
+      <span class="help-link__icon" aria-hidden="true">📖</span>
+      <span class="help-link__text">
+        <span class="help-link__name">使い方を見る</span>
+        <span class="help-link__sub">入れ方・経由地・金額の決まり・困ったとき</span>
+      </span>
+      <span class="help-link__arrow" aria-hidden="true">›</span>
+    </a>
+    <p class="field__hint" id="helpNote"></p>
 
     <div class="field">
       <span class="field__label">共有の状態</span>
@@ -291,7 +305,7 @@
 <script src="../js/storage.js?v=bb1c6a5f"></script>
 <script src="../js/sync.js?v=fa334cf4"></script>
 <script src="../js/update.js?v=c530219e"></script>
-<script src="js/drive.js?v=2b343ec1"></script>
+<script src="js/drive.js?v=97f27368"></script>
 
 </body>
 </html>
