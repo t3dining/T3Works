@@ -91,16 +91,16 @@ const APP = {
   //   true  … 月間表が復活します（機能は消していないので、ここを true にするだけ）
   showMonthView: false,
 
-  // ★全店舗で共有するための接続先（Apps Script のウェブアプリURL）
+  // ★全店舗で共有するための接続先（同期と ping。シフトの提出もここへ）
   //   空のあいだは今までどおり「この端末の中だけ」で動きます。
-  //   SETUP.md の手順で取得したURLをここに貼ると共有版になります。
-  syncUrl: 'https://script.google.com/macros/s/AKfycbzzLm89vm45kaMHcAMPb9DsrYxFeZwW-Q6UDo2NITHEPBUK3hSslVWiLONEPGxpPCVW/exec',
+  //   ★2026-09-19 から Cloudflare の口です（決裁.md「Cloudflare 移行」）。切り替える（GAS の `切り替える`）までは、
+  //     Cloudflare が頼みを GAS へそのまま回します（中継）。記録の本体はシートのままです。
+  //   ★戻すときは、ここを下の gasUrl と同じにして公開します（Cloudflare を通らなくなります）
+  syncUrl: 'https://t3works-sync.t3dining.workers.dev/',
 
-  // ★Cloudflare の口（2026-09-19〜、決裁.md「Cloudflare 移行」）
-  //   いまは**試したい端末だけ**がここへ同期します（アプリの URL に ?cloud=1 を付けて1回開く。?cloud=0 で戻す）。
-  //   Cloudflare は頼みを GAS へそのまま回すので、中身は今までと同じです。
-  //   ★全部の端末を移すときは、syncUrl をこの URL にし、今の syncUrl を gasUrl（ジャーナル・日報の送り先）に移します
-  cloudUrl: 'https://t3works-sync.t3dining.workers.dev/',
+  // ★Apps Script のウェブアプリURL（ジャーナル・日報の頼みごと＝Sync.ask はここへ）
+  //   ★GAS の版の確かめ（道具/公開する.py・ダブルクリック/*.command）も、この URL を見ます
+  gasUrl: 'https://script.google.com/macros/s/AKfycbzzLm89vm45kaMHcAMPb9DsrYxFeZwW-Q6UDo2NITHEPBUK3hSslVWiLONEPGxpPCVW/exec',
 
   // ★「今日」が切り替わる時刻（時）
   //   締め作業が0時をまたぐことが多いので、朝までは前の日あつかいにします。
