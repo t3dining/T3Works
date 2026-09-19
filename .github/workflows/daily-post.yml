@@ -6,8 +6,8 @@
 # 必要な Secrets（リポジトリの Settings → Secrets and variables → Actions）
 #   IG_USER_ID_BAGURU  … バグるのInstagramユーザーID
 #   IG_TOKEN_BAGURU    … バグるのアクセストークン
-#   IG_USER_ID_POPO    … popoのぶん（無ければバグるだけ投稿します）
-#   IG_TOKEN_POPO      … popoのぶん
+#   IG_USER_ID_POPO    … popoの分（無ければバグるだけ投稿します）
+#   IG_TOKEN_POPO      … popoの分
 #
 # ★店舗ごとにビジネスポートフォリオが分かれているので、トークンも店舗ごとです。
 #
@@ -16,7 +16,7 @@
 #
 # ★★ このファイルの名前（daily-post.yml）も英数字にしてあります。
 #    前は「毎日投稿.yml」でしたが、予定（cron）の実行が3日間で1度も
-#    始まりませんでした（手で動かすぶんは動いていた）。日本語のファイル名を
+#    始まりませんでした（手で動かす分は動いていた）。日本語のファイル名を
 #    やめたのが直した内容です。ここは英数字のままにしてください。
 
 name: 毎日ストーリーズを投稿
@@ -107,8 +107,12 @@ jobs:
         if: ${{ github.event.inputs.dry_run != 'true' }}
         run: |
           if [ -n "$(git status --porcelain 投稿履歴.json)" ]; then
+            # ★書き込む人の名前は GitHub のボット（github-actions[bot]）にしてある（2026-09-19）。
+            #   前は ko-dai さん個人の GitHub の転送用アドレスだったので、辞めたあとも
+            #   個人の名前で書き込まれ続けるところだった。押す鍵は GitHub が回ごとに配るもので、
+            #   人の鍵ではない（上の permissions: contents: write）
             git config user.name "T3Works 自動投稿"
-            git config user.email "306216695+kodai0625@users.noreply.github.com"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add 投稿履歴.json
             git commit -m "投稿履歴（$(date -u +%Y-%m-%d)）"
             git push
