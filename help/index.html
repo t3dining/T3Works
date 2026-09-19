@@ -268,7 +268,7 @@
   .help-q, .help-lead, .help-first, .help-sec__head { box-shadow: none; }
 }
 </style>
-<meta name="app-version" content="0f675cba">
+<meta name="app-version" content="6e131be0">
 </head>
 <body>
 
@@ -810,7 +810,7 @@
 
     <p>
       撮ると、アプリが読み取ります。「<b>文字を読み取っています…</b>」と出ているあいだは、<b>終わるまで待ちます。</b>
-      15秒を超えると「Google が混み合っています。このまま待ってください」と出ますが、そのまま待ってください。
+      15秒を超えると「Google が混み合っています。このまま待ってください」と出ることがありますが、そのまま待ってください。
     </p>
     <div class="help-note">
       途中でアプリを閉じてしまっても、<b>次に開いたときに続きからやり直します。</b>
@@ -961,6 +961,37 @@
     <div class="help-note">
       「<b>日報フォルダが登録されていません</b>」「<b>日報が見つかりません</b>」などと出て書けないときも、こうだいに知らせてください。
     </div>
+
+    <!-- ★文の形は js/app.js の journal写真を待つ・journal写真を残し直す・saveCash と同じです（2026-09-19 から、写真は裏でドライブに残します） -->
+    <h3>写真の枠に知らせが出たとき</h3>
+    <p>
+      写真は、読み取ったあと<b>裏でドライブに残します。</b>
+      記録したときに「<b>記録しました（写真はドライブに残しているところです）</b>」と出ても、<b>そのままで大丈夫です。</b>
+    </p>
+    <p>あとからその日を開いたとき、写真の枠に次の知らせが出ることがあります。</p>
+
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <div class="cash-shot is-empty"><span class="cash-shot__empty">★写真をまだドライブに残せていません</span></div>
+        <button type="button" class="btn" style="margin:6px 0 0;font-size:14px;">もう一度残す</button>
+      </div>
+      <p class="help-shot__cap">残せなかったときは、枠の下に「もう一度残す」が出ます。</p>
+    </div>
+
+    <ul class="help-marks">
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">写真をドライブに残しているところです（◯分前に受け付け）</span>
+        <span class="help-marks__desc">残している途中です。<b>何もしなくて大丈夫です。</b>少しあとで開き直すと、写真が出ます。</span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">★写真をまだドライブに残せていません</span>
+        <span class="help-marks__desc">枠の下の「<b>もう一度残す</b>」を押してください。「もう一度残すよう頼みました」と出たら、少しあとで開き直します。</span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">★写真がもう残っていません。お手数ですが、撮り直してください</span>
+        <span class="help-marks__desc">「<b>📷 撮り直す</b>」で、紙をもう一度撮ってください。</span>
+      </span></li>
+    </ul>
 
     <h3>1週間の見かた</h3>
     <p>
@@ -1679,7 +1710,7 @@
 
       <p class="help-note">
         <b>ジャーナルの「Google が混み合っています」は別のものです。</b>
-        ジャーナルの読み取りと日報に書くのは、今も Google を通ります。
+        ジャーナルで、読み取りや日報に書くのを待っているときに出ます。
         そちらで出たときは、<a href="#s3">3番</a>のとおり、閉じずにそのまま待ってください。
       </p>
     </div>
