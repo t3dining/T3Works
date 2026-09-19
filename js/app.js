@@ -775,6 +775,199 @@ async function journal送る(req, ms) {
 }
 
 /* ------------------------------------------------------------
+ *  ★★写真の読み取りは、Cloudflare（Worker）から Vision に直に頼みます（2026-09-19・J1）
+ *
+ *  Google の入口（gasUrl）は、夜に 10〜30秒待たせたり 404 を返したりします（2026-09-18）。
+ *  同期は 9/19 に Cloudflare へ移りましたが、写真の読み取りは入口を通ったままでした。
+ *  決裁.md「ジャーナルを Google の入口から外す」で、本部と決めた形です。
+ *
+ *    端末 ──写真──▶ Worker ──▶ Cloud Vision（入口を通らない）
+ *                     └─ keep なら写真を「頼み」の表に預け、裏で GAS にドライブへ残させる
+ *
+ *  ★頼みの形（本部の worker.js と決めた約束）
+ *      journalRead … 本文は「1行目に小さな JSON ＋ 改行 ＋ 写真の base64」（text/plain）。
+ *                    Worker は写真を JSON として読みません（1回10ミリ秒の決まり）。
+ *                    返事 { ok, w, ocrHow, 枚, job, keepError, vision: <Vision の返事そのまま> }
+ *                    聞き直しは 1行目だけ（result: true）。答えは GAS と同じ again／code:'running'／code:'none'
+ *      journalJob  … ふつうの JSON。{ state, fileId, error, at, tries }。retry: true で「受け付け」に戻す
+ *  ★GAS の道に落とすとき：Worker が use_gas と言った・この頼みを知らない・Worker に届かない。
+ *    ★Vision をもう数えたあと（中身が空だった）は、GAS に Vision を飛ばしてもらいます（noVision）。
+ *  ★行に組むのは端末です（journalVisionを読む・journal行に組む。js/config.js）。
+ * ---------------------------------------------------------- */
+
+/** 写真を Worker に預けてよい大きさ（base64 の字数）。D1 は1行2MBまでなので、少し手前で止めます */
+const JOURNAL_預ける上限 = 1800000;
+
+/** Worker に読み取りを頼めるか（syncUrl が Cloudflare の口で、GAS の口とちがうとき） */
+function journalWorkerが使える() {
+  return !!(typeof APP === 'object' && APP.syncUrl && APP.gasUrl && APP.syncUrl !== APP.gasUrl);
+}
+
+/**
+ * Worker（APP.syncUrl）へ1回頼みます
+ *
+ * ★Sync.ask は GAS の口（gasUrl）へ送り、本文も JSON に組み直すので、ここだけは自前で送ります。
+ *   失敗の見分け（この失敗のたぐい・この失敗はなにか・返事を読む）は js/sync.js のものをそのまま使います。
+ */
+async function worker頼む(本文, ms) {
+  if (!Sync.enabled()) return { ok: false, error: '共有の設定がされていません' };
+  if (!Sync.pin()) return { ok: false, error: 'PINが入っていません' };
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), ms);
+  try {
+    const res = await fetch(APP.syncUrl, {
+      method: 'POST',
+      signal: stop.signal,
+      // text/plain にしないと CORS の事前確認が入ります（Sync と同じ）
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: 本文,
+    });
+    return await 返事を読む(res);
+  } catch (e) {
+    return { ok: false, error: この失敗はなにか(e, ms), kind: この失敗のたぐい(e), status: e && e.status };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** journalRead の本文（写真が無ければ1行目だけ＝聞き直し） */
+function journalRead本文(頭, image) {
+  const 印 = JSON.stringify({ pin: Sync.pin(), code: Sync.code(), action: 'journalRead', ...頭 });
+  return image === undefined ? 印 : `${印}\n${image}`;
+}
+
+/** 預けた写真の様子を聞きます（retry なら「受け付け」に戻してもらう） */
+async function journalJobを聞く(job, retry) {
+  if (!job || !journalWorkerが使える()) return { ok: false, state: '', 届かず: true };
+  const r = await worker頼む(JSON.stringify({
+    pin: Sync.pin(), code: Sync.code(), action: 'journalJob', id: job, ...(retry ? { retry: true } : {}),
+  }), ASK_上限.聞く);
+  // ★busy … Cloudflare が今は答えられない（切り替えの最中など）。「様子が分からない」として扱い、失敗とは見ません
+  if (!r.ok && !r.state && (cashTodokazu(r.error) || r.code === 'busy')) return { ...r, 届かず: true };
+  return r;
+}
+
+/** PIN・番号の断り。GAS に落としても同じ答えなので、そのまま返します */
+const JOURNAL_断り = ['bad_pin', 'no_pin', 'locked', 'need_staff_code', 'need_admin'];
+
+/**
+ * 写真を読みます（Worker が使えれば Worker、だめなら今の GAS の道）
+ *
+ *   req  = { id, store, storeName, date, image }
+ *   返り = { ok, text, 行, 語数, 枚, ocrHow, ocrMs, via: 'worker'|'worker+gas'|'gas',
+ *           job（Worker に預けた写真の印）, fileId（GAS の道で残せたとき）, keepError, 聞き直した, 送り直した, v, w }
+ */
+async function journal読む(req) {
+  const gasで = async (足す) => {
+    const g = await journal送る({
+      mode: 'read', id: req.id, keep: true,
+      store: req.store, storeName: req.storeName, date: req.date, image: req.image, ...足す,
+    }, ASK_上限.読む);
+    g.via = 'gas';
+    return g;
+  };
+  if (!journalWorkerが使える()) return gasで({});
+
+  const 写真 = String(req.image || '');
+  // ★大きすぎる写真は預けません（D1 の1行2MB）。読み取りだけ頼み、記録のときに今の道で残します
+  const keep = 写真.length <= JOURNAL_預ける上限;
+  const 頭 = { id: req.id, store: req.store, storeName: req.storeName, date: req.date, keep };
+  let 聞き直した = 0;
+  let 送り直した = 0;
+  let r = await worker頼む(journalRead本文(頭, 写真), ASK_上限.読む);
+
+  /* ★返事が届かなかったとき：写真は送り直さず、「届いたか」を聞きます（Vision を2回数えないため）。
+       ★Worker にそもそも届いていない（つながらない・JSON でない返事）うえに、聞き直しも届かないなら、
+         Cloudflare が止まっています。そのときだけ GAS の道に落とします。
+         時間切れ（返事なし）は、Worker が Vision を呼んでいる最中かもしれないので落としません。 */
+  if (!r.ok && cashTodokazu(r.error) && r.kind !== '電波なし') {
+    const 入口で落ちた = r.kind !== '返事なし';
+    let 決まった = false;
+    for (let 回 = 0; 回 < ASK_聞き直す間.length && !決まった; 回++) {
+      await new Promise((ok) => setTimeout(ok, ASK_聞き直す間[回]));
+      const q = await worker頼む(journalRead本文({ ...頭, result: true }), ASK_上限.聞く);
+      if (q.again) { r = q; 聞き直した = 回 + 1; 決まった = true; break; }
+      if (q.code === 'none' && !送り直した) {
+        送り直した = 1;
+        r = await worker頼む(journalRead本文(頭, 写真), ASK_上限.読む);
+        if (r.ok || !cashTodokazu(r.error) || r.kind === '電波なし') { 聞き直した = 回 + 1; 決まった = true; }
+        continue;
+      }
+      if (q.code === 'running' || q.code === 'none') continue;
+      if (回 === 0 && 入口で落ちた && !q.ok && cashTodokazu(q.error) && q.kind !== '電波なし') {
+        const g = await gasで({});
+        g.聞き直した = 1;
+        return g;
+      }
+    }
+    if (!決まった) { r.聞き直した = ASK_聞き直す間.length; r.送り直した = 送り直した; return r; }
+  }
+
+  if (r.ok && r.vision) {
+    const 読 = journalVisionを読む(r.vision);
+    // ★Worker は、預けなかったときは job を空にして keepError に理由を入れます（約束）。job が無い古い形のときだけ id を使います
+    const job = keep && !r.keepError ? (r.job === undefined ? req.id : String(r.job || '')) : '';
+    const 共通 = {
+      w: r.w, 枚: r.枚 || 0, job,
+      keepError: keep ? (r.keepError || '') : '写真が大きいので、記録するときに残します',
+      聞き直した, 送り直した,
+    };
+    if (読.空) {
+      // ★Vision はもう数えられています。GAS にはドライブの読み取りだけを頼みます（noVision）。
+      //   写真を Worker に預けてあれば、GAS には残させません（2か所で残すと、あとの方が勝つため）
+      const g = await gasで({ noVision: true, keep: !job });
+      if (!g.ok) return { ...g, ...共通 };
+      return { ...g, ...共通, via: 'worker+gas', fileId: job ? '' : (g.fileId || ''), keepError: job ? '' : (g.keepError || 共通.keepError) };
+    }
+    return { ok: true, text: 読.text, 行: 読.行, 語数: 読.語数, ocrHow: r.ocrHow || 'vision', ocrMs: r.ocrMs || 0, via: 'worker', ...共通 };
+  }
+  if (!r.ok && JOURNAL_断り.includes(r.code)) return r;
+  if (!r.ok && cashTodokazu(r.error)) return { ...r, 聞き直した, 送り直した };
+  // ★use_gas・この頼みを知らない Worker・そのほかの断り → 今の GAS の道（Vision はまだ呼ばれていません）
+  const g = await gasで({});
+  if (聞き直した) g.聞き直した = 聞き直した;
+  return g;
+}
+
+/**
+ * 預けた写真が済んだら、記録の写真の欄を埋めます（記録の持ち主はアプリです。Worker は記録に触りません）
+ *
+ * ★記録の photoJob が同じ印のときだけ埋めます。別の写真に撮り直していたら触りません。
+ * ★まだ記録していない日は何もしません（記録するときに入ります）。
+ */
+function journal記録の写真を埋める(店, 日, job, fileId) {
+  const cur = (Store.getDay(店, 日).items || {})[CASH_ITEM];
+  if (!cur || !cur.value || typeof cur.value !== 'object') return false;
+  if (cur.value.photoJob !== job) return false;
+  Store.setItem(店, 日, CASH_ITEM, { value: { ...cur.value, photo: fileId, photoJob: '' } });
+  return true;
+}
+
+/**
+ * 「記録する」の前に、預けた写真の様子を見て、写真の欄を決めます
+ *
+ *   済み                 → photo に fileId を入れる（送るものは無い）
+ *   受け付け・つかんだ・聞けない → photoJob のまま記録する（見るときに埋めます）
+ *   失敗・捨てた・無い      → 手元に写真があれば今の道（GAS）で送る。無ければ photoJob のまま（「もう一度残す」を出します）
+ */
+async function journal記録の写真を決める() {
+  if (!cashEdit.photoJob) return;
+  const st = await journalJobを聞く(cashEdit.photoJob);
+  if (st.state === '済み' && st.fileId) {
+    cashEdit.photo = st.fileId;
+    cashEdit.photoJob = '';
+    cashEdit.pending = '';
+    return;
+  }
+  if (st.届かず || st.state === '受け付け' || st.state === 'つかんだ') {
+    cashEdit.photo = '';
+    cashEdit.pending = '';
+    return;
+  }
+  if (cashEdit.pending) cashEdit.photoJob = '';
+}
+
+/* ------------------------------------------------------------
  *  かかった時間を、この端末に残します（直近12回）
  *
  *  ★「遅い」と言われたとき、そのときの画面の文はもう消えています（2026-09-18）。
@@ -1884,6 +2077,9 @@ function renderCash() {
   if (cashEdit.key !== key) {
     cashEdit.key = key;
     cashEdit.photo = saved ? (saved.photo || '') : '';
+    // ★Cloudflare に預けて、まだ fileId が分かっていない写真の印（2026-09-19・J1）
+    cashEdit.photoJob = saved && !saved.photo ? (saved.photoJob || '') : '';
+    cashEdit.via = '';
     cashEdit.ocr = saved ? (saved.ocr === undefined ? null : saved.ocr) : null;
     cashEdit.how = '';
     cashEdit.busy = false;
@@ -1952,7 +2148,7 @@ function renderCash() {
   el.cashPaneWeek.classList.toggle('is-hidden', cashTab !== 'week');
 
   el.cashDate.textContent = `${state.m}/${state.d}（${DOW[new Date(state.y, state.m - 1, state.d).getDay()]}）`;
-  el.cashTakeText.textContent = (cashEdit.photo || cashEdit.pending) ? '📷 撮り直す' : '📷 ジャーナルを撮る';
+  el.cashTakeText.textContent = (cashEdit.photo || cashEdit.pending || cashEdit.photoJob) ? '📷 撮り直す' : '📷 ジャーナルを撮る';
 
   // 記録が済んでいる日は、ボタンを「✓ 記録済み」に入れかえます
   const done = !!saved && !cashUnlocked;
@@ -2019,7 +2215,7 @@ function renderNippouBox(done) {
   /* ★読み取りがまるごと失敗した日も、**手で直せるように表を出します**（2026-09-16）。
        写真がある（撮った・記録した）なら出します。読んでいる最中は出しません。 */
   const yomi = !!cashEdit.j || journal手あり()
-    || (!!(cashEdit.pending || cashEdit.photo) && !cashEdit.busy);
+    || (!!(cashEdit.pending || cashEdit.photo || cashEdit.photoJob) && !cashEdit.busy);
   el.cashNippouBox.classList.toggle('is-hidden', !on);
   if (!on) {
     // ★隠すときは中身も消します。残しておくと、次に出たときに
@@ -3622,7 +3818,7 @@ function journal記録の現金を表へ写す() {
   if (!JOURNAL_STORES.includes(state.storeId)) return;
   if (!el.cashSales || el.cashSales.readOnly) return;
   // ★写真を撮る前は写しません。表がまだ無く、あとで読んだ数を「手で直した数」で隠してしまうためです
-  if (!(cashEdit.j || cashEdit.pending || cashEdit.photo)) return;
+  if (!(cashEdit.j || cashEdit.pending || cashEdit.photo || cashEdit.photoJob)) return;
   const x = journal行の数(state.storeId).find((r) => r.row.key === 'cash');
   if (!x) return;
   if (!cashEdit.手) cashEdit.手 = {};
@@ -3930,7 +4126,7 @@ async function onCashFile(e) {
   } finally {
     cashEdit.busy = false;
     el.cashTake.classList.remove('is-busy');
-    el.cashTakeText.textContent = (cashEdit.photo || cashEdit.pending) ? '📷 撮り直す' : '📷 ジャーナルを撮る';
+    el.cashTakeText.textContent = (cashEdit.photo || cashEdit.pending || cashEdit.photoJob) ? '📷 撮り直す' : '📷 ジャーナルを撮る';
     render();
   }
 }
@@ -4089,7 +4285,8 @@ function cashYomiApply(積) {
   const got = parseCashFor(積.店, 選.text);
   cashEdit.ms = 積.ms;
   cashEdit.size = Math.round(積.dataUrl.length * 3 / 4 / 1024);
-  cashEdit.gas = res.v || '（分かりません）';
+  cashEdit.gas = res.v || (res.via === 'worker' ? `Cloudflare（約束 ${res.w || '?'}）` : '（分かりません）');
+  cashEdit.via = res.via || 'gas';
   /* ★どの読み取りで読んだか（'vision' か 'drive'）。
        落ちた先が見えないと、「効かなかった」のか「試すこと自体が失敗した」のかを
        切り分けられません（2026-09-13、それで1日つぶしました）。
@@ -4112,11 +4309,16 @@ function cashYomiApply(積) {
   cashEdit.聞き直した = res.聞き直した || 0;
 
   /* ★読み取りのついでにドライブに残せていれば（fileId）、記録のときに送るものはありません（2026-09-19）。
-       残せていなければ、これまでどおり「記録する」で送ります（pending） */
+       Worker に預けてあれば（job）、記録のときに様子を聞いて埋めます（journal記録の写真を決める）。
+       どちらでもなければ、これまでどおり「記録する」で送ります（pending）。
+     ★job のときも写真は手元に持っておきます。預けた方が失敗したら、今の道で送り直すためです */
   if (res.fileId) {
     cashEdit.photo = res.fileId;
+    cashEdit.photoJob = '';
     cashEdit.pending = '';
   } else {
+    cashEdit.photoJob = res.job || '';
+    if (cashEdit.photoJob) cashEdit.photo = '';      // 前の写真は、預けた方が残るときに置きかわります
     cashEdit.pending = 積.dataUrl;
   }
   // ★読み取った文字はそのまま持っておきます。金額が違って入ったときに、
@@ -4172,20 +4374,18 @@ async function cashReadPhoto(dataUrl, dateStr, file, id) {
     const from = Date.now();
     const 店名 = getStore(元の店) ? getStore(元の店).name : 元の店;
     /* ★読み取り1回＝Cloud Vision 1枚。印（id）を付けて送り、返事が来なければ**同じ写真を送り直さず**、
-         「届いたか」を聞き直します（journal送る）。
-       ★keep … 読んだ写真を、そのままドライブに残してもらいます（2026-09-19）。
-         それまでは「記録する」でもう一度同じ写真を送っていました。残せていれば fileId が返り、
-         記録のときに送るものがありません。残せなければ、これまでどおり「記録する」で送ります */
-    let res = await journal送る({
-      mode: 'read', id: id || journalId(), keep: true,
-      store: 元の店, storeName: 店名, date: dateStr, image: dataUrl,
-    }, ASK_上限.読む);
+         「届いたか」を聞き直します。
+       ★2026-09-19（J1）から、Cloudflare（Worker）が Vision に直に頼みます（journal読む）。
+         Google の入口を通らないので、夜も待たされません。だめなときは今の GAS の道に落とします。
+       ★写真は、読み取りのついでに残してもらいます（Worker なら「頼み」の表に預けて job、GAS なら fileId）。
+         残せなければ、これまでどおり「記録する」で送ります */
+    let res = await journal読む({ id: id || journalId(), store: 元の店, storeName: 店名, date: dateStr, image: dataUrl });
     if (!res.ok) throw new Error(res.error || '送れませんでした');
 
-    // ★Apps Script の貼り直しが済んでいるか、ここで見ます。
+    // ★Apps Script の貼り直しが済んでいるか、ここで見ます（GAS の道を通ったときだけ。Worker の約束は w で見ます）。
     //   古いままだと、撮っただけでドライブに写真が残ってしまうなど、
     //   見た目では分からない食いちがいが出るためです
-    if (!cashGasOk(res, true)) return;      // 読むだけ（ドライブには残しません）
+    if (res.via !== 'worker' && !cashGasOk(res, true)) return;      // 読むだけ（ドライブには残しません）
 
     // ★★`state.storeId` ではなく `元の店` です。読んでいる間に店舗を移られると、
     //   紙の様式を取りちがえます（日計レポートを精算レポートとして読む、など）
@@ -4209,10 +4409,7 @@ async function cashReadPhoto(dataUrl, dateStr, file, id) {
     if (file && !res.ocrError && (!前.cash || (日報も読む && !前.j))) {
       setCashWait('もう一度、きれいな写真で読み取っています…');
       const big = await cashShrink(file, CASH_PHOTO_Q_RETRY);
-      const res2 = await journal送る({
-        mode: 'read', id: journalId(), keep: true,
-        store: 元の店, storeName: 店名, date: dateStr, image: big,
-      }, ASK_上限.読む);
+      const res2 = await journal読む({ id: journalId(), store: 元の店, storeName: 店名, date: dateStr, image: big });
       // ★**よくなったときだけ**入れかえます。
       //   ここを「2回目を使う」にすると、1回目で読めていた日に
       //   2回目が外して、読めていたものを失います
@@ -4221,10 +4418,14 @@ async function cashReadPhoto(dataUrl, dateStr, file, id) {
         const よい = 後.cash > 前.cash || 後.j > 前.j
           || (後.cash === 前.cash && 後.j === 前.j && 後.n > 前.n);
         if (よい) { res = res2; dataUrl = big; }
-        /* ★ドライブに残っているのは**2回目の写真**です（同じ名前で置きかわるため）。
-             使う文字が1回目でも、写真のIDは2回目のものにします。2回目を残せていなければ空にして、
-             「記録する」でこれまでどおり送ります */
-        res = { ...res, fileId: res2.fileId || '', keepError: res2.keepError || '', keepMs: res2.keepMs || 0 };
+        /* ★ドライブに残るのは**2回目の写真**です（同じ名前で置きかわるため。Worker の頼みも、
+             同じ店・同じ日の古い頼みは捨てられます）。使う文字が1回目でも、写真は2回目のものにします。
+           ★2回目を預けられなかった（大きすぎる など）ときは、1回目の頼み（job）が残るので、それを使います。
+             GAS の道で2回目を残せなかったときは空にして、「記録する」でこれまでどおり送ります */
+        const 写真の行き先 = res2.fileId ? { fileId: res2.fileId, job: '' }
+          : res2.job ? { fileId: '', job: res2.job }
+            : { fileId: '', job: res.job || '' };
+        res = { ...res, ...写真の行き先, keepError: res2.keepError || '', keepMs: res2.keepMs || 0 };
       }
     }
     /* ★★入れる直前に、まだ同じ日・同じ店舗かを見ます（上の説明のとおり）。
@@ -4269,7 +4470,7 @@ async function cashReadPhoto(dataUrl, dateStr, file, id) {
     cashWakeOff();
     cashEdit.busy = false;
     el.cashTake.classList.remove('is-busy');
-    el.cashTakeText.textContent = (cashEdit.photo || cashEdit.pending) ? '📷 撮り直す' : '📷 ジャーナルを撮る';
+    el.cashTakeText.textContent = (cashEdit.photo || cashEdit.pending || cashEdit.photoJob) ? '📷 撮り直す' : '📷 ジャーナルを撮る';
     // ★描き直します。ここが抜けていたため「日報に入れる」が古いままで、
     //   前の日に読んだ数字が次の日にも出ていました。
     //   金額欄と伝えごとは日が変わったときにしか触らないので、上書きされません
@@ -4286,7 +4487,13 @@ async function showCashPhoto() {
   el.cashShotImg.removeAttribute('src');
   el.cashShotEmpty.classList.remove('is-hidden');
   el.cashShot.classList.add('is-empty');
-  if (!id) { el.cashShotEmpty.textContent = 'まだ撮っていません'; return; }
+  journal写真の手(null);
+  if (!id) {
+    // ★Cloudflare に預けて、まだドライブの ID が分からない写真（2026-09-19・J1）
+    if (cashEdit.photoJob) { await journal写真を待つ(); return; }
+    el.cashShotEmpty.textContent = 'まだ撮っていません';
+    return;
+  }
 
   el.cashShotEmpty.textContent = '写真を読み込んでいます…';
   const res = await Sync.ask('journalImage', { fileId: id });
@@ -4299,6 +4506,108 @@ async function showCashPhoto() {
   } else {
     el.cashShotEmpty.textContent = '写真を出せませんでした';
   }
+}
+
+/**
+ * Cloudflare に預けた写真の様子を聞いて、済んでいれば記録を埋めて写真を出します（2026-09-19・J1）
+ *
+ * ★預けた写真は、Cloudflare が裏で GAS を起こしてドライブに残します。夜は数十秒かかることがあり、
+ *   起こせなかった分は5分ごとの写しのついでに拾われます。
+ * ★受け付けから10分たっても済んでいない・失敗・捨てた・無い → 「もう一度残す」を出します。
+ */
+async function journal写真を待つ() {
+  const job = cashEdit.photoJob;
+  const 店 = state.storeId;
+  const 日 = ymd(state.y, state.m, state.d);
+  el.cashShotEmpty.textContent = '写真を確かめています…';
+  const st = await journalJobを聞く(job);
+  if (cashEdit.photoJob !== job || cashEdit.key !== `${店}/${日}`) return;   // 待っているあいだに日を移った
+  if (st.state === '済み' && st.fileId) {
+    cashEdit.photo = st.fileId;
+    cashEdit.photoJob = '';
+    journal記録の写真を埋める(店, 日, job, st.fileId);
+    showCashPhoto();
+    return;
+  }
+  const 分 = st.at ? Math.max(0, Math.round((Date.now() - Date.parse(st.at)) / 60000)) : null;
+  const 待つ = (st.state === '受け付け' || st.state === 'つかんだ') && !(分 !== null && 分 >= 10);
+  if (st.届かず) {
+    el.cashShotEmpty.textContent = '写真の様子を確かめられませんでした（開き直すと、もう一度確かめます）';
+    return;
+  }
+  if (待つ) {
+    el.cashShotEmpty.textContent = `写真をドライブに残しているところです${分 !== null ? `（${分}分前に受け付け）` : ''}`;
+    return;
+  }
+  el.cashShotEmpty.textContent = `★写真をまだドライブに残せていません${st.error ? `（${st.error}）` : ''}`;
+  journal写真の手(() => journal写真を残し直す(job));
+}
+
+/**
+ * 写真の枠の下の「もう一度残す」ボタン（null なら消します）
+ *
+ * ★写真の枠（#cashShot）はボタンなので、中にボタンを入れられません。すぐ下に並べます。
+ */
+function journal写真の手(押したら) {
+  let b = document.getElementById('cashPhotoRetry');
+  if (!押したら) { if (b) b.remove(); return; }
+  if (!b) {
+    b = document.createElement('button');
+    b.type = 'button';
+    b.id = 'cashPhotoRetry';
+    b.className = 'btn';
+    b.style.cssText = 'margin:6px 0 0;font-size:14px';
+    if (el.cashShot && el.cashShot.parentNode) el.cashShot.parentNode.insertBefore(b, el.cashShot.nextSibling);
+  }
+  b.textContent = 'もう一度残す';
+  b.disabled = false;
+  b.onclick = 押したら;
+}
+
+/**
+ * 「もう一度残す」
+ *
+ * ★手元に写真があれば、今の GAS の道（save）で送ります。
+ * ★無ければ（開き直したあと）、Cloudflare に預けた写真を「受け付け」に戻してもらいます（retry）。
+ *   預け先にも写真が無ければ（済んで消えた・3日たった）、撮り直してもらいます。
+ */
+async function journal写真を残し直す(job) {
+  const b = document.getElementById('cashPhotoRetry');
+  if (b) b.disabled = true;
+  const 店 = state.storeId;
+  const 日 = ymd(state.y, state.m, state.d);
+  if (cashEdit.pending) {
+    el.cashShotEmpty.textContent = '写真を残しています…';
+    const res = await journal送る({
+      mode: 'save', id: journalId(), store: 店, storeName: getStore(店).name, date: 日, image: cashEdit.pending,
+    }, ASK_上限.残す);
+    if (cashEdit.key !== `${店}/${日}`) return;
+    if (res.ok && res.fileId && cashGasOk(res)) {
+      cashEdit.photo = res.fileId;
+      cashEdit.photoJob = '';
+      cashEdit.pending = '';
+      journal記録の写真を埋める(店, 日, job, res.fileId);
+      showCashPhoto();
+      return;
+    }
+    el.cashShotEmpty.textContent = `★写真を残せませんでした（${res.error || '通信できません'}）`;
+    if (b) b.disabled = false;
+    return;
+  }
+  const r = await journalJobを聞く(job, true);
+  if (cashEdit.key !== `${店}/${日}`) return;
+  if (r.code === 'no_photo') {
+    el.cashShotEmpty.textContent = '★写真がもう残っていません。お手数ですが、撮り直してください';
+    journal写真の手(null);
+    return;
+  }
+  if (r.届かず || !r.ok) {
+    el.cashShotEmpty.textContent = `★頼めませんでした（${r.error || '通信できません'}）`;
+    if (b) b.disabled = false;
+    return;
+  }
+  el.cashShotEmpty.textContent = 'もう一度残すよう頼みました。少しあとで開き直すと出ます';
+  journal写真の手(null);
 }
 
 /** かかった時間と写真の大きさ（「（4.2秒・310KB）」の形） */
@@ -4319,6 +4628,10 @@ function openOcrText() {
     // ★どの読み取りで読んだか。「直したのに効いていない」を見分けるためです
     cashEdit.ocrHow === 'vision' ? '読み取り Vision' : '',
     cashEdit.ocrHow === 'drive' ? '★読み取り ドライブ（Visionが使われていません）' : '',
+    // ★どの道で読んだか（2026-09-19・J1）。Cloudflare なら Google の入口を通っていません
+    cashEdit.via === 'worker' ? '読み取り Cloudflare から' : '',
+    cashEdit.via === 'worker+gas' ? '★Cloudflare の読み取りが空だったので、ドライブで読み直しました' : '',
+    cashEdit.photoJob ? '写真は Cloudflare に預けて、ドライブに残しているところです' : '',
     cashEdit.ocrMs ? `サーバーの中 ${(cashEdit.ocrMs / 1000).toFixed(1)}秒` : '',
     // ★読み取りのついでに写真を残した時間と、「届いたか」を聞き直した回数（2026-09-19）
     cashEdit.keepMs ? `写真を残す ${(cashEdit.keepMs / 1000).toFixed(1)}秒（読み取りのついで）` : '',
@@ -4385,6 +4698,9 @@ async function saveCash() {
     return false;
   }
 
+  // ★Cloudflare に預けた写真なら、様子を聞いて写真の欄を決めます（送り直しません。2026-09-19・J1）
+  if (cashEdit.photoJob) await journal記録の写真を決める();
+
   // ★写真をドライブに残すのは、ここ（記録するを押したとき）です。
   //   同じ日の古い写真はサーバー側でゴミ箱に入るので、残るのは最後の1枚だけです
   if (cashEdit.pending) {
@@ -4428,6 +4744,8 @@ async function saveCash() {
     done: true,
     value: {
       sales, photo: cashEdit.photo || '', ocr: cashEdit.ocr, at: now, by,
+      // ★Cloudflare に預けて、まだドライブの ID が分かっていない写真の印。見るときに埋めます（journal写真を待つ）
+      photoJob: cashEdit.photo ? '' : (cashEdit.photoJob || ''),
       // ジャーナルから読めた5つと、手で入れた引き算の分。日報へはここから書きます
       j: cashSureValues(),
       m: cashEdit.m && Object.keys(cashEdit.m).length ? cashEdit.m : null,
@@ -4439,7 +4757,8 @@ async function saveCash() {
   cashUnlocked = false;
   setCashMsg(cashEdit.saveMs
     ? `記録しました（写真を残すのに ${(cashEdit.saveMs / 1000).toFixed(1)}秒）`
-    : '', cashEdit.saveMs ? 'ok' : '');
+    : (!cashEdit.photo && cashEdit.photoJob ? '記録しました（写真はドライブに残しているところです）' : ''),
+  (cashEdit.saveMs || cashEdit.photoJob) ? 'ok' : '');
   render();
   return true;
 }

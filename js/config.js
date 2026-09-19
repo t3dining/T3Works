@@ -4085,6 +4085,199 @@ const CASH_PHOTO_Q = 0.62;
 /** 読み取れなかったときに、もう一度だけ試す画質 */
 const CASH_PHOTO_Q_RETRY = 0.9;
 
+/* ------------------------------------------------------------
+ *  ★★Cloud Vision の返事から、文字と「場所から組み直した行」を作ります（端末で。2026-09-19）
+ *
+ *  それまでは gas/現金売上.gs の journalVisionText_・journal行に組む_ が、Google の中でやっていました。
+ *  読み取りを Cloudflare から Vision に直に頼む形（J1。決裁.md「ジャーナルを Google の入口から外す」）では、
+ *  Worker は返事を読まずに端末へ流すので（1回10ミリ秒の決まり）、組むのは端末です。
+ *
+ *  ★★journal行に組む は、gas/現金売上.gs の journal行に組む_ の**写し**です（1文字も変えていません）。
+ *    古い端末と、Vision が落ちたときの道は、まだ GAS で組みます。**片方だけ直すと、同じ写真で行がちがいます。**
+ *    試験/J1/試す.py が、作り物の紙（まっすぐ・傾き・丸まり・ゆれ）で両方の答えが同じかを見ています。
+ *    直すときは両方を直して、その試験を通すこと。
+ * ---------------------------------------------------------- */
+
+/**
+ * Vision の返事 → { text, 行, 語数, 空, error }
+ *
+ * ★GAS の journalVisionText_ と同じ取り方です（全文は fullTextAnnotation.text、語は textAnnotations の1番から）。
+ * ★空 … 返事に error がある、または文字が1つも無い。GAS はこのときドライブの読み取りへ落ちます。
+ *   端末も同じく落としますが、**Vision はもう数えられている**ので、GAS には Vision を飛ばしてもらいます（noVision）。
+ */
+function journalVisionを読む(vision) {
+  const r = vision && vision.responses && vision.responses[0];
+  if (!r || r.error || !r.fullTextAnnotation) {
+    return { text: '', 行: '', 語数: 0, 空: true, error: r && r.error ? String(r.error.message || r.error.code || 'error') : '' };
+  }
+  let 行 = '';
+  const ta = r.textAnnotations || [];
+  try {
+    const 語たち = [];
+    for (let i = 1; i < ta.length; i++) {          // 0番は全文なので飛ばします
+      const poly = ta[i].boundingPoly;
+      if (!poly || !poly.vertices || poly.vertices.length < 4) continue;
+      語たち.push({ 字: String(ta[i].description || ''), 角: poly.vertices });
+    }
+    if (語たち.length) 行 = journal行に組む(語たち);
+  } catch (e) { 行 = ''; }
+  return { text: r.fullTextAnnotation.text || '', 行, 語数: ta.length ? ta.length - 1 : 0, 空: false, error: '' };
+}
+
+/** ★gas/現金売上.gs の journal行に組む_ の写しです（上の説明）。直すときは両方 */
+function journal行に組む(語たち, 語の並び) {
+  if (!語たち || !語たち.length) return '';
+
+  // ① 1語ずつ、真ん中・高さ・向きを出します
+  var 語 = [];
+  for (var i = 0; i < 語たち.length; i++) {
+    var w = 語たち[i];
+    var v = w.角;
+    if (!v || v.length < 4) continue;
+    var cx = 0, cy = 0;
+    for (var k = 0; k < 4; k++) { cx += (v[k].x || 0); cy += (v[k].y || 0); }
+    cx /= 4; cy /= 4;
+    var 幅 = Math.sqrt(Math.pow((v[1].x || 0) - (v[0].x || 0), 2) + Math.pow((v[1].y || 0) - (v[0].y || 0), 2));
+    var 高 = Math.sqrt(Math.pow((v[3].x || 0) - (v[0].x || 0), 2) + Math.pow((v[3].y || 0) - (v[0].y || 0), 2));
+    var 向き = Math.atan2((v[1].y || 0) - (v[0].y || 0), (v[1].x || 0) - (v[0].x || 0));
+    語.push({ 字: String(w.字 || ''), cx: cx, cy: cy, 幅: 幅, 高: 高 || 1, 向き: 向き, もとの行: w.もとの行 });
+  }
+  if (!語.length) return '';
+
+  // ② ざっくりした傾き。★幅のある語だけで決めます（1文字の語は向きが当てになりません）
+  var 向きたち = [];
+  for (var i2 = 0; i2 < 語.length; i2++) {
+    if (語[i2].幅 > 語[i2].高) 向きたち.push(語[i2].向き);
+  }
+  向きたち.sort(function (a, b) { return a - b; });
+  var θ = 向きたち.length ? 向きたち[Math.floor(向きたち.length / 2)] : 0;
+  // ★横書きから大きく外れた値は使いません（読み違えた語に引っぱられないため）
+  if (!(θ > -0.6 && θ < 0.6)) θ = 0;
+
+  // ★ざっくりの傾きは、**上下の順を決めるのにだけ**使います。行を結ぶのには使いません
+  var cos = Math.cos(-θ), sin = Math.sin(-θ);
+  for (var i3 = 0; i3 < 語.length; i3++) {
+    var g = 語[i3];
+    g.x = g.cx * cos - g.cy * sin;
+    g.y = g.cx * sin + g.cy * cos;
+    g.長い = (g.幅 >= g.高 * 3);
+    g.使った = false;
+  }
+
+  /* ★1語ずつの向きを決めます。
+
+     ★**短い語の向きは当てになりません。**作り物の紙で、10度の紙の「客数」（2文字）が
+       11.69度と出ました。1.7度ちがうと、500ピクセル先で15ピクセルずれ、行が切れます。
+     ★かといって全体の傾きを当てると、**紙が丸まった紙で壊れます**（下ほど傾きが増すため）。
+       実際、全体の傾きにしたら丸まりの試しが4つとも落ちました。
+     ★そこで**一番近い「長い語」の向き**を借ります。近くなら、丸まっていても向きは近いからです。 */
+  /* ★★短い語の向きは、**近くの長い語から借りる**のではなく、
+       「高さに対する傾きの直線」に当てはめて決めます。
+
+     ★近くの長い語から借りる形では、**紙の上の方で壊れました**。
+       上の数行（組数・客数・男性…）は短い語ばかりで、一番近い長い語が
+       何行も下にあり、丸まっている分だけ向きがずれて、
+       **ラベルが1つ下の行の数字と組みました**（「組数 83客」）。
+       これは一番たちの悪い壊れ方です。数は入るのに、中身が隣の行のものになります。
+     ★丸まりは上から下へなだらかに変わるので、
+       長い語の（高さ・向き）から直線を当てはめて、短い語はそこから読みます。
+       長い語が3つに満たないときは、全体の傾きを使います。 */
+  var 長いの = [];
+  for (var i4 = 0; i4 < 語.length; i4++) if (語[i4].長い) 長いの.push(語[i4]);
+
+  var 傾きを読む = null;
+  if (長いの.length >= 3) {
+    var n = 長いの.length, sy = 0, sa = 0, syy = 0, sya = 0;
+    var 小 = 長いの[0].向き, 大 = 長いの[0].向き;
+    for (var m = 0; m < n; m++) {
+      var Y = 長いの[m].y, A = 長いの[m].向き;
+      sy += Y; sa += A; syy += Y * Y; sya += Y * A;
+      if (A < 小) 小 = A;
+      if (A > 大) 大 = A;
+    }
+    var 分母 = n * syy - sy * sy;
+    if (Math.abs(分母) > 1e-6) {
+      var b = (n * sya - sy * sa) / 分母;
+      var a = (sa - b * sy) / n;
+      var ゆるみ = 5 * Math.PI / 180;      // 見た範囲から、これ以上は外へ出しません
+      傾きを読む = function (Y2) {
+        var v = a + b * Y2;
+        if (v < 小 - ゆるみ) v = 小 - ゆるみ;
+        if (v > 大 + ゆるみ) v = 大 + ゆるみ;
+        return v;
+      };
+    }
+  }
+
+  for (var i5 = 0; i5 < 語.length; i5++) {
+    var w2 = 語[i5];
+    w2.角度 = w2.長い ? w2.向き : (傾きを読む ? 傾きを読む(w2.y) : θ);
+  }
+
+  /* ③ 上から順に種を決めて、右と左へ歩きます
+     ★★**1つ前の語の向きで、次の語がいるはずの高さを見ます。**
+       全体をまとめて真っすぐにする作りだと、紙が丸まった紙で
+       「組数」と隣の行の数字が組みました（作り物の紙で出ました）。
+       1歩ごとに前の語とだけ比べれば、少しずつ曲がっていてもついていけます。 */
+  var 並び = 語.slice().sort(function (a, b) { return a.y - b.y; });
+  var 行たち = [];
+  var ゆとり = 0.6;                       // 高さの何倍まで、同じ行と見るか
+
+  var 次を探す = function (もと, 右へ) {
+    var c0 = Math.cos(もと.角度), s0 = Math.sin(もと.角度);
+    var best = null, best先 = 0;
+    for (var n = 0; n < 語.length; n++) {
+      var c = 語[n];
+      if (c.使った || c === もと) continue;
+      var dx = c.cx - もと.cx, dy = c.cy - もと.cy;
+      var 先 = dx * c0 + dy * s0;          // その語の向きに、どれだけ進んだか
+      var 外れ = -dx * s0 + dy * c0;        // その向きから、どれだけ上下に外れたか
+      if (右へ ? 先 <= 0 : 先 >= 0) continue;
+      /* ★遠くを見るほど、向きのわずかな狂いが積もります。
+           距離に応じて、ほんの少しだけゆとりを足します（0.015 ≒ 0.9度分）。
+           行と行の間より狭く保つので、隣の行を巻き込みません */
+      if (Math.abs(外れ) > もと.高 * ゆとり + Math.abs(先) * 0.015) continue;
+      if (!best || Math.abs(先) < Math.abs(best先)) { best = c; best先 = 先; }
+    }
+    return best;
+  };
+
+  for (var s2 = 0; s2 < 並び.length; s2++) {
+    var 種 = 並び[s2];
+    if (種.使った) continue;
+    種.使った = true;
+    var 右 = [], 左 = [];
+    var いま = 種;
+    while (true) { var n1 = 次を探す(いま, true); if (!n1) break; n1.使った = true; 右.push(n1); いま = n1; }
+    いま = 種;
+    while (true) { var n2 = 次を探す(いま, false); if (!n2) break; n2.使った = true; 左.push(n2); いま = n2; }
+    var 行 = 左.reverse().concat([種]).concat(右);
+    var y = 0;
+    for (var t = 0; t < 行.length; t++) y += 行[t].y;
+    行たち.push({ y: y / 行.length, 字: 行 });
+  }
+
+  // ④ 上から順に並べて、行ごとに左から
+  行たち.sort(function (a, b) { return a.y - b.y; });
+  var 出 = [];
+  for (var r = 0; r < 行たち.length; r++) {
+    var 語列 = 行たち[r].字.slice().sort(function (a, b) { return a.x - b.x; });
+    var 文 = [];
+    for (var q = 0; q < 語列.length; q++) 文.push(語列[q].字);
+    出.push(文.join(' '));
+    if (typeof 語の並び !== 'undefined') 語の並び.push(語列);
+  }
+  return 出.join('\n');
+}
+/**
+ * Cloudflare（Worker）の読み取りの約束の番号
+ *
+ * ★Worker の返事の `w` と見くらべます（本部の worker.js が持つ番号）。
+ *   ちがっても止めません。Vision の返事が読める形ならそれを使い、読めなければ GAS の道に落とします
+ *   （止めると、Worker を直した日に読み取りが全部止まるため）。
+ */
+const JOURNAL_WORKER_W = 1;
+
 /**
  * 貼ってほしい 現金売上.gs の版の印
  *
@@ -4092,7 +4285,7 @@ const CASH_PHOTO_Q_RETRY = 0.9;
  *   サーバーが返してくる印とちがっていたら、貼り直しがまだ、ということです。
  *   写真を撮ったときに、その場で画面に出します。
  */
-const CASH_GAS_VERSION = '63810840';
+const CASH_GAS_VERSION = '43f2f7e0';
 
 /**
  * 貼ってほしい 日報に書く.gs の版の印
