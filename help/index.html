@@ -268,7 +268,7 @@
   .help-q, .help-lead, .help-first, .help-sec__head { box-shadow: none; }
 }
 </style>
-<meta name="app-version" content="6e131be0">
+<meta name="app-version" content="c388e2bd">
 </head>
 <body>
 
@@ -664,9 +664,17 @@
         </div>
       </div>
       <p class="help-shot__cap">
-        チェックを入れた時刻が、右に小さく出ます。
-        まちがえたときは、もう一度押すと消えます。
+        押すと、その場でチェックが入ります。入れた時刻が、右に小さく出ます。
       </p>
+    </div>
+
+    <!-- ★js/app.js のチェックの切り替えと同じです（2026-09-18 から、入れるときの確かめは無し・外すときだけ確かめる） -->
+    <p>
+      <b>まちがえたときは、もう一度押します。</b>「<b>チェックを外す</b>」の確かめが出るので、押すと外れます。
+    </p>
+    <div class="help-important">
+      <span class="help-important__label">提出したあとに外すと</span>
+      <p>「この日は提出済みのため、<b>提出も取り消されます</b>」と出ます。外したら、<b>もう一度提出してください。</b></p>
     </div>
 
     <div class="help-note">
@@ -1176,9 +1184,16 @@
     </p>
     <ol class="help-steps">
       <li>枠の名前はお店によってちがいます（立ち上げ・ランチ・ディナーなど）</li>
+      <li>枠を押すと「<b>◯◯ は何時から？</b>」と出ることがあります。入れる時刻を選んでください</li>
       <li>出られない日は、何も押さずに飛ばします</li>
       <li>出したあとでも、<b>締め切りまでは直せます</b></li>
     </ol>
+    <!-- ★時刻の選び方は shift/js/submit.js の renderDay と js/config.js の shiftWheel と同じです（2026-09-18 から4店舗は回して選ぶ） -->
+    <div class="help-note">
+      <b>こじゃれ・炭まろ・ちゃこる・おいでんテラスは、時と分を回して選びます。</b>
+      はじめは「—」になっています。<b>選ばないまま出すと</b>「時刻を選んでいない日があります」と出て、出せません。
+      その日の時刻を選んでから、もう一度<b>出す</b>を押してください。
+    </div>
     <div class="help-note">
       <b>募集していないときは開けません。</b>「今は募集していません」と出ます。
       お店が募集をはじめると出せるようになります。
@@ -1245,6 +1260,32 @@
       <li>まず<b>「シフト募集をはじめる」</b>を押します。押すまで、みんなは出せません</li>
       <li>集まったら、枠に名前を入れていきます</li>
       <li>できたら<b>確定</b>します。確定すると、出した人の画面に決まった表が出ます</li>
+    </ol>
+
+    <!-- ★js/app.js の「ヘルプ要請・人員過多」「ヘルプに出す」（openHelpReq・openHelpSend・openHelpReqList）と同じです（2026-09-18 から、SHIFT_HELP_STORES の4店舗だけ） -->
+    <h3>ほかの店舗とヘルプを出し合う（お店の人）</h3>
+    <p>
+      <b>こじゃれ・炭まろ・ちゃこる・おいでんテラス</b>の4店舗では、組む画面の表の一番下に「<b>ヘルプ</b>」の行があります。
+      日付ごとに、次の3つのボタンが並びます。
+    </p>
+    <ul class="help-marks">
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">ヘルプ要請</span>
+        <span class="help-marks__desc">人が足りない日に押します。<b>キッチンかホールか</b>を選び、<b>何人ほしいか</b>を入れて「決める」。ほかの3店舗に出ます。</span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">人員過多</span>
+        <span class="help-marks__desc">人が余っている日に押します。<b>キッチンかホールか</b>を選び、<b>何人出せるか</b>を入れて「決める」。</span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">ヘルプに出す</span>
+        <span class="help-marks__desc">自分の店舗の人を、ほかの店舗へ手伝いに出します。誰を・どの店舗に・キッチンかホールか・どの枠か・何時からを選んで「決める」。<b>向こうの店舗のシフトに、そのまま入ります。</b></span>
+      </span></li>
+    </ul>
+    <ol class="help-steps">
+      <li>出したものは、ボタンの上に並びます。押すと直せます。<b>0人にすると取り消し</b>です</li>
+      <li>ヘルプに出した人も、ボタンの上に札で出ます。札を押すと取り消せます（向こうの店舗のシフトからも外れます）</li>
+      <li>表の上の「<b>ヘルプ要請を見る</b>」で、ほかの3店舗が出しているもの（今日から先）を日付ごとに見られます。ヘルプ要請が出ていると、ボタンに件数が付きます</li>
     </ol>
 
     <!-- ★シフトの「QR・URL」ボタン（2026-09-18、ko-dai さんの依頼をシフト部署が取り次ぎ）。
