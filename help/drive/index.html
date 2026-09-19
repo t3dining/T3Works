@@ -8,10 +8,10 @@
 <link rel="stylesheet" href="../../css/style.css?v=0739ea85">
 <link rel="stylesheet" href="../css/help.css?v=fa512f83">
 <!-- ★配達記録（drive/）の使い方。バグるで配達するアルバイト向けです（2026-09-19、ko-dai さんの指示で作りました）。
-     ★文は drive/index.html・drive/js/drive.js・js/config.js（driveRound・driveYen）・js/sync.js の実物どおりです。
+     ★文は drive/index.html・drive/js/drive.js・js/config.js（driveRound・driveYen）・js/sync.js の実物どおりです（2026-09-19 夜、配達記録の直し 410f74b5 に合わせました）。
      ★金額の例は作った数です。本物の名前・距離・金額・番号・合言葉は書きません。
      ★公開の道具が PDF「マニュアル/配達記録の使い方.pdf」を作ります（道具/公開する.py の `使い方の本`） -->
-<meta name="app-version" content="410f74b5">
+<meta name="app-version" content="80f5b22c">
 </head>
 <body>
 
@@ -70,7 +70,7 @@
     <ul class="help-marks">
       <li class="help-marks__row"><span class="help-marks__text">
         <span class="help-marks__name" style="display:block;">PINが違います</span>
-        <span class="help-marks__desc">合言葉を確かめて、もう一度入れます。<b>10回続けてまちがえると、10分ほど受け付けません。</b></span>
+        <span class="help-marks__desc">合言葉を確かめて、もう一度入れます。<b>何度も試さないでください。</b>10分のあいだに10回まちがえると、<b>全部のお店のアプリが約10分、同期できなくなります</b>（「PINの入力を続けて間違えたため、しばらく受け付けません（約10分）」）。分からないときは、こうだいに聞いてください。</span>
       </span></li>
       <li class="help-marks__row"><span class="help-marks__text">
         <span class="help-marks__name" style="display:block;">この番号は登録されていません</span>
@@ -83,7 +83,9 @@
     </ul>
 
     <div class="help-note">
-      どの番号が入っているかは、右上の「<b>⚙ 設定</b>」の「番号」で見られます。
+      どの番号が入っているかは、右上の「<b>⚙ 設定</b>」の「番号」で見られます。<br>
+      合言葉が変わったときは、⚙ 設定の「<b>PINを入れ直す</b>」で入れ直します。まちがえたときは、入れ直す前の合言葉のままになります。<br>
+      この使い方は、⚙ 設定の一番上の「<b>使い方を見る</b>」から開けます。
     </div>
   </section>
 
@@ -135,14 +137,22 @@
         <span class="help-marks__desc">「名前」で自分の名前を押してから、もう一度「記録する」を押します。</span>
       </span></li>
       <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">◯回目の区間に、空いている欄（または0）があります</span>
+        <span class="help-marks__desc">経由地の区間に、入れていない欄があります。距離を入れるか、要らない経由地を「×」で消してください。入れている最中は「◯回目に、まだ入っていない欄があります（このままでは記録できません）」と出ます。</span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
+        <span class="help-marks__name" style="display:block;">◯回目の距離が読めません</span>
+        <span class="help-marks__desc">0より大きい数を入れてください。</span>
+      </span></li>
+      <li class="help-marks__row"><span class="help-marks__text">
         <span class="help-marks__name" style="display:block;">200kmを超えています。入れ間違いではありませんか？</span>
         <span class="help-marks__desc">1つの欄に200kmより大きい数は入れられません。桁や小数点を確かめてください。</span>
       </span></li>
     </ul>
 
-    <div class="help-important">
-      <span class="help-important__label">入れている途中で</span>
-      <p>画面の外の暗い所を押すと、<b>何も聞かれずに閉じて、入れた内容は消えます。</b>閉じたいときだけ押してください。</p>
+    <div class="help-note">
+      入れている途中で画面の外の暗い所を押すと、「<b>入れた内容は、まだ記録されていません</b>」と聞かれます。
+      「消して閉じる」を押したときだけ閉じます。「<b>やめる</b>」を押すと、聞かれずにすぐ閉じて、入れた内容は消えます。
     </div>
   </section>
 
@@ -199,7 +209,8 @@
     <div class="help-important">
       <span class="help-important__label">直すときは</span>
       <p>
-        距離の欄が1つでも<b>空のまま</b>「直す」を押すと、その回は<b>消えます</b>。全部の欄に入っているか見てから押してください。<br>
+        距離の欄を空にしたまま「直す」を押すと、「<b>◯回目の距離が空になっています</b>」と出て止まります。
+        その回をやめるときは、その回の「<b>×</b>」で消してから「直す」を押します。<br>
         経由地を消したときは、残った距離が合っているかも見てください。
       </p>
     </div>
@@ -260,13 +271,6 @@
       <p>画面の下に出ます。「<b>更新する</b>」を押してください。入れた記録は消えません。</p>
     </div>
 
-    <div class="help-q">
-      <p class="help-q__title">日付や月が、前のままになっている</p>
-      <p>
-        アプリを開いたままにしていると、朝6時や月をまたいでも、「走った日」や「今月」が前のままのことがあります。
-        <b>入れる前に「走った日」を確かめてください。</b>アプリを開き直すと、今日に戻ります。
-      </p>
-    </div>
   </section>
 
 </div>
