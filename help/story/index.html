@@ -13,7 +13,7 @@
      ★Mac の道具は ダブルクリック/ の2つの .command の頭の説明どおりです。
      ★トークンや合言葉の値、GitHub の中の名前は書きません。
      ★公開の道具が PDF「マニュアル/ストーリーズ作成の使い方.pdf」を作ります（道具/公開する.py の `使い方の本`） -->
-<meta name="app-version" content="b5cf8fd4">
+<meta name="app-version" content="0806a03c">
 </head>
 <body>
 
@@ -180,7 +180,7 @@
 
   <!-- ============================================================
        5. 困ったとき
-       ★LINE の文は gas/通知.gs の実物どおりです（インスタの列に ◯ がある送り先へ。うまくいっている日は何も来ません）
+       ★LINE の文は gas/通知.gs の notifyStory の実物どおりです（通知 762eade7。店ごとに数え、休みの日の出すぎも知らせる。インスタの列に ◯ がある送り先へ。うまくいっている日は何も来ません）
        ============================================================ -->
   <section class="help-sec" id="s5">
     <div class="help-sec__head"><span class="help-sec__n">5</span><h2 class="help-sec__title">困ったとき</h2></div>
@@ -191,7 +191,11 @@
       <ul class="help-marks">
         <li class="help-marks__row"><span class="help-marks__text">
           <span class="help-marks__name" style="display:block;">⚠️ インスタの自動投稿が止まっています</span>
-          <span class="help-marks__desc">その日の枚数が足りません。知らせの中の GitHub の画面から、手で動かせます。分からなければ、アプリを直す人に頼んでください。</span>
+          <span class="help-marks__desc">その日の枚数が足りません。店ごとに「◯枚（◯枚のはず）」と出ます。知らせの中の GitHub の画面から、手で動かせます。分からなければ、アプリを直す人に頼んでください。</span>
+        </span></li>
+        <li class="help-marks__row"><span class="help-marks__text">
+          <span class="help-marks__name" style="display:block;">⚠️ 休みの日なのに、インスタに2枚以上出ています</span>
+          <span class="help-marks__desc">休みの日は「本日定休日です」「本日臨時休業です」の1枚だけのはずです。Instagram で確かめて、要らない投稿は消してください。</span>
         </span></li>
         <li class="help-marks__row"><span class="help-marks__text">
           <span class="help-marks__name" style="display:block;">⚠️ インスタ自動投稿の記録が読めませんでした</span>
