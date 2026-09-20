@@ -1020,6 +1020,7 @@ function nippou秒(部) {
   }
   if (!外.length) return '';
   const 聞き返し = 部.書 && 部.書.res && 部.書.res.聞き返した ? '・日報の数を確かめてから' : '';
+  if (!内.length) return `　${外.join('／')}`;       // ★預けたとき（J2）は、サーバーの中の秒はまだ分かりません
   return `　${外.join('／')}（サーバーの中 ${内.join('／')}`
     + `${送り直し ? `・${送り直し}回 静かに送り直しました` : ''}${聞き返し}）`;
 }
@@ -1087,6 +1088,7 @@ function cashWakeOff() {
 let cashResuming = false;
 async function cashResume() {
   if (cashResuming || cashEdit.busy) return;
+  日報の様子を見る();        // ★預けた日報の書き込み（J2）。控えが無くても見ます
   const job = cashJobLoad();
   if (!job || !job.kind) return;
   // ★古い控えの掃除が先です。合言葉の確認を先にすると、
@@ -1136,10 +1138,17 @@ async function cashResume() {
       try {
         /* ★やり直しでも「確かめて書く」です。人が確かめたのは**アプリの数**で、
              そのあと日報が手で直されていれば、ここで聞き直します（黙って上書きしません） */
-        const res = await 日報確かめて書く({
+        const res = await 日報を頼む({
           file: job.test, folder: job.folder, day: job.date,
           values: nippouZeroDrop(job.values), extra: job.extra || [], calc: job.calc || {},
-        }, 名);
+        }, 名, Array.isArray(job.part) ? job.part.slice().sort().join('・') : String(job.part || '日報'));
+        if (res.預けた) {
+          cashJobClear();
+          日報の手(null);
+          setNippouMsg(`${名}は、このあと日報に書きます…`, 'ok');
+          日報の返事を待ち始める();
+          return;
+        }
         if (!res.ok) {
           if (res.やめた || res.版ちがい) { cashJobClear(); if (res.やめた) setNippouMsg(''); return; }
           if (!cashTodokazu(res.error)) cashJobClear();
@@ -1914,10 +1923,9 @@ function cashWroteOf(storeId, dateStr) {
   return cashHandOf(storeId, dateStr).wrote || {};
 }
 
-/** 書いたものを覚えます（日報の数と見くらべるため） */
-function cashWroteSave(dateStr, values, extra) {
-  const 前 = cashWroteOf(state.storeId, dateStr);
-  const 次 = { ...前 };
+/** 前の覚え書きに、今書いた数を足します（数にならないものは入れません） */
+function cashWrote足す(前, values, extra) {
+  const 次 = { ...(前 || {}) };
   Object.keys(values || {}).forEach((name) => {
     const n = cashMinusNum(values[name]);
     if (n !== null) 次[name] = n;
@@ -1926,6 +1934,12 @@ function cashWroteSave(dateStr, values, extra) {
     const n = cashMinusNum(x.value);
     if (n !== null) 次[cashWroteKey(x.name, x.col)] = n;
   });
+  return 次;
+}
+
+/** 書いたものを覚えます（日報の数と見くらべるため） */
+function cashWroteSave(dateStr, values, extra) {
+  const 次 = cashWrote足す(cashWroteOf(state.storeId, dateStr), values, extra);
   const 手 = cashHandOf(state.storeId, dateStr);
   Store.setItem(state.storeId, dateStr, CASH_HAND, {
     value: { ...手, m: cashEdit.m || {}, shiire: cashEdit.shiire || {}, jinken: cashEdit.jinken || {}, j手: cashEdit.手 || {}, wrote: 次 },
@@ -1962,7 +1976,7 @@ async function cashPullFromNippou(しずかに) {
     const res = await Sync.ask('nippouWrite',
       { mode: '見る', file: test, folder, day: dateStr, values, extra: [], calc: {} }, { ms: ASK_上限.日報, hedge: true });
     if (!res.ok && !res.grid) { if (!しずかに) setNippouMsg(res.error || '日報を開けませんでした', 'warn'); return; }
-    if (!res.v || res.v !== NIPPOU_GAS_VERSION) { if (!しずかに) nippouGasOk(res); return; }
+    if (nippou版を覚える(res) !== NIPPOU_GAS_VERSION) { if (!しずかに) nippouGasOk(res); return; }
 
     const 取り込み = [];
     const 次wrote = { ...wrote };
@@ -2170,6 +2184,7 @@ function renderCash() {
   renderNippouBox(done);
   renderCashList();
   renderCashWeek();
+  日報の待ちを出す();        // ★預けた日報の書き込みが途中なら、知らせます（J2）
 }
 
 /* ------------------------------------------------------------
@@ -2420,7 +2435,7 @@ async function cashGridLoad(しずかに) {
     if (!res.ok && !res.grid) { 言(res.error || '日報を開けませんでした', 'warn'); return; }
     // ★静かに読んでいるときは、版が古くても画面に出しません。
     //   日報へ書こうとしたときに、あらためて出ます
-    if (!res.v || res.v !== NIPPOU_GAS_VERSION) { if (!しずかに) nippouGasOk(res); return; }
+    if (nippou版を覚える(res) !== NIPPOU_GAS_VERSION) { if (!しずかに) nippouGasOk(res); return; }
     if (!res.grid || !res.grid.length) {
       言('日報のE列に、仕入先が見つかりませんでした', 'warn'); return;
     }
@@ -3048,8 +3063,22 @@ function gasChigauShow(出す, なに, サーバー, アプリ, なかみ) {
  * ★現金売上.gs の cashGasOk と同じ考え方です。
  *   食いちがっていたら、その場で何をすればよいかを出して**書かせません**。
  */
-function nippouGasOk(res) {
+/**
+ * 返事に入っていた「日報に書く.gs」の版を覚えます（cashGasOk と同じ考え方）
+ *
+ * ★J2 で「日報の書き込みを預けてよいか」を、この覚え書きで決めます。
+ *   journalWriteJob_ を知らない GAS に預けると、人が待っていないところで黙って失敗します。
+ * ★見るだけ（日報から取り込む・仕入先の一覧）の返事でも覚えます。
+ *   書いたときにしか覚えないと、GAS を貼り直したあとの**1回目の書き込みだけが遅い**ままになります。
+ */
+function nippou版を覚える(res) {
   const now = res && res.v ? String(res.v) : '';
+  if (now) { try { Store.setMeta('nippouGasSeen', now); } catch (e) { /* 覚えられなくても進みます */ } }
+  return now;
+}
+
+function nippouGasOk(res) {
+  const now = nippou版を覚える(res);
   if (now === NIPPOU_GAS_VERSION) return true;
   gasChigauShow(setNippouMsg, '日報に書く.gs', now, NIPPOU_GAS_VERSION, gasNakami(res));
   return false;
@@ -3357,7 +3386,17 @@ async function nippouWritePart(part, btn) {
       values, extra, calc, test, folder, at: new Date().toISOString(),
     });
     const 書いた = Date.now();
-    const res = await 日報確かめて書く({ file: test, folder, day: dateStr, values, extra, calc }, 決.name);
+    const res = await 日報を頼む({ file: test, folder, day: dateStr, values, extra, calc },
+      決.name, 組.slice().sort().join('・'));
+    if (res.預けた) {
+      // ★預かってもらえました（J2）。人は待ちません。書けたかどうかは、あとから届きます
+      cashJobClear();
+      日報の頼みを直す(res.頼み.id, { 預けms: Date.now() - 書いた });
+      日報の手(null);
+      setNippouMsg(`${決.name}は、このあと日報に書きます…`, 'ok');
+      日報の返事を待ち始める();
+      return;
+    }
     const 書 = { ms: Date.now() - 書いた, res };
     if (!res.ok) {
       if (res.やめた) { cashJobClear(); setNippouMsg(''); return; }
@@ -3557,6 +3596,420 @@ async function 日報確かめて書く(req, 名) {
   return res;
 }
 
+/* ------------------------------------------------------------
+ *  ★★J2：日報に書くのを Cloudflare に預けます（2026-09-20）
+ *
+ *  ★なぜ。日報への往復は1回になりましたが（2026-09-19・往復1回）、その1回は今も
+ *    Google の入口（gasUrl）を通ります。9/20 の0時台を測ると、12回に1回つながらず、
+ *    一番長いときで33秒待ちでした。人はそのあいだ画面の前で待っていました。
+ *
+ *      端末 ──頼み──▶ Worker（頼みの表）──▶ GAS（journalWriteJob_）──▶ 日報
+ *
+ *    端末は**預けた時点で戻ります**。書けたかどうかは、あとから2つの道で届きます。
+ *      ① 同期の返事に相乗り（8秒ごと。journal待っている頼み を乗せ、journal頼みの返事 で受けます）
+ *      ② 端末から聞く（journalJob）。ジャーナルの画面を開いているあいだだけ、間をあけて聞きます
+ *
+ *  ★守りは今までと同じです。
+ *      ・書くのは「確かめて書く」。日報にちがう数が入っていたら、書かずに返します
+ *      ・上書き（force）は、**人に見せた数（before）と一緒に**頼みます。GAS が書く直前にもう一度見くらべ、
+ *        見せた時から変わっていたら書きません
+ *      ・「日報に書いた数」の覚え書き（wrote）は、**書けたと分かってから**入れます
+ *      ・預けられないとき（Worker が知らない・届かない・日報に書く.gs の版がまだ分からない）は、
+ *        今までどおり端末が待って書きます（日報確かめて書く）
+ *
+ *  ★★同じ店・同じ日でも、組（ジャーナル／仕入・人件費…）がちがえば別の頼みです。
+ *    預け先が古い頼みを捨てる相手も「店・日・組」で見ます。組を見ないと、
+ *    あとから押した仕入が、先に預けたジャーナルの頼みを捨ててしまいます（日報に入らないまま消えます）。
+ * ---------------------------------------------------------- */
+
+/** この端末が答えを待っている頼み（この端末の中だけ。共有のシートには送りません） */
+const NIPPOU_頼み = 'nippou頼み';
+const NIPPOU_頼みの数 = 8;
+const NIPPOU_頼みを捨てる = 3 * 24 * 60 * 60 * 1000;    // 3日たった頼みは忘れます
+const NIPPOU_おそい = 10 * 60 * 1000;                   // 10分たっても始まらなければ、知らせます
+/** 聞きに行く間（ミリ秒）。画面を開いているあいだだけ、だんだん間をあけます */
+const NIPPOU_聞く間 = [2000, 3000, 5000, 8000, 12000, 20000, 30000, 45000, 60000];
+const NIPPOU_聞く回数 = 25;
+
+function 日報の頼みたち() {
+  try {
+    const a = JSON.parse(Store.meta(NIPPOU_頼み) || '[]');
+    return Array.isArray(a) ? a : [];
+  } catch (e) { return []; }
+}
+
+function 日報の頼みを残す(並び) {
+  try { Store.setMeta(NIPPOU_頼み, JSON.stringify((並び || []).slice(-NIPPOU_頼みの数))); } catch (e) { /* 入らなくても先へ進みます */ }
+}
+
+function 日報の頼みを足す(頼み) {
+  const 並び = 日報の頼みたち().filter((x) => !(x.store === 頼み.store && x.date === 頼み.date && x.group === 頼み.group));
+  並び.push(頼み);
+  日報の頼みを残す(並び);
+}
+
+function 日報の頼みを外す(id) {
+  日報の頼みを残す(日報の頼みたち().filter((x) => x.id !== id));
+}
+
+function 日報の頼みを直す(id, 足す) {
+  日報の頼みを残す(日報の頼みたち().map((x) => (x.id === id ? { ...x, ...足す } : x)));
+}
+
+/** 古くなった頼みを忘れます（答えが残っているのは預け先でも数日です） */
+function 日報の古い頼みを落とす() {
+  const 今 = Date.now();
+  const 並び = 日報の頼みたち().filter((x) => !(x.at && 今 - Date.parse(x.at) > NIPPOU_頼みを捨てる));
+  if (並び.length !== 日報の頼みたち().length) 日報の頼みを残す(並び);
+}
+
+/**
+ * 日報の書き込みを預けられるか
+ *
+ * ★Worker の口があること（J1 と同じ）と、**日報に書く.gs が今の版だと分かっていること**の2つです。
+ *   版が分かっていない端末（入れ替えたばかり・貼り直した直後）は、1回目だけ今までどおり待って書きます。
+ *   その返事で版を覚えるので、2回目からは預けられます。
+ *   ★これが無いと、journalWriteJob_ を知らない GAS に頼みを渡して、
+ *     人が待っていないところで黙って失敗します。
+ */
+function 日報を預けられる() {
+  if (!journalWorkerが使える()) return false;
+  try { return Store.meta('nippouGasSeen') === NIPPOU_GAS_VERSION; } catch (e) { return false; }
+}
+
+/** 頼みを1つ預けます（Worker の journalWrite） */
+async function 日報を預ける(頼み) {
+  return worker頼む(JSON.stringify({
+    pin: Sync.pin(), code: Sync.code(), action: 'journalWrite',
+    id: 頼み.id, store: 頼み.store, storeName: 頼み.storeName, date: 頼み.date,
+    seq: 頼み.seq, test: !!頼み.test, group: 頼み.group,
+    req: 頼み.req, before: 頼み.before || null, by: 頼み.by || '',
+  }), ASK_上限.聞く);
+}
+
+/**
+ * 日報に書きます。預けられるときは預けて、すぐ戻ります
+ *
+ *   返り {ok:true, 預けた:true, 頼み} … 預かってもらえました（書けたかどうかは、あとから届きます）
+ *   それ以外                      … 今までどおりの返事（日報確かめて書く と同じ形）
+ *
+ * ★預けた返事が届かなかったときは、送り直しません。「預かったか」を聞きます。
+ *   写真と同じ考えです。送り直すと、日報に2回書く形になりえます。
+ */
+async function 日報を頼む(req, 名, group, 足す) {
+  if (!日報を預けられる()) return 日報確かめて書く(req, 名);
+  const 店 = state.storeId;
+  const 頼み = {
+    id: journalId(), seq: Date.now(), at: new Date().toISOString(),
+    store: 店, storeName: (getStore(店) || {}).name || 店, date: req.day,
+    group: group || '日報', 名: 名 || '日報', test: !!req.file,
+    req: {
+      force: false, file: req.file || '', folder: req.folder || '', day: req.day,
+      values: req.values || {}, extra: req.extra || [], calc: req.calc || {},
+    },
+    数: Object.keys(req.values || {}).length + (req.extra || []).length,
+    state: '', ...(足す || {}),
+  };
+  const r = await 日報を預ける(頼み);
+  if (r.ok) {
+    /* ★「捨てた」＝もっと新しい頼みに追い越された、です（本部の約束）。
+         書くのは新しい方なので、こちらは覚えません。覚えると、答えの来ない頼みが残りつづけます。 */
+    if (r.state !== '捨てた') 日報の頼みを足す({ ...頼み, state: r.state || '受け付け' });
+    return { ok: true, 預けた: true, 頼み, 捨てた: r.state === '捨てた' };
+  }
+  // PIN・番号の断りは、GAS に落としても同じ答えです
+  if (JOURNAL_断り.includes(r.code)) return r;
+  // ★届かなかったとき：預かっているかもしれません。聞いてから決めます
+  if (cashTodokazu(r.error) && r.kind !== '電波なし') {
+    for (let 回 = 0; 回 < 3; 回++) {
+      await new Promise((ok) => setTimeout(ok, ASK_聞き直す間[回]));
+      const st = await journalJobを聞く(頼み.id);
+      if (st.届かず) continue;
+      if (st.state && st.state !== '無い') {
+        if (st.state !== '捨てた') 日報の頼みを足す({ ...頼み, state: st.state });
+        return { ok: true, 預けた: true, 頼み, 捨てた: st.state === '捨てた' };
+      }
+      break;        // 預かっていません（無い）。今までの道で書きます
+    }
+  }
+  // Worker が知らない頼み・そのほかの断り → 今までどおり、待って書きます
+  return 日報確かめて書く(req, 名);
+}
+
+/* ------------------------------------------------------------
+ *  預けた頼みの答えを受け取ります
+ * ---------------------------------------------------------- */
+
+/** 同期の頼みに乗せる番号（本部の sync.js が呼びます。無ければ何も乗りません） */
+function journal待っている頼み() {
+  return 日報の頼みたち().filter((x) => x.state === '受け付け' || x.state === 'つかんだ').map((x) => x.id).slice(0, 5);
+}
+
+/** 同期の返事に乗ってきた答え（本部の sync.js が呼びます） */
+function journal頼みの返事(並び) {
+  if (!Array.isArray(並び) || !並び.length) return;
+  const 頼みたち = 日報の頼みたち();
+  並び.forEach((st) => {
+    const 頼み = 頼みたち.find((x) => x.id === (st && st.id));
+    if (頼み) 日報の返事を受ける(頼み, st);
+  });
+}
+
+/** 預けた頼みの様子を聞きに行きます（画面を開いているあいだ） */
+async function 日報の返事を見に行く() {
+  日報の古い頼みを落とす();
+  const 待ち = 日報の頼みたち().filter((x) => x.state === '受け付け' || x.state === 'つかんだ');
+  for (const 頼み of 待ち) {
+    const st = await journalJobを聞く(頼み.id);
+    日報の返事を受ける(頼み, st);
+  }
+}
+
+let 日報の聞くTimer = 0;
+let 日報の聞いた回 = 0;
+
+function 日報の返事を待ち始める() {
+  日報の聞いた回 = 0;
+  日報の返事を次に聞く();
+}
+
+function 日報の返事を次に聞く() {
+  clearTimeout(日報の聞くTimer);
+  if (!日報の頼みたち().some((x) => x.state === '受け付け' || x.state === 'つかんだ')) return;
+  if (日報の聞いた回 >= NIPPOU_聞く回数) return;      // ここから先は、同期の相乗りと、開き直したときに任せます
+  const 間 = NIPPOU_聞く間[Math.min(日報の聞いた回, NIPPOU_聞く間.length - 1)];
+  日報の聞くTimer = setTimeout(async () => {
+    日報の聞いた回++;
+    if (!document.hidden) await 日報の返事を見に行く();
+    日報の返事を次に聞く();
+  }, 間);
+}
+
+/**
+ * 1つの頼みの様子を受け取って、画面と記録に入れます
+ *
+ *   済み    → 書けた（wrote）／食いちがい（clash）／書くものが無かった
+ *   失敗    → 「もう一度書く」を出します
+ *   捨てた  → 新しい頼みで書いたので、黙って忘れます
+ *   受け付け・つかんだ → まだ待ちます（10分すぎたら知らせます）
+ */
+function 日報の返事を受ける(頼み, st) {
+  if (!st || st.届かず) return;
+  const 日 = Number(String(頼み.date).slice(8));
+  const 札 = `${頼み.storeName}　${日}日（${頼み.名}）`;
+
+  /* ★「捨てた」＝もっと新しい頼みに追い越された、です。
+       追い越したのが**同じ組**なら、同じ欄を新しい数で書くので、黙って忘れてよいものです。
+       ★この端末に新しい頼みが無いときは、**別の端末か、別の組に追い越された**かもしれません。
+         別の組（ジャーナルと仕入）に追い越されていたら、こちらの数は日報に入りません。
+         黙って消すと「書いたつもりで入っていない」になるので、声をかけます。
+         もう一度押しても、同じ数を同じマスに書くだけです。 */
+  if (st.state === '捨てた') {
+    const 新しいのがある = 日報の頼みたち().some((x) => x.id !== 頼み.id && x.store === 頼み.store
+      && x.date === 頼み.date && x.group === 頼み.group && (x.seq || 0) > (頼み.seq || 0));
+    if (新しいのがある) { 日報の頼みを外す(頼み.id); return; }
+    日報の頼みを直す(頼み.id, { state: '失敗', error: 'あとの書き込みに置きかわりました' });
+    setNippouMsg(`${札}　あとの書き込みに置きかわりました。日報に入っているか確かめてください`, 'warn');
+    日報の手('もう一度書く', () => 日報をもう一度頼む(頼み.id));
+    return;
+  }
+
+  if (st.state === '済み') {
+    const r = st.res || {};
+    日報の頼みを直す(頼み.id, { state: '済み' });
+    if (!nippouGasOk(r)) { 日報の頼みを外す(頼み.id); return; }   // 知らせは出ています
+    if (r.wrote) {
+      日報に書いた値を残す(頼み.store, 頼み.date, 頼み.req.values, 頼み.req.extra);
+      日報の頼みを外す(頼み.id);
+      journal秒を残す(`日報（${頼み.名}）`, {
+        ms: 頼み.at ? Date.now() - Date.parse(頼み.at) : 0, 中: r.ms && r.ms.全部, 預け: 頼み.預けms || 0,
+      });
+      日報の手(null);
+      setNippouMsg(日報に書けた文(頼み, r), 'ok');
+      return;
+    }
+    if (r.clash && r.clash.length) {
+      日報の頼みを直す(頼み.id, { state: '食いちがい', clash: r.clash, file: r.file, sheet: r.sheet });
+      setNippouMsg(`★${札}　日報にちがう数が入っているので、まだ書いていません`
+        + (r.見せたのとちがう ? '（確かめてからも、日報が直されています）' : ''), 'warn');
+      日報の手('日報の数を見て決める', () => 日報を上書きするか聞く(頼み.id));
+      return;
+    }
+    日報の頼みを外す(頼み.id);
+    setNippouMsg(`★${札}　日報に書けませんでした${r.error ? `（${r.error}）` : ''}`, 'warn');
+    return;
+  }
+
+  if (st.state === '失敗') {
+    日報の頼みを直す(頼み.id, { state: '失敗', error: st.error || '' });
+    setNippouMsg(`★${札}　日報に書けませんでした${st.error ? `（${st.error}）` : ''}`, 'warn');
+    日報の手('もう一度書く', () => 日報をもう一度頼む(頼み.id));
+    return;
+  }
+
+  /* ★預け先がこの頼みを知りません。
+       ふつうは起きません（預かったものは数日残ります）。起きるとしたら、
+       答えが残る日数を過ぎたときです。書けたかどうかが**分からない**ので、そう出します。
+       「もう一度書く」は、同じ数をもう一度書くだけです（すでに書けていれば、日報は変わりません）。 */
+  if (st.state === '無い') {
+    日報の頼みを直す(頼み.id, { state: '失敗', error: '書けたかどうか分かりません' });
+    setNippouMsg(`★${札}　日報に書けたかどうか分かりません。日報を開いて確かめてください`, 'warn');
+    日報の手('もう一度書く', () => 日報をもう一度頼む(頼み.id));
+    return;
+  }
+
+  // まだ途中（受け付け・つかんだ）
+  日報の頼みを直す(頼み.id, { state: st.state || 頼み.state });
+  const 分 = 頼み.at ? Math.round((Date.now() - Date.parse(頼み.at)) / 60000) : 0;
+  if (頼み.at && Date.now() - Date.parse(頼み.at) > NIPPOU_おそい) {
+    setNippouMsg(`★${札}　日報にまだ書けていません（${分}分前に預けました）`, 'warn');
+    日報の手('もう一度書く', () => 日報をもう一度頼む(頼み.id));
+  }
+}
+
+/** 書けたときの知らせ（ジャーナルは検算も出します） */
+function 日報に書けた文(頼み, r) {
+  const 先 = `→ ${r.file}　${r.sheet}日${頼み.test ? '　★テスト用の日報です' : ''}`;
+  const 秒 = 頼み.at ? `　（${Math.round((Date.now() - Date.parse(頼み.at)) / 1000)}秒）` : '';
+  if (頼み.want === undefined || 頼み.want === null || r.total === null || r.total === undefined) {
+    return `${頼み.名}を日報に書きました　${先}（${頼み.数}か所）${秒}`;
+  }
+  if (r.total === 頼み.want) {
+    return `${頼み.名}を日報に書きました　${先}　検算OK：当日総合計 ${cashText(r.total)} ＝ ジャーナルの売上${秒}`;
+  }
+  return `日報には書きましたが、★検算が合いません。${先}　当日総合計 ${cashText(r.total)}／`
+    + `ジャーナルの売上 ${cashText(頼み.want)}　日報を開いて確かめてください`;
+}
+
+/** 日報の知らせの下のボタン（null なら消します） */
+function 日報の手(字, 押したら) {
+  let b = document.getElementById('cashNippouDo');
+  if (!字 || !押したら) { if (b) b.remove(); return; }
+  if (!b) {
+    b = document.createElement('button');
+    b.type = 'button';
+    b.id = 'cashNippouDo';
+    b.className = 'btn';
+    b.style.cssText = 'margin:6px 0 0;font-size:14px';
+    if (el.cashNippouMsg && el.cashNippouMsg.parentNode) {
+      el.cashNippouMsg.parentNode.insertBefore(b, el.cashNippouMsg.nextSibling);
+    }
+  }
+  b.textContent = 字;
+  b.disabled = false;
+  b.onclick = 押したら;
+}
+
+/**
+ * 「日報の数を見て決める」
+ *
+ * ★上書きするときは、**人に見せた数（before）を一緒に**預けます。
+ *   GAS は書く直前にもう一度見くらべ、見せた時から日報が変わっていたら書きません。
+ */
+async function 日報を上書きするか聞く(id) {
+  const 頼み = 日報の頼みたち().find((x) => x.id === id);
+  if (!頼み) return;
+  const b = document.getElementById('cashNippouDo');
+  if (b) b.disabled = true;
+  const ok = await askConfirm({
+    item: `${頼み.test ? '★テスト用の日報★　' : ''}${頼み.file || 頼み.storeName}　${頼み.sheet || Number(String(頼み.date).slice(8))}日のページ`,
+    message: nippouClashText(頼み.clash || []).replace(/^　/, '') + '。このまま書きますか',
+    okLabel: '上書きして書く',
+    danger: true,
+  });
+  if (!ok) {
+    日報の頼みを外す(id);
+    日報の手(null);
+    setNippouMsg('日報には書きませんでした', '');
+    return;
+  }
+  const 次 = {
+    ...頼み, id: journalId(), seq: Date.now(), at: new Date().toISOString(),
+    req: { ...頼み.req, force: true }, before: 頼み.clash, state: '受け付け', clash: null, error: '',
+  };
+  日報の頼みを外す(id);
+  日報の手(null);
+  setNippouMsg(`日報に上書きしています…（${頼み.名}）`, 'busy');
+  const r = await 日報を預ける(次);
+  if (r.ok) { 日報の頼みを足す(次); 日報の返事を待ち始める(); return; }
+  /* ★預けられなかったときは、今までどおり端末が待って書きます。
+       force は付けずに送るので、食いちがいはもう一度出ます（同じことを2回聞きますが、
+       黙って上書きするよりも安全です）。 */
+  const res = await 日報確かめて書く(頼み.req, 頼み.名);
+  if (res.ok && res.wrote) {
+    日報に書いた値を残す(頼み.store, 頼み.date, 頼み.req.values, 頼み.req.extra);
+    setNippouMsg(日報に書けた文({ ...頼み, at: '' }, res), 'ok');
+    return;
+  }
+  if (res.やめた) { setNippouMsg('日報には書きませんでした', ''); return; }
+  if (res.版ちがい) return;
+  setNippouMsg(res.error || '日報に書けませんでした', 'warn');
+}
+
+/** 「もう一度書く」（新しい頼みとして預け直します） */
+async function 日報をもう一度頼む(id) {
+  const 頼み = 日報の頼みたち().find((x) => x.id === id);
+  if (!頼み) return;
+  const b = document.getElementById('cashNippouDo');
+  if (b) b.disabled = true;
+  const 次 = { ...頼み, id: journalId(), seq: Date.now(), at: new Date().toISOString(), state: '受け付け', error: '' };
+  setNippouMsg(`日報に書いています…（${頼み.名}）`, 'busy');
+  const r = await 日報を預ける(次);
+  if (r.ok) { 日報の頼みを外す(id); 日報の頼みを足す(次); 日報の手(null); 日報の返事を待ち始める(); return; }
+  if (b) b.disabled = false;
+  setNippouMsg(`日報に頼めませんでした（${r.error || '通信できません'}）`, 'warn');
+}
+
+/**
+ * 預けた書き込みの様子を見に行きます（アプリを開いたとき・画面に戻ってきたとき）
+ *
+ * ★同期の返事に相乗りして届く道もありますが、それがまだ無い版でも困らないように、
+ *   開いたときは端末からも1度見に行きます。
+ */
+function 日報の様子を見る() {
+  if (!Sync.enabled() || !Sync.pin()) return;
+  if (!日報の頼みたち().some((x) => x.state === '受け付け' || x.state === 'つかんだ')) return;
+  日報の返事を見に行く().then(() => 日報の返事を待ち始める());
+}
+
+/**
+ * 答えの決まっていない頼みを、画面に出します（renderCash の終わりから呼びます）
+ *
+ * ★今出ている知らせは消しません。**上書きすると、書けたばかりの知らせが消えます。**
+ *   知らせが空いているときだけ出します。
+ */
+function 日報の待ちを出す() {
+  if (!el.cashNippouMsg || !el.cashNippouMsg.classList.contains('is-hidden')) return;
+  const dateStr = ymd(state.y, state.m, state.d);
+  const 頼み = 日報の頼みたち().filter((x) => x.store === state.storeId && x.date === dateStr
+    && x.state && x.state !== '済み').pop();
+  if (!頼み) { 日報の手(null); return; }
+  if (頼み.state === '食いちがい') {
+    setNippouMsg(`★${頼み.名}：日報にちがう数が入っているので、まだ書いていません`, 'warn');
+    日報の手('日報の数を見て決める', () => 日報を上書きするか聞く(頼み.id));
+    return;
+  }
+  if (頼み.state === '失敗') {
+    setNippouMsg(`★${頼み.名}：日報に書けませんでした${頼み.error ? `（${頼み.error}）` : ''}`, 'warn');
+    日報の手('もう一度書く', () => 日報をもう一度頼む(頼み.id));
+    return;
+  }
+  setNippouMsg(`${頼み.名}は、このあと日報に書きます…`, 'busy');
+  日報の手(null);
+}
+
+/**
+ * 日報に書いた数を覚えます（あとで日報が手で直されたかを見くらべるため）
+ *
+ * ★cashWroteSave とちがい、**店と日を名指しで**入れます。
+ *   預けた答えは、別の店・別の日を開いているときに届くことがあります。
+ *   そのとき今の画面の書きかけを入れてしまうと、別の日の記録を壊します。
+ */
+function 日報に書いた値を残す(店, dateStr, values, extra) {
+  const 手 = cashHandOf(店, dateStr);
+  Store.setItem(店, dateStr, CASH_HAND, { value: { ...手, wrote: cashWrote足す(手.wrote, values, extra) } });
+}
+
 async function nippouSendNow(values, dateStr, test, folder, extra, calc) {
   values = nippouZeroDrop(values);      // ★0円は書きません（出口でも落とします）
   // ① ★先に現金売上を確定させます（写真もドライブへ）。
@@ -3570,9 +4023,24 @@ async function nippouSendNow(values, dateStr, test, folder, extra, calc) {
     return;
   }
 
-  // ② 確かめながら書きます（往復1回）
+  // ② 確かめながら書きます（往復1回）。預けられるときは預けて、すぐ戻ります（J2）
   const 書いた = Date.now();
-  const res = await 日報確かめて書く({ file: test, folder, day: dateStr, values, extra: extra || [], calc: calc || {} }, 'ジャーナル');
+  const want = (cashEdit.j || {}).gross;
+  const res = await 日報を頼む({ file: test, folder, day: dateStr, values, extra: extra || [], calc: calc || {} },
+    'ジャーナル', 'journal', { want, by: el.cashStaff.value, 預けms: 0 });
+  if (res.預けた) {
+    /* ★預かってもらえました。ここから先は人が待ちません。
+         書けたかどうかは、同期の返事か、この画面を開いているあいだの聞き直しで届きます。 */
+    cashJobClear();
+    日報の頼みを直す(res.頼み.id, { 預けms: Date.now() - 書いた });
+    journal秒を残す('日報（ジャーナル・預け）', { ms: Date.now() - 書いた });
+    日報の手(null);
+    setNippouMsg('記録しました。日報にはこのあと書きます…'
+      + nippou秒({ 写真ms: cashEdit.saveMs }), 'ok');
+    日報の返事を待ち始める();
+    render();
+    return;
+  }
   const 秒 = nippou秒({ 写真ms: cashEdit.saveMs, 書: { ms: Date.now() - 書いた, res } });
   if (!res.ok) {
     if (res.やめた) { cashJobClear(); setNippouMsg(''); return; }
@@ -3587,8 +4055,7 @@ async function nippouSendNow(values, dateStr, test, folder, extra, calc) {
   cashWroteSave(dateStr, values, extra);   // ★日報で直されたかを見くらべるため
   journal秒を残す('日報（ジャーナル）', { ms: Date.now() - 書いた, 中: res.ms && res.ms.全部, 送り直した: res.送り直した || 0 });
 
-  // ③ 書いたあとの検算
-  const want = (cashEdit.j || {}).gross;
+  // ③ 書いたあとの検算（want は上で取ってあります）
   if (res.total === null || res.total === undefined || want === null || want === undefined) {
     setNippouMsg(`記録して、書きました　→ ${res.file}　${res.sheet}日`
       + `${test ? '　★テスト用の日報です' : ''}` + 秒, 'ok');
@@ -3915,9 +4382,11 @@ function setCashWait(text) {
   const from = Date.now();
   const show = () => {
     const sec = Math.round((Date.now() - from) / 1000);
-    // ★15秒を超えたら、電波のせいではないことを添えます（Google の渡す口が止まる晩があります）
+    /* ★15秒を超えたら、電波のせいではないことを添えます。
+         ★2026-09-20（J2）から「サーバー」と書きます。写真の読み取りは Cloudflare を通るようになり、
+           「Google が」では、どこを直せばよいかの見当がずれます（マニュアルが気づきました）。 */
     el.cashMsg.textContent = sec
-      ? `${text}（${sec}秒${sec >= 15 ? '・Google が混み合っています。このまま待ってください' : ''}）`
+      ? `${text}（${sec}秒${sec >= 15 ? '・サーバーが混み合っています。このまま待ってください' : ''}）`
       : text;
     el.cashMsg.className = 'cash-msg is-busy';
   };
