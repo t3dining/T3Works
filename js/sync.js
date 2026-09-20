@@ -564,6 +564,17 @@ const Sync = {
       // iPhone はアプリを裏に回した拍子に、通信が返ってこないことがあります
       const stop = new AbortController();
       const timer = setTimeout(() => stop.abort(), 上限);
+      /* ★ジャーナルの「日報に書く頼み」の答えを、この同期の返事に相乗りさせます（J2、2026-09-20）。
+           別に聞きに行くと、その分だけ1日の問い合わせが増えます（Cloudflare は1日10万回）。
+           印の並びはジャーナルが作ります（古い順に多くて5件）。無い版のアプリでも困らないよう、
+           関数があるときだけ足します */
+      const 待っている = (() => {
+        try {
+          if (typeof journal待っている頼み !== 'function') return null;
+          const v = journal待っている頼み();
+          return Array.isArray(v) && v.length ? v.slice(0, 5) : null;
+        } catch (e) { return null; }
+      })();
       const body = JSON.stringify({
         pin: this.pin(),
         code: this.code(),
@@ -571,6 +582,7 @@ const Sync = {
         since: 送った印,
         settingsAll: !this._settingsPulled,
         ops,
+        ...(待っている ? { jobs: 待っている } : {}),
       });
       const 送る = (重ね) => fetch(同期の口(), {
         method: 'POST',
@@ -657,6 +669,12 @@ const Sync = {
       }
 
       this._applyPulled(json.records || [], json.settings);
+      // ★相乗りで返ってきた「日報に書く頼み」の答えを、ジャーナルに渡します（中身は見ません）
+      if (json.jobs && json.jobs.length) {
+        try {
+          if (typeof journal頼みの返事 === 'function') journal頼みの返事(json.jobs);
+        } catch (e) { /* 受け取れなくても同期は続けます（端末は聞き直しでも受け取れます） */ }
+      }
       Store.setMeta('since', json.now || '');
       // シートに保存できなかった記録があれば、画面の帯に出します
       this.serverWarn = json.warn || '';
