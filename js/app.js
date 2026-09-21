@@ -2196,29 +2196,43 @@ function renderCash() {
  *    手で入れてもらって引きます（日報でやっている式と同じです）。
  * ---------------------------------------------------------- */
 /**
- * その店舗で、日報に書く行
+ * その店舗で、日報に書く行（日報の並びに合わせます）
  *
- * ★ポイント（リクルートポイント）は、使う店舗だけ出します。
+ * ★2種類あります。
+ *     紙から読む行 … 現金売上・クレジット・電子マネー・売掛金・純売上・当日客数
+ *     人が入れる行 … ポイント3つ・商品券（`JOURNAL_手で入れる行`。紙が内わけを出さないため）
+ *   人が入れる行は、**空のままなら日報に書きません**。表の「手で直す」欄がそのまま入り口です。
+ * ★ポイント（紙の「ポイント」をそのまま書く行）は、使う店舗だけ出します。
  *   使わない店舗に出すと、いつも「—」や「0」が並んで、
  *   **本当に読めなかったときと見分けがつきません。**
+ *   ★2026-09-21 から、この行を使う店舗はありません（おいでんテラスも手で入れる形にしました）。
+ * ★売掛金は、紙の「掛売」をそのまま書きます（2026-09-21・ko-dai さん「全店舗」）。
+ *   掛売のない日は 0 なので、日報には何も書きません（nippouZeroSkip）。
  * ★表を作るところ・日報へ渡すところ・式を作るところ、**全部ここを通します。**
- *   1か所でも直に CASH_NIPPOU_ROWS を見ていると、
- *   画面に出ないのに書かれる（またはその逆）が起きます。
+ *   1か所でも直に行を並べると、画面に出ないのに書かれる（またはその逆）が起きます。
  */
 function cash日報の行(storeId) {
-  return CASH_NIPPOU_ROWS.filter(
-    (r) => r.key !== 'point' || journalPointOk(storeId));
+  const 手 = journal手で入れる行(storeId);
+  const 行 = [];
+  const 足す = (key, plain) => 行.push({ key, name: NIPPOU_LABELS[key], ...(plain ? { plain: true } : {}) });
+  // ★人が入れる行には印を付けます。読めなかったときの赤い「—」と見分けるためです
+  const 手で足す = (key) => { if (手.indexOf(key) >= 0) 行.push({ key, name: NIPPOU_LABELS[key], 手: true }); };
+  足す('cash');
+  足す('credit');
+  if (journalPointOk(storeId)) 足す('point');
+  手で足す('recruit');
+  手で足す('gurunavi');
+  手で足す('tabelog');
+  足す('emoney');
+  手で足す('ticketA');
+  手で足す('ticketB');
+  手で足す('ticketC');
+  手で足す('ticketO');
+  足す('kake');
+  足す('net');
+  足す('guests', true);
+  return 行;
 }
-
-const CASH_NIPPOU_ROWS = [
-  { key: 'cash', name: '現金売上' },
-  { key: 'credit', name: 'クレジット' },
-  // ★4店舗の紙の「ポイント」＝ホットペッパーグルメ。日報はリクルートポイントの行
-  { key: 'point', name: 'リクルートポイント' },
-  { key: 'emoney', name: '電子マネー' },
-  { key: 'net', name: '純売上' },
-  { key: 'guests', name: '当日客数', plain: true },
-];
 const CASH_MINUS_ROWS = ['demaeCash', 'demaeCard', 'uberCash', 'uberCard', 'rocket'];
 
 function renderNippouBox(done) {
@@ -4320,7 +4334,7 @@ function renderNippouTable() {
     const to = tr.children[3];
     // ★読み取った数は、欄のうすい字（placeholder）で見せます。
     //   確かめが通らなかった数も出します。何を読んだかが分からないと、直せないためです
-    input.placeholder = x.読めた ? fmt(x.読んだ) : '—';
+    input.placeholder = x.row.手 ? '' : (x.読めた ? fmt(x.読んだ) : '—');
     if (!cashTyping(input)) input.value = x.手入力 ? fmt(x.紙) : '';
     input.style.fontWeight = x.手入力 ? '700' : '';
     input.style.background = x.手入力 ? '#fff4d6' : '';
@@ -4329,8 +4343,11 @@ function renderNippouTable() {
     to.className = 'is-to';
     to.style.color = '';
     if (x.紙 === null) {
-      to.textContent = '—';
-      to.classList.add('is-ng');
+      /* ★人が入れる行（ポイント・商品券）は、空でも**赤くしません**。
+           読み取りが落ちた欄と同じ赤を出すと、毎日おかしいように見えます。
+           入れなければ書かない、が決まりです。 */
+      to.textContent = x.row.手 ? '' : '—';
+      if (!x.row.手) to.classList.add('is-ng');
     } else if (x.書かない) {
       to.textContent = '書きません';       // ★0円の欄は、日報に何も入れません
       to.style.color = '#888';
