@@ -830,6 +830,18 @@ const Sync = {
    * 返り値 { ok, error, code, who, admin }
    */
   async ping() {
+    /* ★送り先が無いときは、飛ばさずに終わります（本部、2026-09-22。配達記録の指摘）
+         `flush`・`ask`・`start`・`status` には前から `enabled()` の守りがあり、
+         **`ping` だけ抜けていました**（7つのうち1つ）。
+       ★守りが無いと `同期の口()` が空文字を返し、`fetch('')` は
+         **そのページ自身のURLへ POST します**（プレビューや Artifact なら、その置き場所へ）。
+         本物の口には届きませんが、`道具/プレビューを作る.py` の約束
+         「PINを聞かれず、通信もしません」は、ここだけ守れていませんでした。
+       ★本番では `APP.syncUrl` が入っているので、この行は**一度も通りません**
+         （`enabled()` は `!!APP.syncUrl`）。効くのはプレビューと配布用だけです。 */
+    if (!this.enabled()) {
+      return { ok: false, error: '共有の設定がされていません', code: '', who: null, admin: false };
+    }
     const 送った番号 = this.code();
     try {
       const res = await fetch(同期の口(), {

@@ -67,7 +67,7 @@ const el = {
   helpLink: $('helpLink'),
   pinModal: $('pinModal'), pinInput: $('pinInput'), pinError: $('pinError'),
   codeInput: $('codeInput'), codeField: $('codeField'), codeHint: $('codeHint'),
-  codeInfo: $('codeInfo'), codeField2: $('codeField2'),
+  codeInfo: $('codeInfo'), codeChange: $('codeChange'),
   pinMessage: $('pinMessage'),
   codeLater: $('codeLater'), pinCancel: $('pinCancel'), appWho: $('appWho'),
   dayNum: $('dayNum'), dayDow: $('dayDow'), dayRollover: $('dayRollover'),
@@ -13596,13 +13596,16 @@ function renderSyncStatus() {
 
   // 設定画面の説明も、共有版かどうかで出し分ける
   el.syncField.classList.toggle('is-hidden', !Sync.enabled());
-  /* ★「番号」の欄も、共有していないときは出しません（本部、2026-09-22）
-       番号は**サーバーが「あなたは誰か」を返すためだけ**にあります。共有先が無ければ
-       返す相手がいないので、番号そのものに意味がありません。
-     ★これを出しっぱなしにすると、**プレビューの約束（「PINを聞かれず、通信もしません」
-       ＝道具/プレビューを作る.py）を破ります。**共有先の無いプレビューで「番号を入れる」を
-       押すと、合言葉から聞く画面が出てしまいます。 */
-  el.codeField2.classList.toggle('is-hidden', !Sync.enabled());
+  /* ★共有していないとき（プレビュー）は、**「番号を入れる」ボタンだけ**を隠します。
+       押すと合言葉から聞く画面が出て、プレビューの約束
+       （「PINを聞かれず、通信もしません」＝道具/プレビューを作る.py）を破るためです。
+     ★★**「番号」の欄そのものは消しません。**はじめ欄ごと隠して出しましたが、
+       記憶 `demo-account-gating` の決まりに反していました
+       （「見本のときに隠してよいのは**本物のデータを書き換えてしまうボタン**だけ。
+       見るだけの部品は出す」「意味の無いボタンは**その1つだけ**消す。まとめて帯ごと消さない」）。
+       帯ごと消すと、**プレビューから「番号」の欄の見た目を確かめる道が無くなります**
+       （マニュアルは絵を手で組み直すことになりました）。2026-09-22 に直しました。 */
+  el.codeChange.classList.toggle('is-hidden', !Sync.enabled());
   if (Sync.enabled()) {
     const n = Sync.outbox().length;
     // 最終同期の時刻も出しておく。届かないときの切り分けに使えます
