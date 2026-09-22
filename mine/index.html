@@ -14,7 +14,7 @@
 <link rel="icon" type="image/png" sizes="64x64" href="../img/mine-icon-64.png?v=ea09f133">
 <title>T3 Works Mine｜T3Dining株式会社</title>
 <link rel="stylesheet" href="../css/style.css?v=e47757a9">
-<meta name="app-version" content="9649a389">
+<meta name="app-version" content="ed630385">
 </head>
 <body data-mode="mine" data-assets="../">
 
@@ -1467,7 +1467,13 @@
 <div class="modal is-hidden" id="modal">
   <div class="modal__backdrop" data-close></div>
   <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-    <h2 class="modal__title" id="modalTitle">この端末の設定</h2>
+    <!-- ★見出しの右に「閉じる」（2026-09-22、ko-dai さんの指示）。
+         下にも「閉じる」はありますが、**設定は縦に長いので、開いた位置からは見えません。**
+         開いてすぐ戻れる口を、上にも置いてあります（シフトの画面と同じ形） -->
+    <div class="modal__topbar">
+      <h2 class="modal__title" id="modalTitle">この端末の設定</h2>
+      <button type="button" class="modal__x" data-close title="閉じる" aria-label="閉じる">✕</button>
+    </div>
 
     <!-- ★使い方（help/index.html）。**アプリの画面ではなく別のページ**です。
          画面（view）にすると render() の分岐すべてに1行ずつ足すことになり、

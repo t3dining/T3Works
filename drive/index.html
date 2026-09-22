@@ -13,7 +13,7 @@
 <link rel="icon" type="image/png" sizes="64x64" href="../img/drive-icon-64.png?v=7088d4ae">
 <title>配達記録｜バグる</title>
 <link rel="stylesheet" href="../css/style.css?v=e47757a9">
-<meta name="app-version" content="9649a389">
+<meta name="app-version" content="ed630385">
 </head>
 <body class="no-daytabs app-drive" data-assets="../">
 
@@ -233,7 +233,13 @@
 <div class="modal is-hidden" id="modal">
   <div class="modal__backdrop" data-close></div>
   <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-    <h2 class="modal__title" id="modalTitle">この端末の設定</h2>
+    <!-- ★見出しの右に「閉じる」（2026-09-22、ko-dai さんの指示）。
+         下にも「閉じる」はありますが、**設定は縦に長いので、開いた位置からは見えません。**
+         開いてすぐ戻れる口を、上にも置いてあります（シフトの画面と同じ形） -->
+    <div class="modal__topbar">
+      <h2 class="modal__title" id="modalTitle">この端末の設定</h2>
+      <button type="button" class="modal__x" data-close title="閉じる" aria-label="閉じる">✕</button>
+    </div>
 
     <!-- ★使い方（help/drive/）。アプリの画面ではなく別のページです（ワークスの「使い方を見る」と同じ形）。
          中身はマニュアルの持ち物です。先頭に「アプリに戻る」があります。
