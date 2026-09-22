@@ -67,6 +67,7 @@ const el = {
   helpLink: $('helpLink'),
   pinModal: $('pinModal'), pinInput: $('pinInput'), pinError: $('pinError'),
   codeInput: $('codeInput'), codeField: $('codeField'), codeHint: $('codeHint'),
+  codeInfo: $('codeInfo'), codeField2: $('codeField2'),
   pinMessage: $('pinMessage'),
   codeLater: $('codeLater'), pinCancel: $('pinCancel'), appWho: $('appWho'),
   dayNum: $('dayNum'), dayDow: $('dayDow'), dayRollover: $('dayRollover'),
@@ -13595,6 +13596,13 @@ function renderSyncStatus() {
 
   // 設定画面の説明も、共有版かどうかで出し分ける
   el.syncField.classList.toggle('is-hidden', !Sync.enabled());
+  /* ★「番号」の欄も、共有していないときは出しません（本部、2026-09-22）
+       番号は**サーバーが「あなたは誰か」を返すためだけ**にあります。共有先が無ければ
+       返す相手がいないので、番号そのものに意味がありません。
+     ★これを出しっぱなしにすると、**プレビューの約束（「PINを聞かれず、通信もしません」
+       ＝道具/プレビューを作る.py）を破ります。**共有先の無いプレビューで「番号を入れる」を
+       押すと、合言葉から聞く画面が出てしまいます。 */
+  el.codeField2.classList.toggle('is-hidden', !Sync.enabled());
   if (Sync.enabled()) {
     const n = Sync.outbox().length;
     // 最終同期の時刻も出しておく。届かないときの切り分けに使えます
@@ -13615,6 +13623,20 @@ function renderWho() {
   const 名 = Sync.myName();
   el.appWho.textContent = 名 ? `${名}さんのアカウント` : '';
   el.appWho.classList.toggle('is-hidden', !名);
+}
+
+/* ★設定の「番号」の行（配達記録の renderCodeInfo と同じ文です。本部、2026-09-22）
+
+   ★**名前が出るのはサーバーが返したときだけです。**端末は名簿を持ちません。
+     番号は入っているのに名前が出ないときは、まだ一度も同期が通っていないか、
+     登録されていない番号です（「入っています」と言い切らないのはそのためです）。 */
+function renderCodeInfo() {
+  const 名 = Sync.myName();
+  el.codeInfo.textContent = 名
+    ? `「${名}」の番号が入っています。`
+    : Sync.code()
+      ? '番号は入っていますが、まだ確かめられていません。「今すぐ同期」を押してください。'
+      : '番号は入っていません。';
 }
 
 /* ★「PINを入れ直す」から開いたときだけ true。
@@ -13775,6 +13797,7 @@ function renderStoreUsage() {
 
 function openModal() {
   renderSyncStatus();
+  renderCodeInfo();
   // ヘッダーのしるしが何を表しているかの一覧（実物と同じ絵を並べます）
   el.syncLegend.innerHTML = Sync.legendHtml();
   /* ★赤くなった記録。**開いたときに書きます。**
@@ -14186,6 +14209,9 @@ function bindEvents() {
   }
   $('syncNow').addEventListener('click', () => Sync.flush());
   $('pinChange').addEventListener('click', () => { closeModal(); openPinModal('', { 入れ直す: true }); });
+  /* ★「番号を入れる」。`入れ直す` を付けないので、PINが入っている端末では**番号の欄だけ**が出ます
+       （openPinModal の `pin済み`）。PINがまだの端末では合言葉から聞きます */
+  $('codeChange').addEventListener('click', () => { closeModal(); openPinModal(); });
   // 入れ直すのをやめる。PINは入れ直す前のまま（まだ何も変えていません）
   el.pinCancel.addEventListener('click', () => {
     if (PINを確かめ中) return;
