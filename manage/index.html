@@ -14,7 +14,7 @@
 <title>T3 Works Manage｜T3Dining株式会社</title>
 <link rel="stylesheet" href="../css/style.css?v=0739ea85">
 <link rel="stylesheet" href="css/admin.css?v=eae657ea">
-<meta name="app-version" content="4d5f5c21">
+<meta name="app-version" content="d1ebbaa0">
 </head>
 <body class="no-daytabs">
 
@@ -542,7 +542,7 @@
       支払う金額は、1回ごとではなく<b>その月の合計距離</b>から出します。
       <b>5kmごとに100円</b>で、100円に満たない端数は<b>切り上げ</b>です。<br>
       例）116.8km → 116.8 ÷ 5 ＝ 23.36 → 24 → <b>¥2,400</b><br>
-      きまりを変えるときは、<b>js/config.js</b> の <b>DRIVE_RATE</b> と <b>driveYen</b> を直してください。
+      きまりを変えるときは、<b>2か所</b>を直します。<b>js/config.js</b> の <b>DRIVE_RATE</b>／<b>driveYen</b>（画面の金額）と、<b>gas/通知.gs</b> の <b>DRIVE_RATE_KM</b>／<b>DRIVE_RATE_YEN</b>／<b>driveYen_</b>（毎月1日に LINE で届く金額）です。<br>GAS は貼り直しとデプロイも要ります。<b>片方だけ直すと、画面と LINE の金額が食いちがいます</b>（落ちないので気づけません）。
     </p>
 
   </section>
