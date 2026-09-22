@@ -13,7 +13,7 @@
 <link rel="icon" type="image/png" sizes="64x64" href="../img/drive-icon-64.png?v=7088d4ae">
 <title>配達記録｜バグる</title>
 <link rel="stylesheet" href="../css/style.css?v=0739ea85">
-<meta name="app-version" content="076d1b10">
+<meta name="app-version" content="be47924d">
 </head>
 <body class="no-daytabs app-drive" data-assets="../">
 
@@ -194,20 +194,6 @@
   </div>
 </div>
 
-<!-- ===== 確認ダイアログ ===== -->
-<div class="modal is-hidden" id="confirmDialog">
-  <div class="modal__backdrop" data-confirm-cancel></div>
-  <div class="modal__panel modal__panel--confirm" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
-    <h2 class="modal__title" id="confirmTitle">確認</h2>
-    <p class="confirm__item" id="confirmItem"></p>
-    <p class="confirm__message" id="confirmMessage"></p>
-    <div class="modal__actions modal__actions--confirm">
-      <button type="button" class="btn" data-confirm-cancel>キャンセル</button>
-      <button type="button" class="btn btn--primary" id="confirmOk">はい</button>
-    </div>
-  </div>
-</div>
-
 <!-- ===== PIN入力 ===== -->
 <div class="modal is-hidden" id="pinModal">
   <div class="modal__backdrop"></div>
@@ -272,6 +258,15 @@
       <!-- ヘッダーの丸いしるしの意味。中身は Sync.legendHtml() が入れます -->
       <p class="sync-legend__head">ヘッダーの印の見かた</p>
       <ul class="sync-legend" id="syncLegend"></ul>
+      <!-- ★赤くなった記録。中身は Sync.logHtml() が入れます（ワークス・マネージと同じもの）。
+           赤は次の同期が通った瞬間に消えるので、その瞬間に画面を見ていないと証拠が残りません。
+           端末に最後の20件だけ残して、あとから読める形にしたものです（2026-09-14、本部）。
+           ★バグるのタブレットは配達記録しか開かず、店内は電波が弱い所です。
+             記録は js/sync.js が共通なので前から溜まっていましたが、**読み口がここだけ無く、
+             この端末の赤は誰も読めませんでした。**CSSと中身は本部側にあります -->
+      <p class="sync-log__head">赤くなった記録（この端末）
+        <button type="button" class="sync-log__clear" id="syncLogClear">消す</button></p>
+      <ul class="sync-log" id="syncLog"></ul>
     </div>
 
     <!-- ★この端末にどの番号が入っているか。「番号を必須にする」を押す前に、ここで確かめられます -->
@@ -301,11 +296,29 @@
   </div>
 </div>
 
+<!-- ===== 確認ダイアログ =====
+     ★この画面は、**ほかのどの画面よりもあとに**置いてください。
+       `.modal` は全部 z-index 50 で、同じときは**あとに書いた方が上に出ます**。
+       前に置くと、設定から「消す」を押したときに設定の下に隠れて、押せないまま止まります
+       （2026-09-22、「赤くなった記録」の消すボタンを足したときに直しました） -->
+<div class="modal is-hidden" id="confirmDialog">
+  <div class="modal__backdrop" data-confirm-cancel></div>
+  <div class="modal__panel modal__panel--confirm" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <h2 class="modal__title" id="confirmTitle">確認</h2>
+    <p class="confirm__item" id="confirmItem"></p>
+    <p class="confirm__message" id="confirmMessage"></p>
+    <div class="modal__actions modal__actions--confirm">
+      <button type="button" class="btn" data-confirm-cancel>キャンセル</button>
+      <button type="button" class="btn btn--primary" id="confirmOk">はい</button>
+    </div>
+  </div>
+</div>
+
 <script src="../js/config.js?v=d3662b72"></script>
 <script src="../js/storage.js?v=bb1c6a5f"></script>
 <script src="../js/sync.js?v=dd1bbca9"></script>
 <script src="../js/update.js?v=c530219e"></script>
-<script src="js/drive.js?v=97f27368"></script>
+<script src="js/drive.js?v=1f39829b"></script>
 
 </body>
 </html>

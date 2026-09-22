@@ -58,7 +58,7 @@ const el = {
   drvLegs: $('drvLegs'), drvAddLeg: $('drvAddLeg'), drvHint: $('drvHint'), drvWarn: $('drvWarn'),
   driveFormTitle: $('driveFormTitle'), driveSave: $('driveSave'),
   modal: $('modal'), syncChip: $('syncChip'), syncInfo: $('syncInfo'), syncLegend: $('syncLegend'),
-  syncWarn: $('syncWarn'),
+  syncWarn: $('syncWarn'), syncLog: $('syncLog'), syncLogClear: $('syncLogClear'),
   pinModal: $('pinModal'), pinInput: $('pinInput'), pinError: $('pinError'),
   pinMessage: $('pinMessage'), codeInput: $('codeInput'), codeLater: $('codeLater'),
   codeInfo: $('codeInfo'), codeField: $('codeField'), pinCancel: $('pinCancel'),
@@ -1014,6 +1014,10 @@ function bindEvents() {
     renderCodeInfo();
     // ヘッダーのしるしが何を表しているかの一覧（実物と同じ絵を並べます）
     el.syncLegend.innerHTML = Sync.legendHtml();
+    /* ★赤くなった記録。**開いたときに書きます。**
+         赤は次の同期が通った瞬間に消えるので、その場で見張らせるのではなく、
+         あとから読める形にしてあります（ワークス・マネージと同じ Sync.logHtml()） */
+    el.syncLog.innerHTML = Sync.logHtml();
     const v = Updater.current();
     el.appVersionText.innerHTML = v
       ? `今入っているのは <b>${v}</b> です。`
@@ -1024,6 +1028,20 @@ function bindEvents() {
     n.addEventListener('click', () => el.modal.classList.add('is-hidden'));
   });
   $('syncNow').addEventListener('click', () => Sync.flush());
+  /* ★赤くなった記録を消す。あとから読むためのものなので、消すと戻せません。
+       ★聞く画面（confirmDialog）は、設定の画面より**あとに**置いてあります。
+         `.modal` は同じ z-index なので、前にあると設定の下に隠れて押せません（index.html を見てください） */
+  el.syncLogClear.addEventListener('click', async () => {
+    const ok = await askConfirm({
+      item: '赤くなった記録（この端末）',
+      message: 'この端末に残っている記録を消します。消すと戻せません。',
+      okLabel: '消す',
+      danger: true,
+    });
+    if (!ok) return;
+    Sync.clearLog();
+    el.syncLog.innerHTML = Sync.logHtml();
+  });
   $('pinChange').addEventListener('click', () => {
     el.modal.classList.add('is-hidden');
     openPinModal('', { 入れ直す: true });
