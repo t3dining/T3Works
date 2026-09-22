@@ -1643,7 +1643,7 @@ body:has(.day-tabs.is-hidden) { padding-bottom: 16px; }
    画面を見た瞬間に「いま お金の話をしている」と分かるようにするためです。
 
    ★赤（--ng）は未精算にだけ使います。緑＝ふつう／赤＝まだ渡していない、
-     という意味づけを崩さないよう、ほかの場所では赤を使いません */
+     という意味づけを崩さないよう、他の場所では赤を使いません */
 .view--expense .report-head,
 .view--catch   .report-head,
 .view--meeting .report-head,
@@ -3521,7 +3521,7 @@ td[data-slot="dinner"] { background: color-mix(in srgb, var(--shift-dinner) 12%,
 .shift-pick__group {
   margin: 0 0 7px; font-size: 12px; color: var(--text-sub); font-weight: 700;
 }
-/* 希望を出している人。そのほかの人と見分けが付くようにします */
+/* 希望を出している人。その他の人と見分けが付くようにします */
 .doer-btn.is-wish {
   border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
   background: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
@@ -4015,7 +4015,7 @@ body.print-shift .shift-sheet__name.is-full .shift-sheet__who::after { font-size
 
 /* キッチンとホールをまとめて1つの枠として囲みます。
    ★上下と外がわだけを桃色にします。キッチンとホールのあいだの線は
-     ほかのマスと同じまま残します（ここまで消すと、どちらの持ち場か
+     他のマスと同じまま残します（ここまで消すと、どちらの持ち場か
      分からなくなるためです） */
 .shift-grid td.is-patty {
   border-top: 2px solid #bf5480;

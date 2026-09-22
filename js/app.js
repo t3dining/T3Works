@@ -27,7 +27,7 @@ const state = {
    * いま送っている提出の記録キー（送り終わるまで「送信中…」と出します）
    *
    * ★提出だけは、届いたのを見届けてから「提出済み」にします。
-   *   押した直後に閉じてしまい、ほかの店舗の画面に出ていない、
+   *   押した直後に閉じてしまい、他の店舗の画面に出ていない、
    *   ということが起きていたためです。
    */
   sending: '',
@@ -608,7 +608,7 @@ function renderDayView() {
  *    2. 写真をドライブに残して、Google のOCRで文字を読み取る
  *    3. 読み取った文字から現金売上を拾って、欄に入れておく
  *    4. 人が見て、違っていれば直す。封筒に入れた金額も入れる
- *    5. 記録する（ほかの端末にも配られます）
+ *    5. 記録する（他の端末にも配られます）
  *
  *  ★読み取りはいつも当たるとは限りません（感熱紙のOCRは完璧ではありません）。
  *    だから「読み取った金額をそのまま記録する」のではなく、
@@ -646,7 +646,7 @@ let cashWeek = '';
  *  作業中のものを控えておく（アプリを閉じても続きから）
  *
  *  ★写真の読み取りも、日報への転送も、何秒かかかります。
- *    そのあいだにアプリを閉じたり、ほかのページへ移ったりすると、
+ *    そのあいだにアプリを閉じたり、他のページへ移ったりすると、
  *    通信が切られて途中で終わってしまいます。
  *    なので、始める前に「いま何をしているか」を端末に控えておき、
  *    戻ってきたときに続きからやり直します。
@@ -934,7 +934,7 @@ async function journal読む(req) {
   }
   if (!r.ok && JOURNAL_断り.includes(r.code)) return r;
   if (!r.ok && cashTodokazu(r.error)) return { ...r, 聞き直した, 送り直した };
-  // ★use_gas・この頼みを知らない Worker・そのほかの断り → 今の GAS の道（Vision はまだ呼ばれていません）
+  // ★use_gas・この頼みを知らない Worker・その他の断り → 今の GAS の道（Vision はまだ呼ばれていません）
   const g = await gasで({});
   if (聞き直した) g.聞き直した = 聞き直した;
   return g;
@@ -1181,7 +1181,7 @@ async function cashResume() {
  *  手で入れた分の「書きかけ」を、その場で残します
  *
  *  ★出前館・仕入・人件費は、写真より先に入れることがあります。
- *    入れたあとほかのページを見に行っても消えないように、
+ *    入れたあと他のページを見に行っても消えないように、
  *    打つたびに残します（記録するを押していなくても残ります）。
  *  ★打つたびに同期へ流すと重いので、少し待ってからまとめて書きます。
  * ---------------------------------------------------------- */
@@ -1794,14 +1794,14 @@ function calcPadHide() {
  * ★入力欄は inputmode="none" なので、よそを触っても
  *   ブラウザが勝手に外してくれないことがあります。
  *   自分で見て、閉じます。
- * ★テンキーの中と、テンキーを使うほかの欄は、閉じません
- *   （ほかの欄に移るときは、そのまま続けて打てるようにするためです）。
+ * ★テンキーの中と、テンキーを使う他の欄は、閉じません
+ *   （他の欄に移るときは、そのまま続けて打てるようにするためです）。
  */
 function calcPadOutside(e) {
   if (!calcPad || calcPad.style.display === 'none') return;
   const t = e.target;
   if (calcPad.contains(t)) return;                 // テンキーの中
-  // ほかの入力欄（★手で直す欄 data-te も入れます。入れ忘れると、移るたびに閉じて開きます）
+  // 他の入力欄（★手で直す欄 data-te も入れます。入れ忘れると、移るたびに閉じて開きます）
   if (t && t.dataset && (t.dataset.k || t.dataset.grid || t.dataset.te)) return;
   calcPadClose();
 }
@@ -1839,7 +1839,7 @@ function calcPadBind(input) {
   // ★テンキーで打っても、パソコンのキーボードで打っても input が出ます
   input.addEventListener('input', () => { if (calcPadFor === input) calcPadEcho(); });
   input.addEventListener('blur', () => {
-    // ほかの欄へ移っただけなら、出したままにします
+    // 他の欄へ移っただけなら、出したままにします
     setTimeout(() => {
       /* ★テンキーの中を触ったための blur なら、閉じません。
            ①で押さえきれない端末のために、二重にしてあります。 */
@@ -1905,7 +1905,7 @@ function cashHandSave(now) {
          前は m・shiire・jinken だけで作り直していたので、1文字打つたびに
          **「アプリが最後に日報へ書いた数」（wrote）が消えて**いました。
          そのせいで「日報で直された数を取り込む」が、何も取り込めなくなっていました。
-         ほかの2か所（cashWroteSave・日報から取り込むところ）は残していました。 */
+         他の2か所（cashWroteSave・日報から取り込むところ）は残していました。 */
     Store.setItem(storeId, dateStr, CASH_HAND, {
       value: { ...cashHandOf(storeId, dateStr), ...中身 },
     });
@@ -2291,7 +2291,7 @@ function renderNippouBox(done) {
       //   数に直してしまうと、あとから日報を開いても内わけが分かりません。
       input.addEventListener('input', () => {
         cashEdit.m[k] = input.value;
-        cashHandSave();               // ★ほかのページへ行っても消えないように残します
+        cashHandSave();               // ★他のページへ行っても消えないように残します
         renderNippouMinusNote();
         renderNippouTable();          // 表だけ描き直します（入力の位置が飛ばないように）
       });
@@ -3757,7 +3757,7 @@ async function 日報を頼む(req, 名, group, 足す) {
       break;        // 預かっていません（無い）。今までの道で書きます
     }
   }
-  // Worker が知らない頼み・そのほかの断り → 今までどおり、待って書きます
+  // Worker が知らない頼み・その他の断り → 今までどおり、待って書きます
   return 日報確かめて書く(req, 名);
 }
 
@@ -4112,7 +4112,7 @@ function cashSureValues() {
  * ★こじゃれ（精算レポート）は、紙が最初から内わけを持っているので
  *   **8つ**入ります。5つしか出さないと、Uberや売掛金が入ったのか
  *   画面で確かめられません（実際に「表に出ていない」と言われました）。
- * ★ほかの4店舗は、これまでどおり5つです。
+ * ★他の4店舗は、これまでどおり5つです。
  */
 function cashNippouRowsFor(storeId) {
   if (journalFormatOf(storeId) !== 'seisan') return cash日報の行(storeId);
@@ -4975,7 +4975,7 @@ async function cashReadPhoto(dataUrl, dateStr, file, id) {
   }
 }
 
-/** 記録に残っている写真を出す（ほかの端末で撮ったものも見られます） */
+/** 記録に残っている写真を出す（他の端末で撮ったものも見られます） */
 async function showCashPhoto() {
   const id = cashEdit.photo;
   // ★中身が届くまで、写真の枠は出しません。
@@ -5940,7 +5940,7 @@ function expenseRec() {
  * いま何文字か（★マインだけに出します）
  *
  *  立替金は**1か月まるごとで1行**なので、件数が増えるほど1マスが太ります。
- *  5万文字を超えると、その月は**書けなくなります**（ほかの記録は無事です）。
+ *  5万文字を超えると、その月は**書けなくなります**（他の記録は無事です）。
  *
  * ★これは「測るだけ」です。上限は動きません。
  *   区切りを足すかどうかは、**実際の数字を見てから**決めます
@@ -6596,13 +6596,13 @@ function renderRankPie(list, total) {
   el.rankPie.classList.toggle('is-hidden', !total);
   if (!total) { el.rankPieBox.innerHTML = ''; return; }
 
-  // 上位8人はそのまま。9人目からは「ほか」にひとまとめ
+  // 上位8人はそのまま。9人目からは「他」にひとまとめ
   const parts = list.slice(0, RANK_TOP).map((r, i) => ({
     name: r.name, yen: r.yen, color: RANK_COLORS[i],
   }));
   const restYen = list.slice(RANK_TOP).reduce((t, r) => t + r.yen, 0);
   if (restYen) {
-    parts.push({ name: `ほか${list.length - RANK_TOP}人`, yen: restYen, color: RANK_REST_COLOR });
+    parts.push({ name: `他${list.length - RANK_TOP}人`, yen: restYen, color: RANK_REST_COLOR });
   }
 
   /* 輪のかたち。まわりに名前を出すので、横長の絵にしています */
@@ -7554,8 +7554,8 @@ function seedMeetingNotes(y, m) {
  * 枠に書いた内容を保存します
  *
  *   書いている途中でも少し手が止まったら保存し、
- *   ほかを押したとき（blur）にももう一度保存します。
- *   「ほかを押したとき」だけにすると、書いたまま月を送ったり
+ *   他を押したとき（blur）にももう一度保存します。
+ *   「他を押したとき」だけにすると、書いたまま月を送ったり
  *   アプリを閉じたりしたときに消えてしまうためです。
  *
  *   保存しても画面は作り直しません。作り直すと、書いている途中の
@@ -9455,7 +9455,7 @@ function renderSyncWarn() {
   const never = !Sync.lastSyncAt;
 
   // ★これが最優先です。シートに保存できなかった記録があると、
-  //   送れたように見えて中身が入っていません。ほかの知らせより先に出します
+  //   送れたように見えて中身が入っていません。他の知らせより先に出します
   if (Sync.serverWarn) {
     el.syncWarn.classList.remove('is-hidden');
     el.syncWarn.className = 'sync-warn';
@@ -10122,7 +10122,7 @@ let pattyOpen = '';
  *   同じ人が両方にいたら、**人ごとの行の方**を使います（新しい方です）。
  *
  * ★at を省くと、いま開いている半月のものを読みます。
- *   **ほかの半月を見るときは必ず渡してください。**希望が別の行になったので、
+ *   **他の半月を見るときは必ず渡してください。**希望が別の行になったので、
  *   rec を渡すだけでは「どの半月か」が分からなくなりました
  *   （shiftFirstPeriod が先の半月を見にいきます）。
  */
@@ -10277,7 +10277,7 @@ function shiftFirstPeriod(storeId) {
     const p = shiftStep(now.y, now.m, now.half, i);
     const rec = Store.getDay(SHIFT_STORE, shiftKey(storeId, p.y, p.m, p.half));
     if (shiftPhaseOf(rec) === SHIFT_BUILT) continue;
-    // ★ここは「ほかの半月」を見ています。半月を渡さないと、
+    // ★ここは「他の半月」を見ています。半月を渡さないと、
     //   いま開いている半月の希望を数えてしまいます
     if (shiftWishes(rec, { storeId, ...p }).length) return p;
   }
@@ -10441,7 +10441,7 @@ function shiftSetPhase(y, m, half, v, due) {
   });
 }
 
-/** いま募集中の、ほかの半月（前後4つ分を見ます） */
+/** いま募集中の、他の半月（前後4つ分を見ます） */
 function shiftOtherOpen() {
   const here = shiftKey(state.storeId, state.y, state.m, shiftHalf);
   for (let i = -4; i <= 4; i += 1) {
@@ -11080,7 +11080,7 @@ function shiftGridBlock(rec, wishes, days) {
  *   日付ごと … 表の一番下の「ヘルプ」の行に「ヘルプ要請」「人員過多」のボタン。
  *              押すとキッチンかホールかと人数を選びます。出したものはボタンの上に並び、
  *              押せば直せます（0人にすると取り消し）。
- *   店舗どうし … 上の「ヘルプ要請を見る」で、**ほかの3店舗**が出しているものを
+ *   店舗どうし … 上の「ヘルプ要請を見る」で、**他の3店舗**が出しているものを
  *              日付ごとに見られます（どの店舗が・何人・キッチンかホールか）。
  * ★見た目は、すでにある .patty-box／.shift-patty／.memo-tags／.memo-tag／.modal を
  *   使い回しています（css/style.css は本部のもので、足していません）。
@@ -11118,7 +11118,7 @@ function helpReqCount(storeId, dateStr, kindId, laneId) {
 }
 
 /**
- * ほかの店舗が出しているもの（今日から先だけ）
+ * 他の店舗が出しているもの（今日から先だけ）
  *
  * ★自分の店舗の分は入れません。自分の分は、組む画面の表にもう出ているからです。
  * ★並びは 日付 → 店舗（SHIFT_HELP_STORES の順）→ 種類 → 持ち場。
@@ -11182,7 +11182,7 @@ function shiftHelpRow(days) {
       });
       td.appendChild(list);
     }
-    // ヘルプに出した人（ほかの店舗の表から数え直します → helpSentFrom）。押すと取り消せます
+    // ヘルプに出した人（他の店舗の表から数え直します → helpSentFrom）。押すと取り消せます
     const 送った = helpSentFrom(state.storeId, dateStr);
     if (送った.length) {
       const list = document.createElement('div');
@@ -11253,7 +11253,7 @@ function openHelpReq(dateStr, kindId, laneId) {
             autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
             placeholder="0" style="text-align:center;">
         </label>
-        <p class="modal__note">0人にすると取り消します。ほかの3店舗の「ヘルプ要請を見る」に出ます。</p>
+        <p class="modal__note">0人にすると取り消します。他の3店舗の「ヘルプ要請を見る」に出ます。</p>
         <div class="modal__actions modal__actions--confirm">
           <button type="button" class="btn" data-help-req-close>やめる</button>
           <button type="button" class="btn btn--primary" id="helpReqGo">決める</button>
@@ -11331,7 +11331,7 @@ function helpDayRaw(storeId, dateStr) {
 }
 
 /**
- * その店舗がその日に「ヘルプに出した」人（ほかの店舗の表から数え直します）
+ * その店舗がその日に「ヘルプに出した」人（他の店舗の表から数え直します）
  *
  * ★送り元には持っていません（→ js/config.js「ヘルプに出す」）。
  * ★並びは 受け入れる店舗（SHIFT_HELP_STORES の順）→ 時刻 → 名前。
@@ -11354,7 +11354,7 @@ function helpSentFrom(fromStore, dateStr) {
     || (Number(a.t) || 0) - (Number(b.t) || 0) || String(a.n).localeCompare(String(b.n), 'ja'));
 }
 
-/** 受け入れる店舗の表に、1人足す／外す（ほかの人・メモ・パティ・足りない数は1つも変えません） */
+/** 受け入れる店舗の表に、1人足す／外す（他の人・メモ・パティ・足りない数は1つも変えません） */
 function helpSendWrite(to, dateStr, slot, entry, remove) {
   const { key, raw } = helpDayRaw(to, dateStr);
   const list = (Array.isArray(raw[slot]) ? raw[slot] : []).slice();
@@ -11398,7 +11398,7 @@ function openHelpSend(dateStr) {
           <div class="seg" id="helpSendTimes" style="flex-wrap:wrap;"></div>
           <div class="free-time" style="margin-top:6px;">
             <input type="text" class="field__input" id="helpSendFree" inputmode="numeric" autocomplete="off"
-              autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="ほかの時刻（例 17:30）">
+              autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="他の時刻（例 17:30）">
           </div></div>
         <p class="modal__note">決めると、向こうの店舗のシフトのその日・その時刻に入ります（名簿に名前が無くても出ます）。</p>
         <div class="modal__actions modal__actions--confirm">
@@ -11535,12 +11535,12 @@ function helpReqBtnSync() {
   row.style.display = on ? '' : 'none';
   if (!on) return;
   const b = document.getElementById('helpReqListBtn');
-  // ★ほかの店舗から出ていれば、数を添えます。開かなくても気づけるように
+  // ★他の店舗から出ていれば、数を添えます。開かなくても気づけるように
   const n = helpReqOthers(state.storeId).filter((r) => r.kind === 'help').length;
   b.textContent = n ? `ヘルプ要請を見る（${n}件）` : 'ヘルプ要請を見る';
 }
 
-/** ほかの3店舗が出しているもの（日付ごと） */
+/** 他の3店舗が出しているもの（日付ごと） */
 function openHelpReqList() {
   let m = document.getElementById('helpReqListModal');
   if (!m) {
@@ -11569,7 +11569,7 @@ function openHelpReqList() {
   body.innerHTML = '';
   if (!list.length) {
     const p = document.createElement('p');
-    p.textContent = 'いまは、ほかの店舗から出ているものはありません。';
+    p.textContent = 'いまは、他の店舗から出ているものはありません。';
     p.style.cssText = 'margin:8px 0;color:var(--text-sub);';
     body.appendChild(p);
   }
@@ -11777,7 +11777,7 @@ function startShiftDrag(e, chip) {
     slot: td.dataset.slot,
     lane: td.dataset.lane,
     index: Number(chip.dataset.i),
-    // ★誰を持ったかも覚えておきます。つまんでいるあいだに、ほかの端末の
+    // ★誰を持ったかも覚えておきます。つまんでいるあいだに、他の端末の
     //   直しが届いて並びが変わることがあり、番号だけだと別人を動かしてしまいます
     name: chip.dataset.n || '',
   };
@@ -13509,7 +13509,7 @@ function render() {
   //   （ずっと10秒おきにすると、Apps Script の1日の上限に当たります）
   const wasHot = Sync.hot;
   Sync.hot = isDay && ymd(state.y, state.m, state.d) === ymd(TODAY.y, TODAY.m, TODAY.d);
-  // ★見ている店舗。ほかの端末の記録が届いて速くなる（3秒おき）のは、この店舗の記録のときだけです（js/sync.js）
+  // ★見ている店舗。他の端末の記録が届いて速くなる（3秒おき）のは、この店舗の記録のときだけです（js/sync.js）
   Sync.店舗 = state.storeId || '';
   if (Sync.hot !== wasHot && typeof Sync._loop === 'function') Sync._loop();
 
@@ -14105,7 +14105,7 @@ function bindEvents() {
     state.y = TODAY.y; state.m = TODAY.m;
     writeHash(); render();
   });
-  // アプリを閉じたり、ほかのアプリに移ったときも取りこぼしません
+  // アプリを閉じたり、他のアプリに移ったときも取りこぼしません
   window.addEventListener('pagehide', flushMeetingNotes);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') flushMeetingNotes();

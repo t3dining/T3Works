@@ -165,7 +165,7 @@ function shiftPersonMm(pt) {
  *
  * ★人がたくさん入っているマスだけ、そのマスの中で小さくします。
  *   前は「一番多いマス」に表全部を合わせていたので、
- *   7人入る日が1つあるだけで、ほかの日まで小さくなっていました。
+ *   7人入る日が1つあるだけで、他の日まで小さくなっていました。
  */
 function shiftCellPt(pt, count, roomMm) {
   if (count <= 0) return pt;
