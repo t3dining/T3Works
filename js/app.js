@@ -68,7 +68,7 @@ const el = {
   pinModal: $('pinModal'), pinInput: $('pinInput'), pinError: $('pinError'),
   codeInput: $('codeInput'), codeField: $('codeField'), codeHint: $('codeHint'),
   pinMessage: $('pinMessage'),
-  codeLater: $('codeLater'), appWho: $('appWho'),
+  codeLater: $('codeLater'), pinCancel: $('pinCancel'), appWho: $('appWho'),
   dayNum: $('dayNum'), dayDow: $('dayDow'), dayRollover: $('dayRollover'),
   progressBar: $('dayProgressBar'), progressText: $('dayProgressText'),
   checklist: $('checklistArea'), note: $('dayNote'), updated: $('dayUpdated'),
@@ -398,8 +398,18 @@ const ASSET_BASE = document.body.dataset.assets || '';
 /* ★設定の中の「使い方を見る」の行き先を、階層に合わせて直します。
      index.html には `help/` と書いてありますが、**マイン（mine/）から開くと
      `/mine/help/` を見に行って404**になります。ロゴ画像と同じ直し方です。
-     `../` + `help/` で `/help/` に戻ります。 */
-if (el.helpLink) el.helpLink.href = ASSET_BASE + 'help/';
+     `../` + `help/` で `/help/` に戻ります。
+     ★マイン（mine/）は **マインの使い方**（help/mine/）へ行きます。
+       ワークスの使い方には、シフトの名簿・会議資料・現金支払い管理表の手順がありません
+       （マニュアルが 2026-09-19 に別の本として作りました。本部、2026-09-22）。 */
+const マインの画面 = document.body.dataset.mode === 'mine';
+if (el.helpLink) {
+  el.helpLink.href = ASSET_BASE + (マインの画面 ? 'help/mine/' : 'help/');
+  if (マインの画面) {
+    const 説明 = el.helpLink.querySelector('.help-link__sub');
+    if (説明) 説明.textContent = 'シフトの名簿と番号・会議資料・現金支払い管理表の手順';
+  }
+}
 
 /* 画面に出すアプリ名。
    管理者用（mine/）は「T3 Works Mine」、スタッフ用は「T3 Works」 */
@@ -13607,18 +13617,29 @@ function renderWho() {
   el.appWho.classList.toggle('is-hidden', !名);
 }
 
-function openPinModal(message) {
+/* ★「PINを入れ直す」から開いたときだけ true。
+     前は同じ入口を通っていたので、**PINが入っている端末では番号の欄しか出ず、
+     PINを入れ直せませんでした**（配達記録と同じ穴。マニュアルの指摘、本部が直しました 2026-09-22）。 */
+let PINを入れ直す = false;
+
+function openPinModal(message, opts = {}) {
+  PINを入れ直す = !!opts.入れ直す;
   el.pinInput.value = '';
   el.pinError.textContent = message || '';
-  // ★PINが入っているなら、聞くのは番号だけです
-  const pin済み = !!Sync.pin();
+  // ★PINが入っているなら、聞くのは番号だけです（「PINを入れ直す」のときを除きます）
+  const pin済み = !!Sync.pin() && !PINを入れ直す;
   el.pinInput.closest('.pin-row').classList.toggle('is-hidden', pin済み);
-  document.getElementById('pinTitle').textContent = pin済み
-    ? 'あなたの番号を入れてください' : '合言葉（PIN）を入力してください';
-  el.pinMessage.innerHTML = pin済み
-    ? '誰が入力したかが分かるようにするための、あなただけの番号です。<br>'
+  // ★入れ直すときは番号の欄を出しません（番号は設定の「番号」から別に入れます）
+  el.codeField.classList.toggle('is-hidden', PINを入れ直す);
+  document.getElementById('pinTitle').textContent = PINを入れ直す
+    ? '合言葉（PIN）を入れ直してください'
+    : pin済み ? 'あなたの番号を入れてください' : '合言葉（PIN）を入力してください';
+  el.pinMessage.innerHTML = PINを入れ直す
+    ? '新しい合言葉を入れて「開く」を押します。<br>まちがっていたときは、いまの合言葉のままにします。'
+    : pin済み
+      ? '誰が入力したかが分かるようにするための、あなただけの番号です。<br>'
       + '一度入れれば、この端末では次回から不要です。'
-    : '全店舗で共有しているデータを開くために必要です。<br>'
+      : '全店舗で共有しているデータを開くために必要です。<br>'
       + '一度入力すれば、この端末では次回から不要です。';
   el.codeInput.value = Sync.code();
   /* 「あとで」は、**PINが通っているあいだだけ**出します。
@@ -13628,8 +13649,55 @@ function openPinModal(message) {
         この画面は背景を押しても閉じません（`pinModal` の backdrop に data-close がありません）。
         つまり**番号を入れるまで閉じられない**のが、締めつけ後の正しい形です（2026-09-16）。 */
   el.codeLater.classList.toggle('is-hidden', !pin済み || !!Sync.needStaffCode);
+  // 「やめる」は入れ直すときだけです（はじめての合言葉は、入れるまで閉じません）
+  el.pinCancel.classList.toggle('is-hidden', !PINを入れ直す);
   el.pinModal.classList.remove('is-hidden');
   setTimeout(() => (pin済み ? el.codeInput : el.pinInput).focus(), 50);
+}
+
+/**
+ * 「PINを入れ直す」（配達記録と同じ形。本部、2026-09-22）
+ *
+ * ★確かめは `Sync.ping()` で1回だけします。
+ *   ・同期（flush）は、まちがったPINを受け取ると**端末のPINを消します**（js/sync.js の bad_pin）。
+ *     入れ直しをまちがえただけで、今まで動いていたPINまで無くなるので使いません。
+ *     ping はPINを消しません。だめだったら、入れ直す前のPINに戻します
+ *   ・まちがったPINの ping も、同期と同じ締め出しの数（pinFail）に数えられます。
+ *     10分に10回で**全店舗が約10分締め出されます。**自動で送り直さないこと。
+ *     二度押しで2回飛ばないよう、確かめ中は受け付けません
+ */
+let PINを確かめ中 = false;
+
+async function PINを入れ替える() {
+  if (PINを確かめ中) return;
+  const pin = toHalfWidth(el.pinInput.value).trim();
+  if (!pin) { el.pinError.textContent = 'PINを入力してください。'; return; }
+  const 前のPIN = Sync.pin();
+  PINを確かめ中 = true;
+  el.pinError.textContent = '確認中…';
+  try {
+    Sync.setPin(pin);
+    const res = await Sync.ping();
+    // ★need_staff_code は「PINは合っている。番号が要る」という返事です
+    if (res.ok || res.code === 'need_staff_code') {
+      PINを入れ直す = false;
+      if (!res.ok) { openPinModal('合言葉は通りました。番号を入れてください。'); return; }
+      el.pinModal.classList.add('is-hidden');
+      renderWho();
+      Sync.start(); render();
+      Sync.scheduleFlush(0);
+      return;
+    }
+    // だめだったときは、入れ直す前のPINに戻します（消さずに残す）
+    if (前のPIN) Sync.setPin(前のPIN); else Sync.clearPin();
+    el.pinError.textContent = res.code === 'bad_pin'
+      ? 'PINが違います。入れ直す前のPINのままにしてあります。'
+      : res.code === 'locked'
+        ? 'PINの入力を続けて間違えたため、しばらく受け付けません（約10分）。入れ直す前のPINのままにしてあります。'
+        : `${res.error || '確かめられませんでした。'}（入れ直す前のPINのままにしてあります）`;
+  } finally {
+    PINを確かめ中 = false;
+  }
 }
 
 /** 番号だけを聞きたいとき（PINは通っている） */
@@ -13638,6 +13706,7 @@ function askStaffCode(message) {
 }
 
 async function submitPin() {
+  if (PINを入れ直す) return PINを入れ替える();
   // 全角で入れても通るように、半角に直してから確かめます
   if (Sync.pin()) {
     // PINは通っています。番号だけ確かめます
@@ -14116,7 +14185,13 @@ function bindEvents() {
     });
   }
   $('syncNow').addEventListener('click', () => Sync.flush());
-  $('pinChange').addEventListener('click', () => { closeModal(); openPinModal(); });
+  $('pinChange').addEventListener('click', () => { closeModal(); openPinModal('', { 入れ直す: true }); });
+  // 入れ直すのをやめる。PINは入れ直す前のまま（まだ何も変えていません）
+  el.pinCancel.addEventListener('click', () => {
+    if (PINを確かめ中) return;
+    PINを入れ直す = false;
+    el.pinModal.classList.add('is-hidden');
+  });
   $('pinOk').addEventListener('click', submitPin);
   el.pinInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !imeEnter(e)) submitPin(); });
   el.codeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !imeEnter(e)) submitPin(); });
