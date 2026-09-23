@@ -965,10 +965,20 @@ const VoiceView = (() => {
       if (e.key === 'Escape' && !panel.classList.contains('is-hidden')) 閉じる();
     });
     /* ★画面の向きが変わると、ヘッダーの高さも変わります（横にするとスマホは低くなります）。
-         置き直さないと、パネルがヘッダーに重なるか、下に隙間が空きます */
-    window.addEventListener('resize', () => {
+         置き直さないと、パネルがヘッダーに重なるか、下に隙間が空きます。
+
+       ★**3つとも要ります**（本部の指摘・2026-09-23。どれも実機でしか出ません）。
+         ・`resize` … ふつうの大きさ変わり
+         ・`orientationchange` … ★iOS は `resize` が鳴った時点で**ヘッダーの高さがまだ変わっていない**
+           ことがあり、回転前の値で置いてしまいます。こちらでもう一度置き直します
+         ・`visualViewport` の `resize` … ★iOS は**ソフトキーボードで `window` の `resize` が鳴りません**。
+           いまは「ひとこと」以外を打たずに出せるので当たる場面は減りましたが、打つ人はいます */
+    const 置き直す = () => {
       if (!panel.classList.contains('is-hidden')) ヘッダーの下に置く();
-    });
+    };
+    window.addEventListener('resize', 置き直す);
+    window.addEventListener('orientationchange', 置き直す);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', 置き直す);
     // 同期で返事が届いたら、赤い印を出し直します
     setInterval(() => {
       印を出す();
@@ -984,6 +994,9 @@ const VoiceView = (() => {
   }
 
   return {
+    // ★`ヘッダーの下に置く` は検算から呼びます（実機の回転は試せないので、
+    //   「**高さが変わったら追いかけるか**」だけを作り物の DOM で通します）
+    ヘッダーの下に置く,
     入れ先, 種類たち, 状態たち, 本文の上限, 写真の上限, 動画の上限, 添付の数, 動画の秒,
     文字, 新しい印, キー, 全部, ひとつ, 新しい返事の数, 確かめる, 大きさの文,
   };
