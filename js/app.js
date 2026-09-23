@@ -3028,6 +3028,22 @@ async function gasWhichOld() {
   } catch (e) { return ''; }                  // 通信できないときは決めつけません
 }
 
+/**
+ * GAS が、このアプリの待っている版を**追い越しているか**
+ *
+ * ★版の印はただの8文字なので、2つ見くらべても**どちらが新しいかは分かりません。**
+ *   そこで GAS に「1つ前の版」を返してもらいます（`res.prev`、新しい順・多くて5つ）。
+ *   自分の待っている版がそこにあれば、**GAS が先に進んだ＝こちらが古い**と言い切れます。
+ *
+ * ★2026-09-22、これが無いために「デプロイしてください」と**逆の案内**を出し、
+ *   ko-dai さんを貼り直しに行かせました。GAS はもう新しく、貼っても直りませんでした。
+ * ★古い GAS は prev を返しません。そのときは今までどおりの案内に落ちます。
+ */
+function gas追い越された(前, アプリ) {
+  if (!前 || !アプリ) return false;
+  return String(前).split(',').indexOf(String(アプリ)) >= 0;
+}
+
 const GAS_HARIKATA = 'Apps Script の右上「デプロイ」→「デプロイを管理」→ '
   + '今使っているデプロイの鉛筆 → バージョンを「新バージョン」→「デプロイ」';
 
@@ -3057,6 +3073,22 @@ function gasChigauText(なに, サーバー, アプリ, どっち) {
     return `${なに} が古いままです${版}。`
       + `★コードを貼っただけでは切り替わりません。${GAS_HARIKATA}`;
   }
+  /* ★ここから3つは「GAS が先に進んでいる」形です（`prev` で分かります）。
+       貼り直しても直りません。直すのはアプリの側です。 */
+  if (どっち === '追い越し') {
+    return `${なに} より、アプリの方が古いです${版}。`
+      + '★GASはもう新しいので、貼り直しても直りません。'
+      + 'まず、アプリを閉じて開き直してください。';
+  }
+  if (どっち === '追い越し端末') {
+    return `${なに} より、この端末のアプリが古いままです${版}。`
+      + '★アプリを閉じて、開き直してください。GASを貼る必要はありません。';
+  }
+  if (どっち === '追い越し控え') {
+    return `${なに} より、公開されているアプリが古いままです${版}。`
+      + '★開き直しても直りません。GASを貼るのも違います（GASはもう新しいです）。'
+      + '新しいアプリが出るのを待ってください。この文をそのまま知らせてください。';
+  }
   return `${なに} と、この端末のアプリの版が食いちがっています${版}。`
     + '★まず、アプリをいったん閉じて開き直してください（端末のアプリが古いだけのことがあります）。'
     + `それでも同じなら、GASのデプロイです：${GAS_HARIKATA}`;
@@ -3069,16 +3101,36 @@ function gasChigauText(なに, サーバー, アプリ, どっち) {
  *   分かったら**そのときの文のまま**なら差しかえます
  *   （待っているあいだに別の知らせが出ていたら、消しません）。
  */
-function gasChigauShow(出す, なに, サーバー, アプリ, なかみ) {
-  出す(gasChigauText(なに, サーバー, アプリ, サーバー ? '' : (なかみ || '')), 'warn');
+/**
+ * 出す文を決めます（★試験がここを直接見ます）
+ *
+ * ★追い越されているときは、GASを貼る案内を絶対に出しません。
+ *   `gasWhichOld()` の 'GAS'（＝この端末は公開ずみのものと同じ）は、
+ *   追い越されている場面では「**公開されているアプリの控えが古い**」という意味になります。
+ *   2026-09-22 は、ここが無かったので「デプロイしてください」と出しました。
+ */
+function gas向きを決める(追い越し, どっち) {
+  if (!追い越し) return どっち;
+  return どっち === 'アプリ' ? '追い越し端末' : '追い越し控え';
+}
+
+function gasChigauShow(出す, なに, サーバー, アプリ, なかみ, 前) {
+  /* ★「GAS が追い越している」は、その場で決まります（通信は要りません）。
+       そのうえで、端末が古いのか、公開されているアプリの控えが古いのかを、あとから分けます。 */
+  const 追い越し = gas追い越された(前, アプリ);
+  const はじめ = 追い越し ? '追い越し' : (サーバー ? '' : (なかみ || ''));
+  出す(gasChigauText(なに, サーバー, アプリ, はじめ), 'warn');
   // ★版が分からないときは、向きを調べません（調べても意味がありません）
   if (!サーバー) return;
-  const 出した = gasChigauText(なに, サーバー, アプリ, '');
+  const 出した = gasChigauText(なに, サーバー, アプリ, 追い越し ? '追い越し' : '');
   gasWhichOld().then((どっち) => {
     if (!どっち) return;
     const いまの文 = (なに === '日報に書く.gs' ? el.cashNippouMsg : el.cashMsg);
     if (!いまの文 || いまの文.textContent !== 出した) return;   // 別の知らせに変わっています
-    出す(gasChigauText(なに, サーバー, アプリ, どっち), 'warn');
+    /* ★追い越されているときは、GASを貼る案内を絶対に出しません。
+         gasWhichOld の 'GAS'（＝この端末は公開ずみのものと同じ）は、
+         追い越されている場面では「**公開されているアプリの控えが古い**」という意味になります。 */
+    出す(gasChigauText(なに, サーバー, アプリ, gas向きを決める(追い越し, どっち)), 'warn');
   });
 }
 
@@ -3105,7 +3157,7 @@ function nippou版を覚える(res) {
 function nippouGasOk(res) {
   const now = nippou版を覚える(res);
   if (now === NIPPOU_GAS_VERSION) return true;
-  gasChigauShow(setNippouMsg, '日報に書く.gs', now, NIPPOU_GAS_VERSION, gasNakami(res));
+  gasChigauShow(setNippouMsg, '日報に書く.gs', now, NIPPOU_GAS_VERSION, gasNakami(res), res && res.prev);
   return false;
 }
 
@@ -4575,7 +4627,7 @@ function cashGasOk(res, 読むだけ) {
   // ★もらった版を覚えます。写真の「届いたか」の聞き直し（journal送る）は、この版で使えるかを決めます
   if (now) { try { Store.setMeta('cashGasSeen', now); } catch (e) { /* 覚えられなくても進みます */ } }
   if (now === CASH_GAS_VERSION) return true;
-  gasChigauShow(setCashMsg, '現金売上.gs', now, CASH_GAS_VERSION, gasNakami(res));
+  gasChigauShow(setCashMsg, '現金売上.gs', now, CASH_GAS_VERSION, gasNakami(res), res && res.prev);
   /* ★版が**分からない**だけのときは、読み取りは続けます。
        読み取り（mode:'read'）はドライブに何も残しません。止める理由がありません。
        版が**ちがう**ときは、これまでどおり止めます。

@@ -4318,7 +4318,7 @@ const JOURNAL_WORKER_W = 1;
  *   サーバーが返してくる印とちがっていたら、貼り直しがまだ、ということです。
  *   写真を撮ったときに、その場で画面に出します。
  */
-const CASH_GAS_VERSION = '43f2f7e0';
+const CASH_GAS_VERSION = 'cc989b90';
 
 /**
  * 貼ってほしい 日報に書く.gs の版の印
@@ -4332,7 +4332,7 @@ const CASH_GAS_VERSION = '43f2f7e0';
  *   古いGASのままだと「入れた式を次の日に書き直せない」状態になりました。
  *   そこで書く前に版を見くらべ、食いちがっていれば**書かせません**。
  */
-const NIPPOU_GAS_VERSION = '25be1d63';
+const NIPPOU_GAS_VERSION = '8f8fbe03';
 
 
 /* ------------------------------------------------------------
