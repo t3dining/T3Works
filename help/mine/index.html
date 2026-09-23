@@ -14,7 +14,7 @@
      ★見た目と動きは ../css/help.css と ../js/help.js（4つの使い方で同じもの）。
      ★公開の道具が PDF「マニュアル/マインの使い方.pdf」を作ります（道具/公開する.py の `使い方の本`）。
      ★人の名前・番号・金額・合言葉は書きません。例は ◯ にします -->
-<meta name="app-version" content="d136c49f">
+<meta name="app-version" content="bbfb2e5d">
 </head>
 <body>
 
@@ -301,7 +301,7 @@
     <ul class="help-list">
       <li><b>未読</b>（はじめはこれです）</li>
       <li><b>見ました</b></li>
-      <li><b>直しています</b></li>
+      <li><b data-app="voice">直しています</b></li>
       <li><b>直しました</b></li>
       <li><b>しません</b></li>
     </ul>
@@ -312,7 +312,7 @@
 
     <h3>返事を書く</h3>
     <p>
-      枠に書いて<b>「返事を出す」</b>を押します。
+      枠に書いて「<b data-app="voice">返事を出す</b>」を押します。
       返事は<b>番号を持っている人なら誰でも見られます</b>（出した本人だけではありません）。
     </p>
 
