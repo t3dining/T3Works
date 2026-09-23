@@ -2317,6 +2317,7 @@ function renderNippouBox(done) {
 
   renderNippouMinusNote();
   renderGridBox();
+  journal日ごとAuto();   // ★日報の日ごとの数を、裏で読み直します（読むだけ）
   /* ★率は**見るだけのもの**です。ここで落ちると、この下の「どこに書くか」の札や
        日報からの取り込みまで動かなくなり、**閉店の作業が止まります。**
        だから、落ちても画面は進めます（コンソールには残します）。
@@ -2499,6 +2500,51 @@ const gridAuto = {};
  * ★合言葉が入っていない・日報フォルダが未登録・通信できない、
  *   のときは**黙って何もしません**。押すボタンは残してあります。
  */
+/* ------------------------------------------------------------
+ *  日報の「日ごとの数」を、裏で読み直します（★読むだけ。1マスも書きません）
+ *
+ *  ★仕入先の一覧（cashGridAuto）と同じ形です。人は何も押しません。
+ *  ★**日報は毎日変わります。**その月を開いていて、覚えたものが古ければ読み直します。
+ *    古い数を今の数だと思って見ないように、時間で切ります（6時間）。
+ *  ★失敗しても黙って進みます（次に開いたときに、また読みます）。
+ *    そのあいだの累計は、アプリに入れた数だけで出ます。
+ * ---------------------------------------------------------- */
+const 日ごとの読み直し = 6 * 60 * 60 * 1000;
+const 日ごとAuto = {};
+
+function journal日ごとAuto() {
+  const key = `${state.storeId}/${state.y}-${state.m}`;
+  if (日ごとAuto[key]) return;                    // この画面では1回だけ
+  if (!Sync.enabled || !Sync.enabled() || !Sync.pin()) return;
+  const test = nippouTestFor(state.storeId);
+  if (!test && !NippouFolders.get(state.storeId)) return;
+  const 覚え = NippouDays.get(state.storeId, state.y, state.m);
+  if (覚え && 覚え.at && (Date.now() - new Date(覚え.at).getTime()) < 日ごとの読み直し) return;
+  日ごとAuto[key] = true;
+  journal日ごとLoad();
+}
+
+async function journal日ごとLoad() {
+  const store = state.storeId;
+  const y = state.y;
+  const m = state.m;
+  const test = nippouTestFor(store);
+  const folder = test ? '' : NippouFolders.get(store);
+  if (!test && !folder) return;
+  try {
+    const res = await Sync.ask('nippouWrite', {
+      mode: '日ごと', file: test, folder, day: ymd(y, m, 1), values: {},
+    }, { ms: ASK_上限.日報, hedge: true });
+    // ★古い GAS は「日ごと」を知らず、'見る' として返します（days が入っていません）
+    if (!res || !res.ok || !res.days) return;
+    // ★読んでいるあいだに別の店舗・別の月へ移っていても、読んだときの店舗と月に入れます
+    NippouDays.save(store, y, m, res.days);
+    render();
+  } catch (e) {
+    /* ★黙って進みます。累計はアプリに入れた数だけで出ます（次に開いたときに、また読みます） */
+  }
+}
+
 function cashGridAuto() {
   const key = `${state.storeId}/${state.y}-${state.m}`;
   if (gridAuto[key]) return;                                  // この画面では1回だけ
@@ -2536,6 +2582,38 @@ function cashGridAuto() {
  *  ★売上が分からない日（読めなかった・まだ入れていない）は、**累計に足しません。**
  *    分母だけ抜けると率が跳ね上がるためです。代わりに「入れたのに数えられなかった日」として数えます。
  * ---------------------------------------------------------- */
+
+/* ------------------------------------------------------------
+ *  日報から読んだ「日ごとの数」（★端末ごとに覚えます。共有の記録には入れません）
+ *
+ *  ★アプリの記録に混ぜません。混ぜると、月の一覧に「記録した日」が勝手に増え、
+ *    写真の無い記録ができます。**見るための数**なので、端末に置けば足ります。
+ *  ★仕入先の一覧（GridCache）と同じ置き方です。
+ * ---------------------------------------------------------- */
+const NippouDays = {
+  _key(storeId, y, m) { return `t3works.nippouDays.${storeId}.${y}${pad2(m)}`; },
+  get(storeId, y, m) {
+    try { return JSON.parse(localStorage.getItem(this._key(storeId, y, m)) || 'null'); }
+    catch (e) { return null; }
+  },
+  save(storeId, y, m, days) {
+    try {
+      localStorage.setItem(this._key(storeId, y, m),
+        JSON.stringify({ days: days || {}, at: new Date().toISOString() }));
+    } catch (e) { /* 入らなくても、読み直せば済みます */ }
+  },
+};
+
+/** その日の、日報の数（無ければ null） */
+function journal日報の日(storeId, dateStr) {
+  const hit = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || ''));
+  if (!hit) return null;
+  const 覚え = NippouDays.get(storeId, Number(hit[1]), Number(hit[2]));
+  const 日 = 覚え && 覚え.days && 覚え.days[String(Number(hit[3]))];
+  if (!日) return null;
+  const 取る = (k) => (typeof 日[k] === 'number' ? 日[k] : null);
+  return { 原価: 取る('cost'), 人件費: 取る('labor'), 税込: 取る('inc'), 税抜: 取る('ex') };
+}
 
 /** 打った数を足します（式「=1000+2000」も読みます。1つも入っていなければ null） */
 function journal率の入力(手) {
@@ -2580,12 +2658,20 @@ function journal率の売上(j, sure, 手) {
 
 /** 1日分。いま開いている日なら、**打ちかけ**も見ます（記録する前でも出します） */
 function journal率の1日(storeId, dateStr, いまの日) {
+  /* ★どちらを使うか
+       開いている日 … **アプリの数**（打っている最中に変わらないように）。
+                       まだ何も入れていなければ、日報の数を使います
+       過ぎた日     … **日報の数**（そちらが正です）。無ければアプリの数 */
+  const 日報 = journal日報の日(storeId, dateStr);
   if (いまの日) {
-    return {
+    const 自分 = {
       ...journal率の入力({ shiire: cashEdit.shiire, jinken: cashEdit.jinken }),
       ...journal率の売上(cashEdit.j, cashEdit.sure, cashEdit.手),
     };
+    const 何か = [自分.原価, 自分.人件費, 自分.税込, 自分.税抜].some((x) => x !== null);
+    return (何か || !日報) ? 自分 : 日報;
   }
+  if (日報) return 日報;
   const items = (Store.getDay(storeId, dateStr) || {}).items || {};
   const 手 = (items[CASH_HAND] && items[CASH_HAND].value) || {};
   const 記 = (items[CASH_ITEM] && items[CASH_ITEM].value) || null;
