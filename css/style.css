@@ -4343,3 +4343,109 @@ body.print-shift .shift-sheet__name.is-full .shift-sheet__who::after { font-size
 .cash-box__date.is-bad { color: #c0392b; font-weight: 800; }
 .cash-checks { color: var(--text-weak); font-size: 11px; margin: 10px 0 0; line-height: 1.6; }
 .cash-nippou td.is-to.is-ng { color: #c0392b; font-weight: 700; }
+
+/* ===== ご意見（アプリ内フィードバック） =====
+   ★入れ物（.interview）は面接マニュアルと同じものを使い回しています。
+     ここに足すのは、中身の並べ方だけです */
+/* ★position: relative は、右上の赤い印（.voice-dot）を、このボタンの中に置くためです。
+   無いと、印が画面の右上に飛びます（2026-09-23、ブラウザで確かめました） */
+.stores-big-btn--voice { --pick: #2a9d8f; position: relative; }
+
+/* 返事が来たときの赤い印（T3Dining の欄のボタンに出ます） */
+.voice-dot {
+  position: absolute; top: 10px; right: 42px;
+  min-width: 20px; height: 20px; padding: 0 6px;
+  border-radius: 10px; background: #d64545; color: #fff;
+  font-size: 12px; line-height: 20px; text-align: center; font-weight: 700;
+}
+
+.voice__new {
+  margin-left: auto; padding: 6px 14px;
+  border: 0; border-radius: 8px; background: #2a9d8f; color: #fff;
+  font-size: 15px; font-weight: 700; cursor: pointer;
+}
+.voice__new.is-hidden { display: none; }
+
+.voice-list { display: flex; flex-direction: column; gap: 10px; }
+.voice-card {
+  display: flex; flex-direction: column; gap: 6px;
+  width: 100%; padding: 12px 14px; text-align: left;
+  border: 1px solid #e0e4e8; border-left: 4px solid #2a9d8f; border-radius: 10px;
+  background: #fff; cursor: pointer; font-size: 15px;
+}
+.voice-card--bug { border-left-color: #d64545; }
+.voice-card--want { border-left-color: #d9a22b; }
+.voice-card--ask { border-left-color: #2b7fd4; }
+.voice-card__head { display: flex; align-items: center; gap: 8px; }
+.voice-card__kind { font-weight: 700; }
+.voice-card__state {
+  margin-left: auto; padding: 2px 8px; border-radius: 999px;
+  background: #eef1f4; color: #555; font-size: 12px;
+}
+.voice-card__state--直しました { background: #e3f3ea; color: #1f7a46; }
+.voice-card__state--しません { background: #eee; color: #777; }
+.voice-card__body { color: #333; line-height: 1.5; }
+.voice-card__foot { display: flex; gap: 10px; color: #777; font-size: 13px; }
+.voice-card__reply { color: #1f7a46; font-weight: 700; }
+.voice-empty { padding: 24px 8px; color: #777; text-align: center; }
+
+.voice-form { display: flex; flex-direction: column; gap: 6px; }
+.voice-kinds { display: flex; gap: 8px; margin-bottom: 8px; }
+.voice-kind { flex: 1; }
+.voice-kind input { position: absolute; opacity: 0; }
+.voice-kind span {
+  display: block; padding: 10px 6px; text-align: center;
+  border: 1px solid #d5dbe0; border-radius: 8px; background: #fff; font-size: 14px;
+}
+.voice-kind input:checked + span { border-color: #2a9d8f; background: #e8f5f3; font-weight: 700; }
+.voice-label { margin-top: 10px; font-size: 14px; font-weight: 700; color: #444; }
+.voice-text {
+  width: 100%; padding: 10px; font-size: 16px; line-height: 1.6;
+  border: 1px solid #d5dbe0; border-radius: 8px; resize: vertical;
+}
+.voice-count { margin: 2px 0 0; color: #888; font-size: 12px; text-align: right; }
+.voice-note { margin: 2px 0; color: #666; font-size: 13px; line-height: 1.5; }
+.voice-file { margin-top: 6px; font-size: 14px; }
+.voice-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.voice-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 8px; border-radius: 999px; background: #eef1f4; font-size: 13px;
+}
+.voice-chip__x { border: 0; background: none; cursor: pointer; color: #888; font-size: 14px; }
+.voice-warn {
+  margin-top: 12px; padding: 10px; border-radius: 8px;
+  background: #fdf3f3; color: #8a3b3b; font-size: 13px; line-height: 1.6;
+}
+.voice-actions { display: flex; gap: 8px; margin-top: 14px; }
+.voice-actions--drop { margin-top: 24px; }
+.voice-btn {
+  flex: 1; padding: 12px; border: 1px solid #d5dbe0; border-radius: 8px;
+  background: #fff; font-size: 16px; cursor: pointer;
+}
+.voice-btn--send { border-color: #2a9d8f; background: #2a9d8f; color: #fff; font-weight: 700; }
+.voice-btn--drop { border-color: #d6b3b3; color: #a04141; }
+.voice-state { margin-top: 8px; color: #444; font-size: 14px; min-height: 1.4em; }
+
+.voice-back { margin-bottom: 10px; border: 0; background: none; color: #2b7fd4; font-size: 15px; cursor: pointer; }
+.voice-one__kind { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.voice-one__body { white-space: pre-wrap; line-height: 1.7; font-size: 16px; }
+.voice-one__foot { color: #777; font-size: 13px; }
+.voice-one__id { color: #999; font-size: 12px; }
+.voice-shots { display: flex; flex-direction: column; gap: 8px; }
+.voice-shot { padding: 8px; border: 1px dashed #d5dbe0; border-radius: 8px; }
+.voice-shot--movie { background: #f7f8f9; }
+.voice-shot__note { margin: 0; color: #666; font-size: 13px; line-height: 1.6; }
+.voice-shot__img { width: 100%; border-radius: 6px; }
+.voice-reply {
+  margin-top: 16px; padding: 12px; border-radius: 8px;
+  background: #e8f5f3; border-left: 4px solid #2a9d8f;
+}
+.voice-reply__head { margin: 0 0 4px; font-weight: 700; font-size: 14px; }
+.voice-reply__body { margin: 0; white-space: pre-wrap; line-height: 1.6; }
+.voice-write { margin-top: 20px; padding-top: 16px; border-top: 1px solid #e0e4e8; }
+.voice-states { display: flex; flex-wrap: wrap; gap: 6px; }
+.voice-state-btn {
+  padding: 6px 12px; border: 1px solid #d5dbe0; border-radius: 999px;
+  background: #fff; font-size: 14px; cursor: pointer;
+}
+.voice-state-btn.is-on { border-color: #2a9d8f; background: #2a9d8f; color: #fff; font-weight: 700; }

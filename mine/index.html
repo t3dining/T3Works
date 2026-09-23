@@ -13,8 +13,8 @@
 <link rel="icon" type="image/png" sizes="512x512" href="../img/mine-icon-512.png?v=2dbb903e">
 <link rel="icon" type="image/png" sizes="64x64" href="../img/mine-icon-64.png?v=ea09f133">
 <title>T3 Works Mine｜T3Dining株式会社</title>
-<link rel="stylesheet" href="../css/style.css?v=e47757a9">
-<meta name="app-version" content="fd0dc5e2">
+<link rel="stylesheet" href="../css/style.css?v=1c41d5c8">
+<meta name="app-version" content="ff831f92">
 </head>
 <body data-mode="mine" data-assets="../">
 
@@ -165,6 +165,17 @@
     </button>
 
     <!-- ストーリーズ作成は T3 Owner（owner/）に移しました -->
+
+    <!-- ご意見・不具合（2026-09-23）。開くのは js/voice.js です（js/app.js には書いていません）。
+         ★中身（投稿と返事）はここに書きません。記録として同期で届きます -->
+    <button type="button" class="stores-big-btn stores-big-btn--voice" id="storesVoiceBtn">
+      <span class="stores-big-btn__icon" aria-hidden="true">💬</span>
+      <span class="stores-big-btn__text">
+        <span class="stores-big-btn__name">ご意見・不具合</span>
+        <span class="stores-big-btn__sub">アプリの困りごとや「こうしてほしい」を出す</span>
+      </span>
+      <span class="stores-big-btn__arrow" aria-hidden="true">›</span>
+    </button>
 
     <!-- ★★ここが T3Dining の欄の一番下です。「QRコード・URL」より下に、ボタンを足さないでください
          （ko-dai さんの指示・2026-09-18）。開くのは js/share.js です -->
@@ -1618,6 +1629,18 @@
   </div>
 </div>
 
+<!-- ご意見（2026-09-23）。★画面（view）にはしていません。出し入れは js/voice.js だけで完結します -->
+<div class="interview voice-panel is-hidden" id="voicePanel" role="dialog" aria-modal="true" aria-labelledby="voiceTitle">
+  <div class="interview__bar">
+    <button type="button" class="interview__close" id="voiceClose" aria-label="閉じる">✕</button>
+    <h2 class="interview__title" id="voiceTitle">ご意見・不具合</h2>
+    <button type="button" class="voice__new" id="voiceNew">出す</button>
+  </div>
+  <div class="interview__scroll">
+    <div id="voiceMain"></div>
+  </div>
+</div>
+
 <script src="../js/config.js?v=2f1c7524"></script>
 <script src="../js/storage.js?v=0d227957"></script>
 <script src="../js/sync.js?v=528e7255"></script>
@@ -1628,5 +1651,6 @@
 <script src="../js/app.js?v=1169b3c6"></script>
 <script src="../js/interview.js?v=1f652c4a"></script>
 <script src="../js/share.js?v=cf7a91f8"></script>
+<script src="../js/voice.js?v=dfad5e93"></script>
 </body>
 </html>
