@@ -297,6 +297,7 @@ const VoiceView = (() => {
           </span>
           <span class="voice-card__body">${文字(String(r.本文 || '').slice(0, 80))}${String(r.本文 || '').length > 80 ? '…' : ''}</span>
           <span class="voice-card__foot">
+            ${r.店舗 ? `<span>${文字(店舗の名(r.店舗))}</span>` : ''}
             <span>${名}</span>
             <span>${文字(日時の文(r.出した時))}</span>
             ${添付 ? `<span class="voice-card__clip">📎 ${添付}</span>` : ''}
@@ -435,6 +436,27 @@ const VoiceView = (() => {
     ],
   };
 
+  /**
+   * どの店舗のことか
+   *
+   * ★`STORES`（`js/config.js` の共通）から作ります。**自前で並べません。**
+   *   店舗が増えたり名前が変わったりしたとき、ここだけ古くなるのを防ぐためです。
+   * ★「店舗に関係ない」も必ず置きます。アプリ全体の話や、家で気づいたことも出せるように。
+   */
+  function 店舗たち() {
+    const 元 = (typeof STORES !== 'undefined' && Array.isArray(STORES)) ? STORES : [];
+    return 元.map((x) => ({ id: x.id, 名: x.name }))
+      .concat([{ id: 'none', 名: '店舗に関係ない・全体のこと' }]);
+  }
+
+  const 店舗の名 = (id) => {
+    if (!id) return '';
+    if (id === 'none') return '店舗に関係ない';
+    const 元 = (typeof STORES !== 'undefined' && Array.isArray(STORES)) ? STORES : [];
+    const x = 元.find((s) => s.id === id);
+    return x ? x.name : id;
+  };
+
   /** いつからか（不具合のときだけ聞きます） */
   const いつたち = [
     { id: 'now', 名: 'さっき' },
@@ -455,6 +477,7 @@ const VoiceView = (() => {
       bug: 'どうなりましたか', want: '何をしてほしいですか', ask: '何が分かりませんか',
     }[種類] || 'どうしましたか';
     const 並び = [
+      { id: '店舗', 題: 'どの店舗のことですか', 札: 店舗たち() },
       { id: '画面', 題: 'どの画面のことですか', 札: 画面たち },
       { id: '症状', 題, 札: 症状たち[種類] || [] },
     ];
@@ -540,6 +563,7 @@ const VoiceView = (() => {
     const 症状の見出し = { bug: 'どうなった', want: 'してほしいこと', ask: '聞きたいこと' }[答え.種類] || '中身';
     const 選んだ行 = [
       ['何のこと', 種類の名(答え.種類)],
+      ['どの店舗', 店舗の名(答え.店舗)],
       ['どの画面', 画面の名(答え.画面)],
       [症状の見出し, 症状の名(答え.種類, 答え.症状)],
     ];
@@ -670,8 +694,9 @@ const VoiceView = (() => {
   /** 選んだものから、読める文を組み立てます（一覧と1件に出る本文になります） */
   function 本文を組む(ひとこと) {
     const 並び = 問いの並び(答え.種類);
+    const 店 = 店舗の名(答え.店舗);
     const 行 = [
-      `${画面の名(答え.画面)}／${症状の名(答え.種類, 答え.症状)}`,
+      `${店 ? `${店}／` : ''}${画面の名(答え.画面)}／${症状の名(答え.種類, 答え.症状)}`,
     ];
     if (答え.いつ) 行.push(`いつから：${いつの名(答え.いつ)}`);
     if (ひとこと) 行.push(ひとこと);
@@ -723,7 +748,10 @@ const VoiceView = (() => {
         いつ: 答え.いつ || '',
         ひとこと,
         本文: 本文を組む(ひとこと),  // ★古い投稿と同じ形でも読めるように、文も作って入れます
-        店舗: いまの店舗(),
+        // ★選んだ店舗を入れます。「店舗に関係ない」は空にします
+        //   （開いている店舗を自動で入れる形はやめました。T3Dining の欄から開くと、
+        //     どの店舗も開いていないので**いつも空**になるためです。2026-09-23）
+        店舗: 答え.店舗 === 'none' ? '' : (答え.店舗 || いまの店舗()),
         番号: 私の番号(),     // ★名前は受け側が入れます（端末は名簿を持っていません）
         名前: '',
         版: いまの版(),
@@ -840,9 +868,30 @@ const VoiceView = (() => {
    *  出し入れ
    * ---------------------------------------------------------- */
 
+  /**
+   * パネルを、ヘッダーのすぐ下から始めます
+   *
+   * ★右上の「同期のしるし」「⚙ 設定」「📋 提出記録」（マインでは「ホーム」「Manage」も）を、
+   *   このページでも**そのまま使える**ようにするためです（ko-dai さんの指示・2026-09-23）。
+   * ★**同じものをパネルの中に作り直しません。**同期のしるしを描いているのは `js/app.js` で、
+   *   作り直すと**更新が2か所**になります。片方だけ古い状態で止まり、**落ちないので気づけません**。
+   *   本物を出しておけば、更新は1か所のままです。
+   * ★`css/style.css` は本部の持ち物なので触りません。この1行だけ、ここで当てます
+   *   （`.interview` は面接マニュアルと QRコード・URL も使っているので、CSS を変えると
+   *     よその分野の見た目まで変わります）。
+   */
+  function ヘッダーの下に置く() {
+    const panel = document.getElementById('voicePanel');
+    const header = document.querySelector('.app-header');
+    if (!panel) return;
+    if (!header) { panel.style.top = ''; return; }   // ヘッダーが無い画面では、今までどおり全面
+    panel.style.top = `${Math.round(header.getBoundingClientRect().height)}px`;
+  }
+
   function 開く() {
     const panel = document.getElementById('voicePanel');
     if (!panel) return;
+    ヘッダーの下に置く();
     いまの画面 = 'list';
     panel.classList.remove('is-hidden');
     document.body.classList.add('is-voice-open');
@@ -879,6 +928,11 @@ const VoiceView = (() => {
     });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !panel.classList.contains('is-hidden')) 閉じる();
+    });
+    /* ★画面の向きが変わると、ヘッダーの高さも変わります（横にするとスマホは低くなります）。
+         置き直さないと、パネルがヘッダーに重なるか、下に隙間が空きます */
+    window.addEventListener('resize', () => {
+      if (!panel.classList.contains('is-hidden')) ヘッダーの下に置く();
     });
     // 同期で返事が届いたら、赤い印を出し直します
     setInterval(() => {
