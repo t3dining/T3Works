@@ -12,7 +12,7 @@
      独立したページなら、アプリの動きに1文字も触りません。
      印刷（PDF）にもそのまま使えます。 -->
 <link rel="stylesheet" href="css/help.css?v=81d84d71">
-<meta name="app-version" content="0001f843">
+<meta name="app-version" content="157a2971">
 </head>
 <body>
 
@@ -55,8 +55,9 @@
     <li class="help-toc__item"><a href="#s7"><span class="help-toc__n">7</span>記録を見る<span class="help-toc__sub">あとから見る</span></a></li>
     <li class="help-toc__item"><a href="#s8"><span class="help-toc__n">8</span>お金まわり<span class="help-toc__sub">立て替え・キャッチ</span></a></li>
     <li class="help-toc__item"><a href="#s9"><span class="help-toc__n">9</span>面接マニュアル<span class="help-toc__sub">面接で聞くこと</span></a></li>
-    <li class="help-toc__item"><a href="#s10"><span class="help-toc__n">10</span>QRコード・URL<span class="help-toc__sub">アプリを人に渡す</span></a></li>
-    <li class="help-toc__item"><a href="#s11"><span class="help-toc__n">11</span>困ったとき<span class="help-toc__sub">よくある3つ</span></a></li>
+    <li class="help-toc__item"><a href="#s10"><span class="help-toc__n">10</span>ご意見・不具合<span class="help-toc__sub">困りごとを出す</span></a></li>
+    <li class="help-toc__item"><a href="#s11"><span class="help-toc__n">11</span>QRコード・URL<span class="help-toc__sub">アプリを人に渡す</span></a></li>
+    <li class="help-toc__item"><a href="#s12"><span class="help-toc__n">12</span>困ったとき<span class="help-toc__sub">よくある3つ</span></a></li>
   </ul>
 
   <section class="help-sec" id="s1">
@@ -83,7 +84,7 @@
       <b>次からは、アイコンを押すだけで開きます。</b>
     </p>
     <p style="font-size:13px;color:var(--text-sub);">
-      （URLを渡す側の人は、10番の「QRコード・URL」を使います）
+      （URLを渡す側の人は、11番の「QRコード・URL」を使います）
     </p>
     <p><b>iPhone で Safari を使うとき</b>（おすすめ）</p>
     <ol class="help-steps">
@@ -211,7 +212,7 @@
       それでも出るときは、こうだいに聞いてください。<br>
       <b>番号の画面が出ないまま、画面の上の印が赤くなるときは、</b>アプリが古いままです。
       「新しい版があります」と出ていれば押してください。出ていなければ、アプリを一度閉じて開き直します
-      （11番の「困ったとき」にも書いてあります）。
+      （12番の「困ったとき」にも書いてあります）。
     </div>
 
     <h3>数字が3つ出てきます。混ざらないように</h3>
@@ -1210,7 +1211,7 @@
     </div>
     <div class="help-note">
       このボタンは、ワークスにもマインにも出ます。QRコードとURLは、どのお店でも同じです（誰のシフトかは番号で決まります）。<br>
-      店舗を選ぶ画面の下の<b>「QRコード・URL」</b>（10番）からも、同じQRコードとURLを出せます。
+      店舗を選ぶ画面の下の<b>「QRコード・URL」</b>（11番）からも、同じQRコードとURLを出せます。
     </div>
   </section>
 
@@ -1488,8 +1489,103 @@
     </div>
   </section>
 
+  <!-- ============================================================
+       10. ご意見・不具合
+       ★2026-09-23、ko-dai さんの指示。開くのは js/voice.js（js/app.js には書かれていません）。
+       ★部署の呼び名は「掲示板」ですが、**画面に出る字は「ご意見・不具合」**です。
+         ここは画面の字で書きます（「掲示板」で grep しても0件なのはそのためです）。
+       ★文言は公開先の js/voice.js から写しました（版 0001f843）。★選べるものは、まだ変わる
+         余地があります（部署が変えたら知らせてくれる約束です）。
+       ★**投稿は書いていません。**試しでも出すと6店舗の全端末に配られるためです（部署の頼み）。
+       ★★**「どの店舗から出したか分かります」とは書きません。**部署がまだ本物で確かめていません
+       ============================================================ -->
   <section class="help-sec" id="s10">
-    <div class="help-sec__head"><span class="help-sec__n">10</span><h2 class="help-sec__title">QRコード・URL</h2></div>
+    <div class="help-sec__head"><span class="help-sec__n">10</span><h2 class="help-sec__title">ご意見・不具合</h2></div>
+
+    <p>
+      アプリの<b>困りごと</b>や「<b>こうしてほしい</b>」を出す所です。
+      出したものは<b>こうだいが読んで、返事を書きます。</b>
+    </p>
+
+    <h3>開き方</h3>
+    <p>
+      店舗を選ぶ画面の一番下、<b>「T3Dining」</b>の欄にあります。
+      <b>「QRコード・URL」のすぐ上</b>です。
+    </p>
+
+    <div class="help-shot">
+      <div class="help-shot__body">
+        <button type="button" class="stores-big-btn stores-big-btn--voice">
+          <span class="stores-big-btn__icon" aria-hidden="true">💬</span>
+          <span class="stores-big-btn__text">
+            <span class="stores-big-btn__name">ご意見・不具合</span>
+            <span class="stores-big-btn__sub">アプリの困りごとや「こうしてほしい」を出す</span>
+          </span>
+          <span class="stores-big-btn__arrow" aria-hidden="true">›</span>
+        </button>
+      </div>
+      <p class="help-shot__cap">押すと、出したものと返事の一覧が開きます。</p>
+    </div>
+
+    <h3>出し方</h3>
+    <p>
+      右上の<b>「出す」</b>を押します。あとは<b>選ぶだけ</b>です。
+      <b>1文字も打たなくて出せます。</b>
+    </p>
+    <ol class="help-steps">
+      <li><b>何のことか</b>を選びます … 🐞 不具合／💡 こうしてほしい／❓ 質問</li>
+      <li><b>どの画面か</b>を選びます … クローズ／ジャーナル／週間掃除／教育／シフト／提出記録・達成状況／お金まわり／ログイン・番号・設定／わからない・その他</li>
+      <li><b>どうなったか</b>を選びます（選べるものは、1で選んだ種類で変わります）</li>
+      <li><b>いつからか</b>を選びます … さっき／今日／昨日から／前からずっと／覚えていない<br>
+        （<b>不具合のときだけ</b>聞かれます）</li>
+      <li>確かめて、<b>「出す」</b>を押します</li>
+    </ol>
+
+    <div class="help-note">
+      <b>歩数（「2／5」など）は、種類を選んだあとから出ます。</b>
+      不具合は5歩、こうしてほしい・質問は4歩なので、先に出すと数が変わってしまうためです。
+    </div>
+
+    <h3>ひとこと・写真・動画（付けなくてもよい）</h3>
+    <ul class="help-list">
+      <li><b>ひとこと（無くても出せます）</b> … くわしく書けることがあれば書きます</li>
+      <li><b>写真・動画</b> … 付けられます。動画は<b>15秒まで</b>です</li>
+      <li>★<b>動画はアプリでは見られません。</b>こうだいが別の所で見ます。
+        「<b>動画を受け取りました（◯MB）</b>」と出れば、送れています</li>
+      <li>写真や動画を付けるときは、<b>電波のつながる所で</b>出してください</li>
+    </ul>
+
+    <!-- ★画面の赤い枠の字そのままです（js/voice.js の voice-warn）。言い換えないこと -->
+    <div class="help-important">
+      <span class="help-important__label">出す前に、ここだけ読んでください</span>
+      <p>
+        ★<b>人の名前・金額・店舗の売上は書かないでください。</b>
+        出したものは全員の端末に配られ、<b>消しても控えの履歴には残ります</b>。
+      </p>
+    </div>
+
+    <h3>みんなが見られます</h3>
+    <p>
+      出したものと返事は、<b>番号を持っている人なら誰でも見られます。</b>
+      名前は<b>いつも自動で付きます</b>（名前を出さずに出すことはできません）。
+    </p>
+
+    <h3>消すとき</h3>
+    <p>
+      <b>自分が出したもの</b>は、自分で消せます。押すと、こう聞かれます。
+    </p>
+    <div class="help-note">
+      この投稿を、みんなの画面から消します。／写真と動画もドライブから消します。／
+      ★控え（スプレッドシート）の履歴には残ります。そこは消せません。／消してよいですか。
+    </div>
+    <p>
+      ★<b>「みんなの画面から消える」だけ</b>です。<b>完全には消えません。</b>
+      だからこそ、<b>出す前に</b>名前や金額を書いていないか見てください。
+    </p>
+  </section>
+
+  <section class="help-sec" id="s11">
+    <div class="help-sec__head"><span class="help-sec__n">11</span><h2 class="help-sec__title">QRコード・URL</h2></div>
     <!-- ★2026-09-18、本部が作った「QRコード・URL」（js/share.js）。
          ★ko-dai さんの決まり：T3Dining の欄の一番下は、いつも「QRコード・URL」。**使い方で T3Dining の欄を並べて書くときも一番下**。
            だからこの章は、T3Dining の欄を説明する 7〜9章の**あと**に置いています。新しい章はこの前に足すこと。
@@ -1576,8 +1672,8 @@
     </div>
   </section>
 
-  <section class="help-sec" id="s11">
-    <div class="help-sec__head"><span class="help-sec__n">11</span><h2 class="help-sec__title">困ったとき</h2></div>
+  <section class="help-sec" id="s12">
+    <div class="help-sec__head"><span class="help-sec__n">12</span><h2 class="help-sec__title">困ったとき</h2></div>
 
     <div class="help-q">
       <p class="help-q__title">他の人が入れたものが、自分の画面に出てこない</p>

@@ -14,7 +14,7 @@
      ★見た目と動きは ../css/help.css と ../js/help.js（4つの使い方で同じもの）。
      ★公開の道具が PDF「マニュアル/マインの使い方.pdf」を作ります（道具/公開する.py の `使い方の本`）。
      ★人の名前・番号・金額・合言葉は書きません。例は ◯ にします -->
-<meta name="app-version" content="0001f843">
+<meta name="app-version" content="157a2971">
 </head>
 <body>
 
@@ -51,7 +51,8 @@
     <li class="help-toc__item"><a href="#s2"><span class="help-toc__n">2</span>シフトの名簿と番号<span class="help-toc__sub">アルバイトに番号を配る</span></a></li>
     <li class="help-toc__item"><a href="#s3"><span class="help-toc__n">3</span>会議資料<span class="help-toc__sub">日報から取り込む・光熱費・議事録</span></a></li>
     <li class="help-toc__item"><a href="#s4"><span class="help-toc__n">4</span>現金支払い管理表<span class="help-toc__sub">文字数の見かた</span></a></li>
-    <li class="help-toc__item"><a href="#s5"><span class="help-toc__n">5</span>他のアプリへ<span class="help-toc__sub">配達記録・ストーリーズ・マネージ</span></a></li>
+    <li class="help-toc__item"><a href="#s5"><span class="help-toc__n">5</span>ご意見・不具合<span class="help-toc__sub">返事を書く・消す</span></a></li>
+    <li class="help-toc__item"><a href="#s6"><span class="help-toc__n">6</span>他のアプリへ<span class="help-toc__sub">配達記録・ストーリーズ・マネージ</span></a></li>
   </ul>
 
   <!-- ============================================================
@@ -275,8 +276,71 @@
   <!-- ============================================================
        5. 他のアプリへ
        ============================================================ -->
+  <!-- ============================================================
+       5. ご意見・不具合（返事を書く・消す）
+       ★2026-09-23。開くのは js/voice.js。★**状態と返事の欄は、マインにしか出ません**（部署の説明）。
+       ★出し方そのものは現場の本（ワークスの使い方 10番）に書いてあるので、ここには書きません。
+       ★文言は公開先の js/voice.js から写しました（版 0001f843）。
+       ★★「消しました」と書かないこと。控え（スプレッドシート）の版履歴には残り、止められません
+       ============================================================ -->
   <section class="help-sec" id="s5">
-    <div class="help-sec__head"><span class="help-sec__n">5</span><h2 class="help-sec__title">他のアプリへ</h2></div>
+    <div class="help-sec__head"><span class="help-sec__n">5</span><h2 class="help-sec__title">ご意見・不具合</h2></div>
+
+    <p>
+      現場から出た<b>困りごと・要望・質問</b>に、<b>返事を書く所</b>です。
+      出し方そのものは、<a href="../#s10">ワークスの使い方 10番</a>にあります。
+    </p>
+    <p>
+      店舗を選ぶ画面の一番下、<b>「T3Dining」</b>の欄の 💬<b>「ご意見・不具合」</b>から開きます。
+    </p>
+
+    <h3>状態をつける</h3>
+    <p>
+      1つずつに<b>状態</b>を付けられます。<b>ここはマインにだけ出ます</b>（現場の画面には出ません）。
+    </p>
+    <ul class="help-list">
+      <li><b>未読</b>（はじめはこれです）</li>
+      <li><b>見ました</b></li>
+      <li><b>直しています</b></li>
+      <li><b>直しました</b></li>
+      <li><b>しません</b></li>
+    </ul>
+    <div class="help-note">
+      状態は<b>出した人にも見えます。</b>「見ました」を押すだけでも、
+      <b>読んでもらえた</b>ことが相手に伝わります。
+    </div>
+
+    <h3>返事を書く</h3>
+    <p>
+      枠に書いて<b>「返事を出す」</b>を押します。
+      返事は<b>番号を持っている人なら誰でも見られます</b>（出した本人だけではありません）。
+    </p>
+
+    <h3>写真と動画</h3>
+    <ul class="help-list">
+      <li>写真は、アプリの中で見られます</li>
+      <li>★<b>動画はアプリでは見られません。</b>別の所で見ることになります</li>
+    </ul>
+
+    <h3>消すとき</h3>
+    <p>押すと、こう聞かれます。</p>
+    <div class="help-note">
+      この投稿を、みんなの画面から消します。／写真と動画もドライブから消します。／
+      ★控え（スプレッドシート）の履歴には残ります。そこは消せません。／消してよいですか。
+    </div>
+    <div class="help-important">
+      <span class="help-important__label">「消した」とは言えません</span>
+      <p>
+        消えるのは<b>みんなの画面と、写真・動画</b>だけです。
+        <b>控えの履歴には残り、そこは消せません。</b>
+        人の名前や金額が書かれた投稿を見つけたときは、<b>消しても無かったことにはなりません。</b>
+        出す前に気をつけてもらう方が確かです。
+      </p>
+    </div>
+  </section>
+
+  <section class="help-sec" id="s6">
+    <div class="help-sec__head"><span class="help-sec__n">6</span><h2 class="help-sec__title">他のアプリへ</h2></div>
 
     <h3>配達記録</h3>
     <p>
