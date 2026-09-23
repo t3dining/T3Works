@@ -323,10 +323,13 @@ const VoiceView = (() => {
 
         <label class="voice-label">写真・動画（${添付の数}つまで。動画は${動画の秒}秒まで）</label>
         <p class="voice-note">
+          その場で撮っても、<strong>保存してある写真や動画から選んでも</strong>構いません。まとめて選べます。<br>
           動画は<strong>アプリでは見られません</strong>。ko-dai さんがドライブで見ます。
           受け取れたら、ここに大きさが出ます。
         </p>
-        <input type="file" id="voiceFile" accept="image/*,video/*" capture="environment" class="voice-file">
+        <!-- ★capture は付けません。付けるとカメラだけが開き、**保存した写真を選べなくなります**
+             （2026-09-23、ko-dai さんの指摘）。無しなら「撮る／選ぶ」の両方が出ます -->
+        <input type="file" id="voiceFile" accept="image/*,video/*" multiple class="voice-file">
         <div class="voice-files" id="voiceFiles"></div>
 
         <p class="voice-warn">
@@ -442,17 +445,36 @@ const VoiceView = (() => {
       count.textContent = `${text.value.length}／${本文の上限}文字`;
     });
 
+    /* ★まとめて選べます。1つだめでも、通ったものは入れます。
+         ★だめだったものは**最後にまとめて**出します（1つずつ上書きすると、
+           最後の1件しか読めません。何が落ちたのか分からなくなります） */
     file.addEventListener('change', async () => {
-      const f = file.files && file.files[0];
+      const 選ばれた = Array.prototype.slice.call(file.files || []);
       file.value = '';
-      if (!f) return;
-      if (選んだもの.length >= 添付の数) { state.textContent = `付けられるのは${添付の数}つまでです`; return; }
+      if (!選ばれた.length) return;
       state.textContent = '確かめています…';
-      const 見 = await 確かめる(f);
-      if (!見.ok) { state.textContent = `★${見.訳}`; return; }
-      選んだもの.push(見);
-      state.textContent = '';
-      添付を描く();
+      const だめ = [];
+      for (let i = 0; i < 選ばれた.length; i++) {
+        const f = 選ばれた[i];
+        /* ★型ちがいは、数の上限より**先に**言います。
+             あとに回すと、4つ埋まったときに「写真でも動画でもない」ものまで
+             「4つまでです」と出て、**なぜ入らないのかが分からなくなります**
+             （2026-09-23、PDF を混ぜて確かめました） */
+        const 型 = String(f.type || '');
+        if (型.indexOf('image/') !== 0 && 型.indexOf('video/') !== 0) {
+          だめ.push(`${f.name || '1つ'}：写真か動画を選んでください`);
+          continue;
+        }
+        if (選んだもの.length >= 添付の数) {
+          だめ.push(`${f.name || 'あと'}：付けられるのは${添付の数}つまでです`);
+          continue;
+        }
+        const 見 = await 確かめる(f);
+        if (!見.ok) { だめ.push(`${f.name || '1つ'}：${見.訳}`); continue; }
+        選んだもの.push(見);
+        添付を描く();
+      }
+      state.textContent = だめ.length ? `★${だめ.join('　／　')}` : '';
     });
 
     document.getElementById('voiceFiles').addEventListener('click', (e) => {
