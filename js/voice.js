@@ -292,7 +292,7 @@ const VoiceView = (() => {
       return `
         <button type="button" class="voice-card voice-card--${文字(r.種類)}" data-voice-open="${文字(x.印)}">
           <span class="voice-card__head">
-            <span class="voice-card__kind">${種類の絵(r.種類)} ${文字(種類の名(r.種類))}</span>
+            <span class="voice-card__kind">${種類の絵(r.種類)} ${文字(種類の名(r.種類))}${r.画面 ? `／${文字(画面の名(r.画面))}` : ''}</span>
             <span class="voice-card__state voice-card__state--${文字(r.状態 || '未読')}">${文字(r.状態 || '未読')}</span>
           </span>
           <span class="voice-card__body">${文字(String(r.本文 || '').slice(0, 80))}${String(r.本文 || '').length > 80 ? '…' : ''}</span>
@@ -305,43 +305,6 @@ const VoiceView = (() => {
         </button>`;
     }).join('');
     return `${頭}<div class="voice-list">${行}</div>`;
-  }
-
-  function 出す画面の絵() {
-    const 選び = 種類たち.map((k, i) => `
-      <label class="voice-kind">
-        <input type="radio" name="voiceKind" value="${k.id}"${i === 0 ? ' checked' : ''}>
-        <span>${k.絵} ${文字(k.名)}</span>
-      </label>`).join('');
-    return `
-      <div class="voice-form">
-        <div class="voice-kinds">${選び}</div>
-        <label class="voice-label" for="voiceText">どうしましたか</label>
-        <textarea class="voice-text" id="voiceText" rows="7" maxlength="${本文の上限}"
-          placeholder="いつ・どの画面で・何をしたら・どうなったか を書いてください"></textarea>
-        <p class="voice-count" id="voiceCount">0／${本文の上限}文字</p>
-
-        <label class="voice-label">写真・動画（${添付の数}つまで。動画は${動画の秒}秒まで）</label>
-        <p class="voice-note">
-          その場で撮っても、<strong>保存してある写真や動画から選んでも</strong>構いません。まとめて選べます。<br>
-          動画は<strong>アプリでは見られません</strong>。ko-dai さんがドライブで見ます。
-          受け取れたら、ここに大きさが出ます。
-        </p>
-        <!-- ★capture は付けません。付けるとカメラだけが開き、**保存した写真を選べなくなります**
-             （2026-09-23、ko-dai さんの指摘）。無しなら「撮る／選ぶ」の両方が出ます -->
-        <input type="file" id="voiceFile" accept="image/*,video/*" multiple class="voice-file">
-        <div class="voice-files" id="voiceFiles"></div>
-
-        <p class="voice-warn">
-          ★人の名前・金額・店舗の売上は書かないでください。
-          出したものは全員の端末に配られ、<strong>消しても控えの履歴には残ります</strong>。
-        </p>
-        <div class="voice-actions">
-          <button type="button" class="voice-btn voice-btn--send" id="voiceSend">出す</button>
-          <button type="button" class="voice-btn" id="voiceCancel">やめる</button>
-        </div>
-        <p class="voice-state" id="voiceState"></p>
-      </div>`;
   }
 
   function ひとつの絵(印) {
@@ -417,10 +380,104 @@ const VoiceView = (() => {
   }
 
   /* ------------------------------------------------------------
-   *  出す
+   *  出す（★ボタンを選ぶだけで出せます。2026-09-23、ko-dai さんの指示）
+   *
+   *  ★よくある問い合わせフォームの形です。**1文字も打たずに出せます。**
+   *    現場は打つ手間が減り、見る側は「どの画面の、どんなことか」がそろいます。
+   *  ★ここで増やした欄（画面・症状・いつ）は、**受け側の直しが要りません**。
+   *    Worker も GAS も、投稿の中身を**丸ごと**記録に入れる作りだからです（`rec = op.v`）。
+   *  ★見た目は、一覧のカード（`.voice-card`）などを**使い回して**います。
+   *    `css/style.css` は本部の持ち物なので、新しい飾りを足さずに作りました。
    * ---------------------------------------------------------- */
 
-  let 選んだもの = [];   // [{ kind, file, 秒 }]
+  /**
+   * どの画面のことか
+   *
+   * ★業務の一覧（`TASKS`）とは**別に持ちます**。あちらは「店舗ごとに出す業務」、
+   *   こちらは「出す人が選ぶ言葉」で、まとめ方が違います（お金まわりは3画面で1つ）。
+   */
+  const 画面たち = [
+    { id: 'day', 名: 'クローズ', 絵: '🌙' },
+    { id: 'cash', 名: 'ジャーナル', 絵: '💴' },
+    { id: 'week', 名: '週間掃除', 絵: '🧹' },
+    { id: 'train', 名: '教育', 絵: '🎓' },
+    { id: 'shift', 名: 'シフト', 絵: '🗓' },
+    { id: 'report', 名: '提出記録・達成状況', 絵: '📋' },
+    { id: 'money', 名: 'お金まわり', 絵: '💰', 添え: '立替金・キャッチ・会議資料' },
+    { id: 'login', 名: 'ログイン・番号・設定', 絵: '🔑' },
+    { id: 'other', 名: 'わからない・その他', 絵: '❓' },
+  ];
+
+  /** 何が起きたか。種類ごとに聞くことが変わります */
+  const 症状たち = {
+    bug: [
+      { id: 'nores', 名: '押しても何も起きない' },
+      { id: 'error', 名: '赤い帯・エラーが出た' },
+      { id: 'lost', 名: '入れたものが消えた・保存されていない' },
+      { id: 'wrong', 名: '表示がおかしい（数字・並び・文字）' },
+      { id: 'slow', 名: '動きが遅い・固まる' },
+      { id: 'missing', 名: '出るはずのものが出ない' },
+      { id: 'other', 名: 'その他' },
+    ],
+    want: [
+      { id: 'item', 名: '項目を増やしたい・減らしたい' },
+      { id: 'easy', 名: '入力を楽にしてほしい' },
+      { id: 'view', 名: '見やすくしてほしい' },
+      { id: 'new', 名: '新しい機能がほしい' },
+      { id: 'other', 名: 'その他' },
+    ],
+    ask: [
+      { id: 'how', 名: '使い方が分からない' },
+      { id: 'where', 名: 'どこにあるか分からない' },
+      { id: 'mean', 名: 'この表示の意味が分からない' },
+      { id: 'ok', 名: 'こうしてよいか確かめたい' },
+      { id: 'other', 名: 'その他' },
+    ],
+  };
+
+  /** いつからか（不具合のときだけ聞きます） */
+  const いつたち = [
+    { id: 'now', 名: 'さっき' },
+    { id: 'today', 名: '今日' },
+    { id: 'yesterday', 名: '昨日から' },
+    { id: 'always', 名: '前からずっと' },
+    { id: 'unknown', 名: '覚えていない' },
+  ];
+
+  const 名を引く = (一覧, id) => (一覧.find((x) => x.id === id) || { 名: '' }).名;
+  const 画面の名 = (id) => 名を引く(画面たち, id);
+  const 症状の名 = (種類, id) => 名を引く(症状たち[種類] || [], id);
+  const いつの名 = (id) => 名を引く(いつたち, id);
+
+  /** 種類ごとの、聞くことの並び */
+  function 問いの並び(種類) {
+    const 題 = {
+      bug: 'どうなりましたか', want: '何をしてほしいですか', ask: '何が分かりませんか',
+    }[種類] || 'どうしましたか';
+    const 並び = [
+      { id: '画面', 題: 'どの画面のことですか', 札: 画面たち },
+      { id: '症状', 題, 札: 症状たち[種類] || [] },
+    ];
+    // ★「いつから」は不具合のときだけ。要望と質問には要りません（押す回数を増やさないため）
+    if (種類 === 'bug') 並び.push({ id: 'いつ', 題: 'いつからですか', 札: いつたち });
+    return 並び;
+  }
+
+  /**
+   * いま開いている店舗
+   *
+   * ★関数の中で `state` という名前を使わないでください。`js/app.js` の `state`（画面の状態）が
+   *   隠れて、**店舗がいつも空のまま記録されます**。落ちないので気づけません（2026-09-23 に直しました）。
+   */
+  function いまの店舗() {
+    try {
+      return (typeof state !== 'undefined' && state && state.storeId) ? String(state.storeId) : '';
+    } catch (e) { return ''; }
+  }
+
+  let 選んだもの = [];       // [{ kind, file, 秒 }]
+  let 答え = {};             // { 種類, 画面, 症状, いつ }
+  let 問いの位置 = 0;        // 0 = 種類、1〜 = 問いの並び、そのあと = 確かめる画面
 
   function 添付を描く() {
     const 箱 = document.getElementById('voiceFiles');
@@ -433,17 +490,140 @@ const VoiceView = (() => {
       </span>`).join('');
   }
 
+  /** 選ぶボタンを並べます（一覧のカードを使い回します） */
+  function 札の絵(札, いまの値) {
+    return `<div class="voice-list">${札.map((x) => `
+      <button type="button" class="voice-card${いまの値 === x.id ? ' voice-card--bug' : ''}" data-voice-pick="${文字(x.id)}">
+        <span class="voice-card__head">
+          <span class="voice-card__kind">${x.絵 ? `${x.絵} ` : ''}${文字(x.名)}</span>
+        </span>
+        ${x.添え ? `<span class="voice-card__foot"><span>${文字(x.添え)}</span></span>` : ''}
+      </button>`).join('')}</div>`;
+  }
+
+  /**
+   * 何歩目か（「2／5」のように出します。あと何回押すかが分かるように）
+   *
+   * ★種類を選ぶ前は出しません。種類で歩数が変わるので（不具合は5歩、要望と質問は4歩）、
+   *   先に出すと「1／4」が「2／5」に変わって、かえって迷わせます。
+   */
+  function 歩みの絵() {
+    if (!答え.種類) return '';
+    const 全部 = 問いの並び(答え.種類).length + 2;
+    return `<p class="voice-count">${Math.min(問いの位置 + 1, 全部)}／${全部}</p>`;
+  }
+
+  function 戻るの絵() {
+    return 問いの位置 > 0 ? '<button type="button" class="voice-back" id="voiceStepBack">‹ 前へ</button>' : '';
+  }
+
+  function 出す画面の絵() {
+    // 0歩目 … 何のことか
+    if (問いの位置 === 0) {
+      return `${歩みの絵()}
+        <p class="voice-label">何のことですか</p>
+        ${札の絵(種類たち.map((k) => ({ id: k.id, 名: k.名, 絵: k.絵 })), 答え.種類)}
+        <div class="voice-actions"><button type="button" class="voice-btn" id="voiceCancel">やめる</button></div>`;
+    }
+
+    const 並び = 問いの並び(答え.種類);
+    // 1〜n歩目 … その問い
+    if (問いの位置 <= 並び.length) {
+      const 問い = 並び[問いの位置 - 1];
+      return `${戻るの絵()}${歩みの絵()}
+        <p class="voice-label">${文字(問い.題)}</p>
+        ${札の絵(問い.札, 答え[問い.id])}
+        <div class="voice-actions"><button type="button" class="voice-btn" id="voiceCancel">やめる</button></div>`;
+    }
+
+    // 最後 … 選んだものを見せて、写真と ひとこと を足して出す
+    const 症状の見出し = { bug: 'どうなった', want: 'してほしいこと', ask: '聞きたいこと' }[答え.種類] || '中身';
+    const 選んだ行 = [
+      ['何のこと', 種類の名(答え.種類)],
+      ['どの画面', 画面の名(答え.画面)],
+      [症状の見出し, 症状の名(答え.種類, 答え.症状)],
+    ];
+    if (答え.いつ) 選んだ行.push(['いつから', いつの名(答え.いつ)]);
+
+    return `${戻るの絵()}${歩みの絵()}
+      <div class="voice-reply">
+        <p class="voice-reply__head">この内容で出します</p>
+        ${選んだ行.map(([k, v]) => `<p class="voice-reply__body"><strong>${文字(k)}</strong>：${文字(v)}</p>`).join('')}
+      </div>
+
+      <label class="voice-label" for="voiceText">ひとこと（無くても出せます）</label>
+      <textarea class="voice-text" id="voiceText" rows="4" maxlength="${本文の上限}"
+        placeholder="くわしく書けることがあれば。無ければ、このまま出してください"></textarea>
+
+      <label class="voice-label">写真・動画（${添付の数}つまで。動画は${動画の秒}秒まで）</label>
+      <p class="voice-note">
+        その場で撮っても、<strong>保存してある写真や動画から選んでも</strong>構いません。まとめて選べます。<br>
+        動画は<strong>アプリでは見られません</strong>。ko-dai さんがドライブで見ます。
+        受け取れたら、ここに大きさが出ます。
+      </p>
+      <!-- ★capture は付けません。付けるとカメラだけが開き、**保存した写真を選べなくなります**
+           （2026-09-23、ko-dai さんの指摘）。無しなら「撮る／選ぶ」の両方が出ます -->
+      <input type="file" id="voiceFile" accept="image/*,video/*" multiple class="voice-file">
+      <div class="voice-files" id="voiceFiles"></div>
+
+      <p class="voice-warn">
+        ★人の名前・金額・店舗の売上は書かないでください。
+        出したものは全員の端末に配られ、<strong>消しても控えの履歴には残ります</strong>。
+      </p>
+      <div class="voice-actions">
+        <button type="button" class="voice-btn voice-btn--send" id="voiceSend">出す</button>
+        <button type="button" class="voice-btn" id="voiceCancel">やめる</button>
+      </div>
+      <p class="voice-state" id="voiceState"></p>`;
+  }
+
   function つなぐ出す画面() {
-    const text = document.getElementById('voiceText');
-    const count = document.getElementById('voiceCount');
-    const state = document.getElementById('voiceState');
+    const 箱 = 中身();
+
+    const 戻る = document.getElementById('voiceStepBack');
+    if (戻る) {
+      戻る.addEventListener('click', () => {
+        問いの位置 = Math.max(0, 問いの位置 - 1);
+        出す();
+      });
+    }
+
+    const やめる = document.getElementById('voiceCancel');
+    if (やめる) {
+      やめる.addEventListener('click', () => {
+        選んだもの = [];
+        答え = {};
+        問いの位置 = 0;
+        いまの画面 = 'list';
+        出す();
+      });
+    }
+
+    // 選ぶボタン。押したら、その場で次の問いへ進みます（「次へ」を押させません）
+    箱.querySelectorAll('[data-voice-pick]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const 値 = b.dataset.voicePick;
+        if (問いの位置 === 0) {
+          // ★種類を選び直したら、あとの答えは捨てます（ちぐはぐな組み合わせを残さないため）
+          if (答え.種類 !== 値) 答え = { 種類: 値 };
+          問いの位置 = 1;
+        } else {
+          const 問い = 問いの並び(答え.種類)[問いの位置 - 1];
+          答え[問い.id] = 値;
+          問いの位置 += 1;
+        }
+        出す();
+      });
+    });
+
     const file = document.getElementById('voiceFile');
-    選んだもの = [];
+    if (!file) return;   // 選んでいる途中の画面には、ここから下はありません
+
+    const しらせ = document.getElementById('voiceState');
     添付を描く();
 
-    text.addEventListener('input', () => {
-      count.textContent = `${text.value.length}／${本文の上限}文字`;
-    });
+    const text = document.getElementById('voiceText');
+    if (text) text.value = String(答え.ひとこと || '');
 
     /* ★まとめて選べます。1つだめでも、通ったものは入れます。
          ★だめだったものは**最後にまとめて**出します（1つずつ上書きすると、
@@ -452,7 +632,7 @@ const VoiceView = (() => {
       const 選ばれた = Array.prototype.slice.call(file.files || []);
       file.value = '';
       if (!選ばれた.length) return;
-      state.textContent = '確かめています…';
+      しらせ.textContent = '確かめています…';
       const だめ = [];
       for (let i = 0; i < 選ばれた.length; i++) {
         const f = 選ばれた[i];
@@ -474,7 +654,7 @@ const VoiceView = (() => {
         選んだもの.push(見);
         添付を描く();
       }
-      state.textContent = だめ.length ? `★${だめ.join('　／　')}` : '';
+      しらせ.textContent = だめ.length ? `★${だめ.join('　／　')}` : '';
     });
 
     document.getElementById('voiceFiles').addEventListener('click', (e) => {
@@ -484,29 +664,33 @@ const VoiceView = (() => {
       添付を描く();
     });
 
-    document.getElementById('voiceCancel').addEventListener('click', () => {
-      選んだもの = [];
-      いまの画面 = 'list';
-      出す();
-    });
-
     document.getElementById('voiceSend').addEventListener('click', () => 送る());
+  }
+
+  /** 選んだものから、読める文を組み立てます（一覧と1件に出る本文になります） */
+  function 本文を組む(ひとこと) {
+    const 並び = 問いの並び(答え.種類);
+    const 行 = [
+      `${画面の名(答え.画面)}／${症状の名(答え.種類, 答え.症状)}`,
+    ];
+    if (答え.いつ) 行.push(`いつから：${いつの名(答え.いつ)}`);
+    if (ひとこと) 行.push(ひとこと);
+    return 行.join('\n');
   }
 
   async function 送る() {
     if (送っている) return;
+    const しらせ = document.getElementById('voiceState');
     const text = document.getElementById('voiceText');
-    const state = document.getElementById('voiceState');
-    const 本文 = String(text.value || '').trim();
-    if (!本文) { state.textContent = '★何があったかを書いてください'; return; }
-    if (本文.length > 本文の上限) { state.textContent = `★${本文の上限}文字までです`; return; }
+    const ひとこと = String((text && text.value) || '').trim();
+    if (ひとこと.length > 本文の上限) { しらせ.textContent = `★ひとことは${本文の上限}文字までです`; return; }
     if (!私の番号()) {
-      state.textContent = '★あなたの番号が入っていません。設定で番号を入れてから出してください';
+      しらせ.textContent = '★あなたの番号が入っていません。設定で番号を入れてから出してください';
       return;
     }
     // ★添付があるときは、その場でドライブへ送ります。電波が無いと送れません
     if (選んだもの.length && typeof navigator !== 'undefined' && navigator.onLine === false) {
-      state.textContent = '★電波が届いていません。写真や動画を付けるときは、つながってから出してください';
+      しらせ.textContent = '★電波が届いていません。写真や動画を付けるときは、つながってから出してください';
       return;
     }
 
@@ -516,27 +700,30 @@ const VoiceView = (() => {
     try {
       for (let i = 0; i < 選んだもの.length; i++) {
         const x = 選んだもの[i];
-        state.textContent = `${x.kind === 'movie' ? '動画' : '写真'}を送っています…（${i + 1}／${選んだもの.length}）`;
+        しらせ.textContent = `${x.kind === 'movie' ? '動画' : '写真'}を送っています…（${i + 1}／${選んだもの.length}）`;
         const data = x.kind === 'photo' ? await 写真を縮める(x.file) : await 中身を読む(x.file);
         const res = await Sync.ask('voicePut', {
           voiceId: 印, kind: x.kind, seq: i + 1, data,
         }, { ms: 120000 });
         if (!res || !res.ok) {
           // ★ここで止めます。記録だけ先に作ると、写真の無い投稿が残ります
-          state.textContent = `★${(res && res.error) || '送れませんでした'}`;
+          しらせ.textContent = `★${(res && res.error) || '送れませんでした'}`;
           送っている = false;
           return;
         }
         添付.push({ id: res.fileId, 型: x.kind, バイト: res.bytes, size: res.size });
         // ★動画は見せないので、受け取れたことだけは、はっきり出します
-        state.textContent = `${x.kind === 'movie' ? '動画' : '写真'}を受け取りました（${res.size}）`;
+        しらせ.textContent = `${x.kind === 'movie' ? '動画' : '写真'}を受け取りました（${res.size}）`;
       }
 
-      const 種類 = (document.querySelector('input[name="voiceKind"]:checked') || {}).value || 'bug';
       const rec = {
-        種類,
-        本文,
-        店舗: (typeof state !== 'undefined' && state && state.storeId) ? state.storeId : '',
+        種類: 答え.種類,
+        画面: 答え.画面 || '',      // ★選んだ答えも別の欄で持ちます（一覧で絞れるように）
+        症状: 答え.症状 || '',
+        いつ: 答え.いつ || '',
+        ひとこと,
+        本文: 本文を組む(ひとこと),  // ★古い投稿と同じ形でも読めるように、文も作って入れます
+        店舗: いまの店舗(),
         番号: 私の番号(),     // ★名前は受け側が入れます（端末は名簿を持っていません）
         名前: '',
         版: いまの版(),
@@ -549,11 +736,13 @@ const VoiceView = (() => {
       };
       書く(印, rec, { t: 'voice', v: rec }, true);
       選んだもの = [];
+      答え = {};
+      問いの位置 = 0;
       いまの画面 = 'one';
       いまの印 = 印;
       出す();
     } catch (e) {
-      state.textContent = `★送れませんでした（${e && e.message ? e.message : e}）`;
+      しらせ.textContent = `★送れませんでした（${e && e.message ? e.message : e}）`;
     } finally {
       送っている = false;
     }
@@ -611,7 +800,13 @@ const VoiceView = (() => {
   async function 消す() {
     const rec = ひとつ(いまの印);
     if (!rec) return;
-    const state = document.getElementById('voiceDropState');
+    /* ★`state` という名前を使いません。`js/app.js` の `state`（画面の状態）を覆い隠すためです。
+         いまは中で `.textContent` しか使っていないので無害ですが、**あとから誰かが中に
+         `state.storeId` と書いた瞬間、落ちない壊れ方に戻ります**（本部の指摘・2026-09-23）。
+       ★欄が無いときにも落ちないようにします。ここで落ちると**記録はもう消えているのに**、
+         人には「押したのに何も言わない」に見えます */
+    const 欄 = document.getElementById('voiceDropState');
+    const しらせる = (文) => { if (欄) 欄.textContent = 文; };
     // ★「消しました」とは書きません。控えの履歴には残るためです
     const よいか = window.confirm(
       'この投稿を、みんなの画面から消します。\n\n'
@@ -624,14 +819,14 @@ const VoiceView = (() => {
     const 添付 = (rec.添付 || []).map((a) => a.id).filter(Boolean);
     // ★記録が先です。こちらが先に消えていれば、ドライブが失敗しても人の目には触れません
     書く(いまの印, { 消えた: true, 消した時: new Date().toISOString() }, { t: 'voiceDrop' }, true);
-    state.textContent = 'みんなの画面から消しました。';
+    しらせる('みんなの画面から消しました。');
 
     if (添付.length) {
       const res = await Sync.ask('voiceDrop', { fileIds: 添付 });
       if (!res || !res.ok) {
         // ★黙って失敗しません
-        state.textContent = 'みんなの画面からは消しました。'
-          + `★ただし写真か動画が消せませんでした（${(res && res.error) || '返事がありません'}）。ko-dai さんに伝えてください。`;
+        しらせる('みんなの画面からは消しました。'
+          + `★ただし写真か動画が消せませんでした（${(res && res.error) || '返事がありません'}）。ko-dai さんに伝えてください。`);
         return;
       }
     }
