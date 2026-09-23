@@ -2595,22 +2595,38 @@ function journal率の1日(storeId, dateStr, いまの日) {
   };
 }
 
-/** その日と、今月の1日から今日までのまとめ */
+/**
+ * 今月の累計（★**日報の数**です。アプリに入れた数を足し上げたものではありません）
+ *
+ * ★はじめは、アプリに入れた日を足していました。**それでは日報と合いません。**
+ *   アプリを使いはじめる前の日が丸ごと抜けるので、率が実際より低く（または高く）出ます
+ *   （ko-dai さん・2026-09-23「途中からアプリを使っている関係で、全ての率が正しくない」）。
+ *
+ * ★出どころは、**会議資料が日報から取り込んでいる数**（`_meeting` の記録）です。
+ *   日報の「まとめ」ページの当月累計（税込 B24 ／ 税抜 B25 ／ 原価の累計 ／ 人件費 G32）。
+ *   **会議資料と同じ数を見る**ので、2つの画面で率が食いちがいません。
+ * ★取り込みはボタンを押したときだけです（自動では新しくなりません）。
+ *   **いつ取り込んだか**を画面に必ず出します。出さないと、古い数を今の数だと思って見ます。
+ */
+function journal率の月(storeId, y, m) {
+  const rec = Store.getDay(MEETING_STORE, meetingMonthKey(y, m)) || {};
+  const num = (((rec.items || {})[`num:${storeId}`] || {}).value || {}).now || {};
+  const 取る = (k) => (typeof num[k] === 'number' ? num[k] : null);
+  return {
+    原価: 取る('cost'),
+    人件費: 取る('labor'),
+    税込: 取る('inc'),
+    税抜: 取る('ex'),
+    取り込み: rec.updatedAt || '',
+  };
+}
+
+/** その日（アプリに入れた数）と、今月（日報の数） */
 function journal率まとめ(storeId, y, m, d) {
-  const 今日 = journal率の1日(storeId, ymd(y, m, d), true);
-  const 月 = { 原価: 0, 人件費: 0, 税込: 0, 税抜: 0, 日数: 0, 数えない日: 0 };
-  for (let i = 1; i <= d; i++) {
-    const 分 = (i === d) ? 今日 : journal率の1日(storeId, ymd(y, m, i), false);
-    const 何か入っている = [分.原価, 分.人件費, 分.税込, 分.税抜].some((x) => x !== null);
-    if (!何か入っている) continue;
-    if (分.税込 === null && 分.税抜 === null) { 月.数えない日 += 1; continue; }
-    月.日数 += 1;
-    月.原価 += 分.原価 || 0;
-    月.人件費 += 分.人件費 || 0;
-    月.税込 += 分.税込 || 0;
-    月.税抜 += 分.税抜 || 0;
-  }
-  return { 今日, 月 };
+  return {
+    今日: journal率の1日(storeId, ymd(y, m, d), true),
+    月: journal率の月(storeId, y, m),
+  };
 }
 
 /** 率（分からなければ null）。★式は会議資料の部品をそのまま使います */
@@ -2619,6 +2635,13 @@ function journal率(分) {
     原価率: (分.原価 === null || !分.税込) ? null : meetingCostRate({ cost: 分.原価, inc: 分.税込 }),
     人件費率: (分.人件費 === null || !分.税抜) ? null : 分.人件費 / 分.税抜,
   };
+}
+
+/** 「9/23 21:40」の形にします（いつ取り込んだ数かを、数のとなりに出すため） */
+function journal率のいつ(iso) {
+  const t = new Date(iso);
+  if (!iso || Number.isNaN(t.getTime())) return '';
+  return `${t.getMonth() + 1}/${t.getDate()} ${t.getHours()}:${pad2(t.getMinutes())}`;
 }
 
 /** 率の文（「—」は、その数がまだ分からないという意味です） */
@@ -2659,11 +2682,11 @@ function renderRitsuBox() {
 
   const 中 = [];
   中.push('<p class="cash-minus__head" style="margin:14px 0 8px;font-weight:700">'
-    + '原価率・人件費率（アプリに入れた数から）</p>');
+    + '原価率・人件費率</p>');
   中.push('<div style="display:grid;grid-template-columns:auto 1fr 1fr;gap:6px 12px;align-items:baseline">');
   中.push('<span></span>'
-    + '<span style="font-size:12.5px;color:var(--text-sub)">その日</span>'
-    + `<span style="font-size:12.5px;color:var(--text-sub)">今月（${state.m}/1〜${state.m}/${state.d}）</span>`);
+    + '<span style="font-size:12.5px;color:var(--text-sub)">その日<br>（アプリ）</span>'
+    + '<span style="font-size:12.5px;color:var(--text-sub)">今月<br>（日報）</span>');
   行.forEach(([名, 日, 月分]) => {
     中.push(`<span style="font-size:13.5px;font-weight:700">${名}</span>`
       + `<span style="font-size:15px">${journal率の文(日)}</span>`
@@ -2671,15 +2694,20 @@ function renderRitsuBox() {
   });
   中.push('</div>');
 
-  /* ★数のとなりに「どう読むか」を書きます。離して書くと、見た人は数だけ持って帰ります */
+  /* ★数のとなりに「どう読むか」を書きます。離して書くと、見た人は数だけ持って帰ります。
+       ★とくに大事なのは「今月はいつ取り込んだ数か」です。取り込みはボタンを押したときだけなので、
+         書かないと**古い数を今の数だと思って**見ます。 */
   const 注 = [];
-  注.push(月.日数
-    ? `今月は ${月.日数}日分で計算しました`
-    : '今月は、まだ計算できる日がありません');
-  if (月.数えない日) 注.push(`売上の分からない日 ${月.数えない日}日は入れていません`);
+  if (月.税込 === null && 月.税抜 === null) {
+    注.push('★今月は、日報からまだ取り込んでいません'
+      + '（マインの「会議資料」で「日報から取り込む」を押すと出ます）');
+  } else {
+    注.push(`今月は**日報の数**です${月.取り込み ? `（${journal率のいつ(月.取り込み)}に取り込み）` : ''}`);
+    注.push('新しくするには、マインの「会議資料」で「日報から取り込む」を押してください');
+  }
+  注.push('★その日の分は、アプリに入れた数です（日報の側で直した分は入りません）');
   注.push('★仕入の入らない日は、その日の原価率が 0% になります。見るのは今月の方です');
-  注.push('★日報の側で直した分は入っていません（アプリに入れた数だけで出しています）');
-  中.push(`<p class="cash-msg">${注.join('。<br>')}。</p>`);
+  中.push(`<p class="cash-msg">${注.join('。<br>').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')}。</p>`);
 
   el.cashRitsu.innerHTML = 中.join('');
 }
@@ -7613,6 +7641,18 @@ function meetingCumByStore(y, m) {
  * ko-dai の指示で、今年も昨年も税込にそろえてあります（2026年8月15日）。
  * 人件費率と光熱費率は税のない数字なので、今年・昨年とも税抜売上で割ります。
  * F/L はこの2つの率の足し算です（6月のシートと同じ）。
+ */
+/**
+ * 原価率 ＝ 原価 ÷ **税込**売上
+ *
+ * ★原価がもともと税込の数字だからです（2026年8月15日に ko-dai が決めました）。
+ *   人件費率・光熱費率は**税抜**で割ります（税のない数字だから）。F/L はその2つの足し算。
+ *
+ * ★**ジャーナルの画面も、この関数をそのまま呼びます**（2026-09-23）。
+ *   仕入・人件費を打つすぐ下に、その日と今月の率を出すためです。
+ *   **式を書き写さず、ここ1つを呼ぶ**形にしてもらっています。
+ *   ★それでも「どの行を足して原価・人件費にするか」の決め方は2か所あります。
+ *     **ここを変えるときは、ジャーナルに一声かけてください**（向こうの画面が黙って変わります）。
  */
 function meetingCostRate(v) {
   return v.inc ? v.cost / v.inc : null;
