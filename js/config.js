@@ -4318,7 +4318,7 @@ const JOURNAL_WORKER_W = 1;
  *   サーバーが返してくる印とちがっていたら、貼り直しがまだ、ということです。
  *   写真を撮ったときに、その場で画面に出します。
  */
-const CASH_GAS_VERSION = 'cc989b90';
+const CASH_GAS_VERSION = '6d958ba3';
 
 /**
  * 貼ってほしい 日報に書く.gs の版の印
