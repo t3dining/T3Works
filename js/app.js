@@ -2317,6 +2317,17 @@ function renderNippouBox(done) {
 
   renderNippouMinusNote();
   renderGridBox();
+  /* ★率は**見るだけのもの**です。ここで落ちると、この下の「どこに書くか」の札や
+       日報からの取り込みまで動かなくなり、**閉店の作業が止まります。**
+       だから、落ちても画面は進めます（コンソールには残します）。
+     ★止まらない代わりに、**黙って消えます。**「率が出ない」と言われたら、
+       まずコンソールを見てください（js/config.js の赤い帯は、ここでは出ません）。 */
+  try {
+    renderRitsuBox();
+  } catch (e) {
+    if (el.cashRitsu) el.cashRitsu.innerHTML = '';
+    console.error('原価率・人件費率を出せませんでした', e);
+  }
   // ★写真を読んでいない日でも出します。「いまどこに書く設定か」を
   //   確かめたいだけの日に、何も出ていないと分かりません
   renderNippouWhere();
@@ -2508,6 +2519,171 @@ function cashGridAuto() {
  *   （実際にそうなっていました）。
  *   固めるのは「日報がそのマスを計算しているとき」だけです。
  */
+/* ------------------------------------------------------------
+ *  原価率・人件費率（その日と、今月の1日から今日まで）
+ *
+ *  ★率の決め方は「お金・会議」の分野のものです。**式はあちらの部品を呼びます**
+ *    （`meetingCostRate`）。同じ式をここに書き写すと、**片方だけ直ります**。
+ *
+ *      原価率   ＝ 原価（仕入・税込）÷ 税込売上   ← 原価が税込なので、割る相手も税込
+ *      人件費率 ＝ 人件費 ÷ 税抜売上             ← 人件費に税が無いので税抜
+ *      F/L      ＝ その2つの足し算
+ *
+ *  ★出どころは**アプリに入れた数**です（日報からは読み直しません。ko-dai さんの決め・2026-09-23）。
+ *    **日報の側で手直しされた日は、その分ずれます。**画面にもそう書きます。
+ *  ★**仕入の入らない日は、その日の原価率が 0% になります。**まとめて仕入れる店では
+ *    仕入れた日だけ跳ね上がります。**見るのは累計の方**です。画面にもそう書きます。
+ *  ★売上が分からない日（読めなかった・まだ入れていない）は、**累計に足しません。**
+ *    分母だけ抜けると率が跳ね上がるためです。代わりに「入れたのに数えられなかった日」として数えます。
+ * ---------------------------------------------------------- */
+
+/** 打った数を足します（式「=1000+2000」も読みます。1つも入っていなければ null） */
+function journal率の入力(手) {
+  const 足す = (表, 列) => {
+    let 計 = 0;
+    let ある = false;
+    Object.keys(表 || {}).forEach((名) => {
+      列.forEach((c) => {
+        const n = cashMinusNum((表[名] || {})[c]);
+        if (n !== null) { 計 += n; ある = true; }
+      });
+    });
+    return ある ? 計 : null;
+  };
+  return {
+    原価: 足す(手 && 手.shiire, ['f', 'g']),   // ④仕入明細の 当日現金 ＋ 掛仕入
+    人件費: 足す(手 && 手.jinken, ['g']),      // ⑤人件費の 金額（人数は率に関係ありません）
+  };
+}
+
+/**
+ * その日の 税込売上・税抜売上
+ *
+ * ★検算に守られていない数は使いません（画面に「—」と出るのと同じ決まりです）。
+ *   記録に残っている j は、はじめから守られた数だけです（cashSureValues）。
+ * ★人が手で直した数があれば、そちらが勝ちます（日報に書くのも、その数です）。
+ */
+function journal率の売上(j, sure, 手) {
+  const 取る = (key) => {
+    const h = 手 ? 手[key] : null;
+    if (h !== null && h !== undefined && h !== '') {
+      const n = cashMinusNum(h);
+      if (n !== null) return n;
+    }
+    if (!j || j[key] === null || j[key] === undefined) return null;
+    if (sure && !sure[key]) return null;
+    const n2 = Number(j[key]);
+    return Number.isFinite(n2) ? n2 : null;
+  };
+  return { 税込: 取る('gross'), 税抜: 取る('net') };
+}
+
+/** 1日分。いま開いている日なら、**打ちかけ**も見ます（記録する前でも出します） */
+function journal率の1日(storeId, dateStr, いまの日) {
+  if (いまの日) {
+    return {
+      ...journal率の入力({ shiire: cashEdit.shiire, jinken: cashEdit.jinken }),
+      ...journal率の売上(cashEdit.j, cashEdit.sure, cashEdit.手),
+    };
+  }
+  const items = (Store.getDay(storeId, dateStr) || {}).items || {};
+  const 手 = (items[CASH_HAND] && items[CASH_HAND].value) || {};
+  const 記 = (items[CASH_ITEM] && items[CASH_ITEM].value) || null;
+  return {
+    ...journal率の入力(手),
+    ...journal率の売上(記 && 記.j, null, 記 && 記.h),
+  };
+}
+
+/** その日と、今月の1日から今日までのまとめ */
+function journal率まとめ(storeId, y, m, d) {
+  const 今日 = journal率の1日(storeId, ymd(y, m, d), true);
+  const 月 = { 原価: 0, 人件費: 0, 税込: 0, 税抜: 0, 日数: 0, 数えない日: 0 };
+  for (let i = 1; i <= d; i++) {
+    const 分 = (i === d) ? 今日 : journal率の1日(storeId, ymd(y, m, i), false);
+    const 何か入っている = [分.原価, 分.人件費, 分.税込, 分.税抜].some((x) => x !== null);
+    if (!何か入っている) continue;
+    if (分.税込 === null && 分.税抜 === null) { 月.数えない日 += 1; continue; }
+    月.日数 += 1;
+    月.原価 += 分.原価 || 0;
+    月.人件費 += 分.人件費 || 0;
+    月.税込 += 分.税込 || 0;
+    月.税抜 += 分.税抜 || 0;
+  }
+  return { 今日, 月 };
+}
+
+/** 率（分からなければ null）。★式は会議資料の部品をそのまま使います */
+function journal率(分) {
+  return {
+    原価率: (分.原価 === null || !分.税込) ? null : meetingCostRate({ cost: 分.原価, inc: 分.税込 }),
+    人件費率: (分.人件費 === null || !分.税抜) ? null : 分.人件費 / 分.税抜,
+  };
+}
+
+/** 率の文（「—」は、その数がまだ分からないという意味です） */
+function journal率の文(v) {
+  return v === null || v === undefined || !Number.isFinite(v) ? '—' : (v * 100).toFixed(1) + '%';
+}
+
+/**
+ * 率を画面に出します（仕入・人件費の欄のすぐ下）
+ *
+ * ★入れ物は index.html ではなく、ここで作って差し込みます（css/style.css と index.html は本部のものです）。
+ *   見た目は、いまある型（cash-grid__sec・cash-minus__head・cash-msg）を借ります。
+ */
+function renderRitsuBox() {
+  const 置き場 = el.cashGrid || el.cashMinusGo || el.cashMinusNote || el.cashMinus;
+  if (!置き場) return;
+  if (!el.cashRitsu) {
+    const box = document.createElement('div');
+    box.id = 'cashRitsu';
+    box.className = 'cash-grid__sec';
+    el.cashRitsu = box;
+  }
+  // ★欄が作り直されると、こちらが前の入れ物の下に取り残されます。毎回つなぎ直します
+  if (el.cashRitsu.previousElementSibling !== 置き場) {
+    置き場.insertAdjacentElement('afterend', el.cashRitsu);
+  }
+
+  const { 今日, 月 } = journal率まとめ(state.storeId, state.y, state.m, state.d);
+  const 日率 = journal率(今日);
+  const 月率 = journal率(月);
+  const 足す = (a, b) => (a === null || b === null ? null : a + b);
+
+  const 行 = [
+    ['原価率', 日率.原価率, 月率.原価率],
+    ['人件費率', 日率.人件費率, 月率.人件費率],
+    ['F/L', 足す(日率.原価率, 日率.人件費率), 足す(月率.原価率, 月率.人件費率)],
+  ];
+
+  const 中 = [];
+  中.push('<p class="cash-minus__head" style="margin:14px 0 8px;font-weight:700">'
+    + '原価率・人件費率（アプリに入れた数から）</p>');
+  中.push('<div style="display:grid;grid-template-columns:auto 1fr 1fr;gap:6px 12px;align-items:baseline">');
+  中.push('<span></span>'
+    + '<span style="font-size:12.5px;color:var(--text-sub)">その日</span>'
+    + `<span style="font-size:12.5px;color:var(--text-sub)">今月（${state.m}/1〜${state.m}/${state.d}）</span>`);
+  行.forEach(([名, 日, 月分]) => {
+    中.push(`<span style="font-size:13.5px;font-weight:700">${名}</span>`
+      + `<span style="font-size:15px">${journal率の文(日)}</span>`
+      + `<span style="font-size:15px;font-weight:700">${journal率の文(月分)}</span>`);
+  });
+  中.push('</div>');
+
+  /* ★数のとなりに「どう読むか」を書きます。離して書くと、見た人は数だけ持って帰ります */
+  const 注 = [];
+  注.push(月.日数
+    ? `今月は ${月.日数}日分で計算しました`
+    : '今月は、まだ計算できる日がありません');
+  if (月.数えない日) 注.push(`売上の分からない日 ${月.数えない日}日は入れていません`);
+  注.push('★仕入の入らない日は、その日の原価率が 0% になります。見るのは今月の方です');
+  注.push('★日報の側で直した分は入っていません（アプリに入れた数だけで出しています）');
+  中.push(`<p class="cash-msg">${注.join('。<br>')}。</p>`);
+
+  el.cashRitsu.innerHTML = 中.join('');
+}
+
 function renderGridBox() {
   if (!el.cashGrid) {
     // ★入れ物は index.html ではなく、ここで作って差し込みます
