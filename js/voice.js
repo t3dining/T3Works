@@ -527,8 +527,10 @@ const VoiceView = (() => {
   /**
    * 何歩目か（「2／5」のように出します。あと何回押すかが分かるように）
    *
-   * ★種類を選ぶ前は出しません。種類で歩数が変わるので（不具合は5歩、要望と質問は4歩）、
-   *   先に出すと「1／4」が「2／5」に変わって、かえって迷わせます。
+   * ★種類を選ぶ前は出しません。種類で歩数が変わるので（**不具合は6歩、要望と質問は5歩**）、
+   *   先に出すと数が変わって、かえって迷わせます。
+   * ★この数は `問いの並び()` から出しています（`length + 2`）。**ここに数を書かないこと。**
+   *   問いを1つ足したとき、**このコメントだけ古いまま残りました**（2026-09-23、マニュアルの指摘）。
    */
   function 歩みの絵() {
     if (!答え.種類) return '';
@@ -885,7 +887,14 @@ const VoiceView = (() => {
     const header = document.querySelector('.app-header');
     if (!panel) return;
     if (!header) { panel.style.top = ''; return; }   // ヘッダーが無い画面では、今までどおり全面
-    panel.style.top = `${Math.round(header.getBoundingClientRect().height)}px`;
+    /* ★ヘッダー**全部**ではなく、**上の段（.app-header__inner）の下**に合わせます。
+         ヘッダーの中には**店舗タブ（.store-tabs）も入って**いて、ご意見の画面では要らないのに
+         その分だけ**暗い余白**になっていました（2026-09-23、ko-dai さんの指摘）。
+         ★試し台に店舗タブを足して**同じ余白を出してから**直しています（手元では31px でした）。
+       ★上の段が見つからないときは、ヘッダー全部に倒します（余白は出ますが、隠れるよりましです）。 */
+    const 上の段 = header.querySelector('.app-header__inner');
+    const 下端 = (上の段 || header).getBoundingClientRect().bottom;
+    panel.style.top = `${Math.max(0, Math.round(下端))}px`;
   }
 
   function 開く() {
