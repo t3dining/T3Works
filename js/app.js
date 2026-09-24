@@ -10922,6 +10922,35 @@ function shiftRosterClose() {
   shiftRosterOpenFor = '';
   shiftCodeOpen = new Set();
   shiftLinkOpen = '';
+  shiftRenameOpen = '';
+  shiftReqEditing = '';
+}
+
+/** 「名前を直す」を開いている人の番号（1人分だけ開きます） */
+let shiftRenameOpen = '';
+/** 直したあとに一言だけ出す知らせ */
+let shiftRenameNote = '';
+
+/**
+ * 名簿の中で、いま字を打っているか
+ *
+ * ★同期がうまくいくたびに、画面全体が描き直されます（js/sync.js が render() を呼ぶ。普段は60秒・続くときは3秒おき）。
+ *   名簿の欄を作り直すと、**打っている途中の字が消え、キーボードも閉じます**（名前の欄・名前を直す欄・承認の名前の欄）。
+ *   なので、名簿の中の欄で打っているあいだは、名簿だけ作り直しません。他の所はふつうに描き直します。
+ * ★ボタンを押したあとは描き直してほしいので、見るのは「字を打つ欄」だけです（ボタンは見ません）。
+ *   Enter で決めるときは、欄から離れてから描き直します（→ shiftRosterDone）。
+ */
+function shiftRosterTyping(box) {
+  const a = document.activeElement;
+  if (!a || !box || !box.contains(a)) return false;
+  return a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && (a.type === 'text' || a.type === ''));
+}
+
+/** 名簿で何か決めたあと：打っていた欄から離れてから、描き直します（離れないと、上の守りで描き直されません） */
+function shiftRosterDone() {
+  const a = document.activeElement;
+  if (a && a.blur) a.blur();
+  renderKeepScroll();
 }
 
 /**
@@ -10955,6 +10984,8 @@ function renderShiftRoster(組む) {
   // ★店舗を変えたら閉じます
   if (shiftRosterOpenFor && shiftRosterOpenFor !== state.storeId) shiftRosterClose();
   const 出す = shiftRosterOpenFor === state.storeId;
+  // ★名簿の中で字を打っているあいだは、作り直しません（打っている字が消えるため。→ shiftRosterTyping）
+  if (出す && shiftRosterTyping(box)) return;
   box.innerHTML = '';
 
   const h = document.createElement('h2');
@@ -11023,7 +11054,8 @@ function renderShiftRoster(組む) {
     + '（番号を知っていれば、その人として出せてしまいます）。<br>'
     + '名前を消しても、<b>組みおわったシフトはそのまま残ります</b>。<br>'
     + '★<b>消した名前を戻すと、番号は新しくなります。</b>前の番号では入れません。'
-    + '名前を打ちまちがえたときも同じです（消える人がいるときは、保存の前に聞きます）。'
+    + '名前を打ちまちがえたときも同じです（消える人がいるときは、保存の前に聞きます）。<br>'
+    + '★<b>名前だけを直すとき</b>（ひらがなを漢字に、フルネームに など）は、下の一覧の<b>「名前を直す」</b>を使ってください。<b>番号は変わりません。</b>'
     + (組む ? '' : '<br>この店舗は、まだシフトを組んでいません。名前と番号だけ先に用意できます。');
   box.appendChild(note);
 
@@ -11045,7 +11077,7 @@ function renderShiftRoster(組む) {
     //   その人は名簿から消え、番号が使えなくなります（画面には何も出ません）
     if (!shiftRosterConfirm(state.storeId, area.value)) return;
     ShiftStaff.saveFromText(state.storeId, area.value);
-    renderKeepScroll();
+    shiftRosterDone();
   });
   row.appendChild(save);
 
@@ -11093,6 +11125,8 @@ function renderShiftRoster(組む) {
  * ---------------------------------------------------------- */
 /** 一言だけ出す知らせ（断ったあとなど）。1回出したら消えます */
 let shiftReqNote = '';
+/** 「承認」を押して、名前を直しているところの申請（行のキー） */
+let shiftReqEditing = '';
 
 /** その店舗の申請（消えたものは出しません。古い順） */
 function shiftReqList(storeId) {
@@ -11134,9 +11168,23 @@ function shiftReqWhen(rec) {
   return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-/** 承認：名簿に足して番号を作り、その番号を申請の行に書きます */
-function shiftReqApprove(storeId, key, rec) {
-  const name = String(rec.n || '').trim();
+/**
+ * 承認：名簿に足して番号を作り、その番号を申請の行に書きます
+ *
+ * ★名前は店長が直してから足せます（2026-09-24、ko-dai さんの指示。ひらがなを漢字に、名前だけをフルネームに など）。
+ *   直した名前で名簿に入り、その人の端末にも直した名前で出ます。あとから直して番号が変わる、を防ぐためです。
+ *   申請の行の名前（n）は、申請されたときのままにしておきます（行は店長の画面にしか出ません）。
+ */
+function shiftReqApprove(storeId, key, rec, 直した名前) {
+  const name = String(直した名前 === undefined || 直した名前 === null ? (rec.n || '') : 直した名前).replace(/\s+/g, ' ').trim();
+  if (!name) {
+    window.alert('名前を入れてください');
+    return;
+  }
+  if (Array.from(name).length > 20) {
+    window.alert('名前は20文字までにしてください');
+    return;
+  }
   const people = ShiftStaff.people(storeId);
   if (people.some((p) => p.n === name)) {
     window.alert(`同じ名前の「${name}」さんが、もう名簿にいます。\n\n`
@@ -11148,7 +11196,8 @@ function shiftReqApprove(storeId, key, rec) {
     window.alert(`名前に「テスト」が入っていると、見本（テスト用）の人になります。\n名前を変えて申請し直してもらってください。`);
     return;
   }
-  if (!window.confirm(`「${name}」さんを名簿に足して、番号を渡します。\n\n★本人だと確かめましたか？\n（知らない人の申請は「断る」を押してください）`)) return;
+  const 直した = name !== String(rec.n || '').trim() ? `\n（申請された名前：${rec.n}）` : '';
+  if (!window.confirm(`「${name}」さんとして名簿に足して、番号を渡します。${直した}\n\n★本人だと確かめましたか？\n（知らない人の申請は「断る」を押してください）`)) return;
   ShiftStaff.saveFromText(storeId, people.map((p) => p.n).concat([name]).join('\n'));
   const who = ShiftStaff.people(storeId).find((p) => p.n === name);
   if (!who || !who.c) {
@@ -11157,8 +11206,9 @@ function shiftReqApprove(storeId, key, rec) {
   }
   Store.adapter.set(key, { ...rec, st: 'ok', c: who.c });
   Sync.enqueue({ t: 'shiftApprove', k: key, v: { c: who.c } }, true);
+  shiftReqEditing = '';
   shiftReqNote = `「${name}」さんを承認しました。その人の端末に番号が入ります（名簿にも足しました）。`;
-  renderKeepScroll();
+  shiftRosterDone();
 }
 
 /** 断る（承認を取り消すときも同じ）。行を「消えた」にします */
@@ -11168,8 +11218,9 @@ function shiftReqDeny(key, rec, 聞く) {
   Store.adapter.set(key, { 消えた: true, 消した時: new Date().toISOString() });
   Sync.enqueue({ t: 'shiftDeny', k: key }, true);
   if (聞く) {
+    shiftReqEditing = '';
     shiftReqNote = 'みんなの画面から消しました。';
-    renderKeepScroll();
+    shiftRosterDone();
   }
 }
 
@@ -11211,12 +11262,45 @@ function shiftReqBox(storeId) {
     const st = x.rec.st === 'ok' ? (x.rec.got ? '受け取りずみ' : '承認ずみ（まだ受け取っていません）') : '申請';
     when.textContent = `${shiftReqWhen(x.rec)} ${st}`;
     line.appendChild(when);
+    if (x.rec.st === 'wait' && shiftReqEditing === x.key) {
+      // ★承認の前に、名簿に入れる名前を直せます（そのままでもかまいません）
+      wrap.appendChild(line);
+      const edit = document.createElement('div');
+      edit.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 0 10px;';
+      const cap = document.createElement('span');
+      cap.style.cssText = 'font-size:12px;color:var(--text-sub);width:100%;';
+      cap.textContent = '名簿に入れる名前（ひらがなを漢字に、名前だけをフルネームに などは、ここで直してから承認してください。あとから直すより確かです）';
+      edit.appendChild(cap);
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'field__input';
+      input.maxLength = 20;
+      input.value = x.rec.n;
+      input.style.cssText = 'flex:1 1 12em;min-width:10em;';
+      edit.appendChild(input);
+      const go = document.createElement('button');
+      go.type = 'button';
+      go.className = 'btn btn--small btn--primary';
+      go.textContent = 'この名前で承認';
+      const 決める = () => shiftReqApprove(storeId, x.key, x.rec, input.value);
+      go.addEventListener('click', 決める);
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !imeEnter(e)) 決める(); });
+      edit.appendChild(go);
+      const stop = document.createElement('button');
+      stop.type = 'button';
+      stop.className = 'btn btn--small';
+      stop.textContent = 'やめる';
+      stop.addEventListener('click', () => { shiftReqEditing = ''; shiftRosterDone(); });
+      edit.appendChild(stop);
+      wrap.appendChild(edit);
+      return;
+    }
     if (x.rec.st === 'wait') {
       const ok = document.createElement('button');
       ok.type = 'button';
       ok.className = 'btn btn--small btn--primary';
       ok.textContent = '承認';
-      ok.addEventListener('click', () => shiftReqApprove(storeId, x.key, x.rec));
+      ok.addEventListener('click', () => { shiftReqEditing = x.key; shiftRosterDone(); });
       line.appendChild(ok);
     }
     if (!(x.rec.st === 'ok' && x.rec.got)) {
@@ -11247,6 +11331,14 @@ function shiftCodeList(store, people) {
   h.className = 'card__sub';
   h.textContent = '配る番号';
   wrap.appendChild(h);
+  if (shiftRenameNote) {
+    const done = document.createElement('p');
+    done.className = 'card__note';
+    done.style.cssText = 'font-weight:700;color:var(--ok);';
+    done.textContent = shiftRenameNote;
+    shiftRenameNote = '';
+    wrap.appendChild(done);
+  }
 
   const url = document.createElement('p');
   url.className = 'card__note';
@@ -11378,6 +11470,17 @@ function shiftCodeList(store, people) {
     });
     line.appendChild(link);
 
+    // ★名前だけを直す（番号はそのまま。2026-09-24、ko-dai さんの指示）→ shiftRename（js/config.js）
+    const rename = document.createElement('button');
+    rename.type = 'button';
+    rename.className = 'btn btn--small';
+    rename.textContent = '名前を直す';
+    rename.addEventListener('click', () => {
+      shiftRenameOpen = shiftRenameOpen === p.c ? '' : p.c;
+      shiftRosterDone();
+    });
+    line.appendChild(rename);
+
     // ★見本は、社員がその場でアルバイトの画面を開けるようにします
     if (isShiftTester(p.n)) {
       const open = document.createElement('a');
@@ -11391,8 +11494,60 @@ function shiftCodeList(store, people) {
     wrap.appendChild(line);
 
     if (shiftLinkOpen === p.c) wrap.appendChild(shiftLinkPicker(p));
+    if (shiftRenameOpen === p.c) wrap.appendChild(shiftRenameBox(p));
   });
   return wrap;
+}
+
+/**
+ * 「名前を直す」を押したときの欄（番号はそのまま）
+ *
+ * ★名簿の大きな欄で書き換えると番号が変わりますが、ここで直すと**番号は変わりません**。
+ *   承認で番号を受け取った人も、そのまま入れます。他店舗にも所属している人は、向こうの名簿の名前もそろいます。
+ */
+function shiftRenameBox(person) {
+  const box = document.createElement('div');
+  box.style.cssText = 'padding:8px 0 12px;display:flex;flex-wrap:wrap;gap:8px;'
+    + 'align-items:center;border-bottom:1px solid var(--line);';
+  const cap = document.createElement('span');
+  cap.style.cssText = 'font-size:12px;color:var(--text-sub);width:100%;';
+  cap.textContent = `「${person.n}」さんの名前を直します。★番号はそのままです（この人はそのまま入れます）。`
+    + '組みおわったシフトは前の名前のまま残り、直す前に出してもらっていた希望は、取り込むと前の名前で入ります。';
+  box.appendChild(cap);
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'field__input';
+  input.maxLength = 20;
+  input.value = person.n;
+  input.style.cssText = 'flex:1 1 12em;min-width:10em;';
+  box.appendChild(input);
+  const go = document.createElement('button');
+  go.type = 'button';
+  go.className = 'btn btn--small btn--primary';
+  go.textContent = '直す';
+  const 決める = () => {
+    const r = shiftRename(state.storeId, person.n, input.value);
+    if (!r.ok) {
+      window.alert(r.error);
+      return;
+    }
+    const 新 = String(input.value).replace(/\s+/g, ' ').trim();
+    const よそ = r.stores.filter((id) => id !== state.storeId).map((id) => (getStore(id) || {}).short || id);
+    shiftRenameOpen = '';
+    shiftRenameNote = `「${person.n}」さんを「${新}」さんに直しました（番号はそのまま）。`
+      + (よそ.length ? `${よそ.join('・')}の名簿もそろえました。` : '');
+    shiftRosterDone();
+  };
+  go.addEventListener('click', 決める);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !imeEnter(e)) 決める(); });
+  box.appendChild(go);
+  const stop = document.createElement('button');
+  stop.type = 'button';
+  stop.className = 'btn btn--small';
+  stop.textContent = 'やめる';
+  stop.addEventListener('click', () => { shiftRenameOpen = ''; shiftRosterDone(); });
+  box.appendChild(stop);
+  return box;
 }
 
 /**

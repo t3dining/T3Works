@@ -5745,6 +5745,7 @@ function shiftRosterConfirm(storeId, text) {
     + '　（前の番号では、提出ページに入れません）。\n\n'
     + '名前を打ちまちがえたときも、同じことが起きます。\n'
     + '組みおわったシフトは、そのまま残ります。\n\n'
+    + '★名前だけを直したいときは、キャンセルして、下の一覧の「名前を直す」を使ってください（番号は変わりません）。\n\n'
     + '進めますか。');
 }
 
@@ -6297,6 +6298,46 @@ function shiftReissue(storeId, name) {
   }));
   ShiftStaff.save(map);
   return 替えた;
+}
+
+/**
+ * 名前だけを直す（★番号はそのまま。2026-09-24、ko-dai さんの指示）
+ *
+ * ★名簿の大きな欄で名前を書き換えると「前の人が消えて、新しい人が増えた」になり、**番号が変わります**
+ *   （→ shiftRosterConfirm）。承認で番号を受け取った人は、それで入れなくなります。
+ *   こちらは**番号を変えずに名前だけ**替えるので、その人はそのまま入れます。
+ * ★他店舗にも所属している人は、**同じ番号の人を全部の店の名簿で**替えます（shiftReissue と同じ考え）。
+ *   替える先の店に**同じ名前の別の人**がいれば、どの店も替えずに止めます（名簿は1つの店に同じ名前を2人入れられません）。
+ * ★替えないもの：組みおわったシフト（前の名前のまま残ります）／直す前に出してもらっていた希望（取り込むと前の名前で入ります）。
+ *   希望の行は番号で持っているので、次に出し直してもらえば新しい名前になります。
+ * ★見本（名前に「テスト」）かどうかが変わる直しはさせません（見本かどうかが、シフトに出るかを決めるため）。
+ * 返り値 { ok: true, stores: [替えた店舗] } ／ { ok: false, error }
+ */
+function shiftRename(storeId, oldName, newName) {
+  const name = String(newName === null || newName === undefined ? '' : newName).replace(/\s+/g, ' ').trim();
+  if (!name) return { ok: false, error: '新しい名前を入れてください' };
+  if (Array.from(name).length > 20) return { ok: false, error: '名前は20文字までにしてください' };
+  if (name === oldName) return { ok: false, error: '名前が変わっていません' };
+  if (isShiftTester(name) !== isShiftTester(oldName)) {
+    return { ok: false, error: '名前に「テスト」を足したり外したりはできません（見本の人かどうかが変わるため）' };
+  }
+  const map = ShiftStaff.all();
+  const who = (map[storeId] || []).find((p) => p.n === oldName);
+  if (!who) return { ok: false, error: `「${oldName}」さんが名簿に見つかりません（他の端末で直されたかもしれません。開き直してください）` };
+  const c = String(who.c || '');
+  const 相手 = [];
+  Object.keys(map).forEach((id) => (map[id] || []).forEach((p) => {
+    if (p === who || (c && String(p.c || '') === c)) 相手.push({ id, p });
+  }));
+  for (const x of 相手) {
+    if ((map[x.id] || []).some((q) => q !== x.p && q.n === name)) {
+      const 店 = getStore(x.id) || {};
+      return { ok: false, error: `${店.name || x.id}の名簿に、同じ名前の「${name}」さんがもういます。別の名前にしてください` };
+    }
+  }
+  相手.forEach((x) => { x.p.n = name; });
+  ShiftStaff.save(map);
+  return { ok: true, stores: [...new Set(相手.map((x) => x.id))] };
 }
 
 /** その店舗でシフトを組むか（名簿だけの店舗と見分けます） */

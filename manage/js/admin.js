@@ -1683,6 +1683,10 @@ function saveCatchStaff() {
  */
 /** 「他店舗にも所属」を開いている人の番号 */
 let shiftLinkOpen = '';
+/** 「名前を直す」を開いている人の番号（→ shiftRename。番号はそのまま） */
+let shiftRenameOpen = '';
+/** 直したあとに一言だけ出す知らせ */
+let shiftRenameNote = '';
 
 /**
  * ★マネージは、名前も番号も**はじめから出します**（ko-dai の指示・2026-09-05）。
@@ -1725,6 +1729,14 @@ function renderShiftCodes() {
     : `送りずみ ${送りずみ} / ${people.length}人`)
     + (持ち場なし ? `　／　持ち場がまだ ${持ち場なし}人` : '');
   el.shiftCodeList.appendChild(count);
+  if (shiftRenameNote) {
+    const done = document.createElement('p');
+    done.className = 'admin-note';
+    done.style.cssText = 'font-weight:700;color:var(--ok);';
+    done.textContent = shiftRenameNote;
+    shiftRenameNote = '';
+    el.shiftCodeList.appendChild(done);
+  }
 
   const box = document.createElement('div');
   box.className = 'shift-codes';
@@ -1814,15 +1826,77 @@ function renderShiftCodes() {
     //   前は7つを1行に並べていて、スマホ（幅430px）では横にあふれ、
     //   名前もボタンも**1文字ずつ縦に折れて**いました（2026-09-07 ko-dai の指摘）。
     //   まとめておけば、狭い画面では丸ごと下の行に落ちます
+    // ★名前だけを直す（番号はそのまま。2026-09-24、ko-dai さんの指示）。ワークスの名簿と同じもの（shiftRename）
+    const rename = document.createElement('button');
+    rename.type = 'button';
+    rename.className = 'shift-code__btn' + (shiftRenameOpen === p.c ? ' is-on' : '');
+    rename.textContent = '名前を直す';
+    rename.title = '番号を変えずに、名前だけを直します';
+    rename.addEventListener('click', () => {
+      shiftRenameOpen = shiftRenameOpen === p.c ? '' : p.c;
+      renderShiftStaff();
+    });
+
     const acts = document.createElement('div');
     acts.className = 'shift-code__acts';
-    acts.append(lanes, copy, again, link);
+    acts.append(lanes, copy, again, link, rename);
     row.append(sent, name, code, acts);
     box.appendChild(row);
 
     if (shiftLinkOpen === p.c) box.appendChild(shiftLinkPicker(storeId, p));
+    if (shiftRenameOpen === p.c) box.appendChild(shiftRenameBox(storeId, p));
   });
   el.shiftCodeList.appendChild(box);
+}
+
+/**
+ * 「名前を直す」を押したときの欄（番号はそのまま。→ shiftRename、js/config.js）
+ *
+ * ★名前の大きな欄で書き換えると番号が変わりますが、ここで直すと**番号は変わりません**。
+ *   他店舗にも所属している人は、向こうの名簿の名前もそろいます。ワークスの名簿と同じものです。
+ */
+function shiftRenameBox(storeId, person) {
+  const wrap = document.createElement('div');
+  wrap.className = 'shift-link';
+  const cap = document.createElement('p');
+  cap.className = 'admin-note';
+  cap.textContent = `「${person.n}」さんの名前を直します。★番号はそのままです（この人はそのまま入れます）。`
+    + '組みおわったシフトは前の名前のまま残り、直す前に出してもらっていた希望は、取り込むと前の名前で入ります。';
+  wrap.appendChild(cap);
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'field__input';
+  input.maxLength = 20;
+  input.value = person.n;
+  input.style.cssText = 'max-width:16em;display:inline-block;margin-right:8px;';
+  wrap.appendChild(input);
+  const go = document.createElement('button');
+  go.type = 'button';
+  go.className = 'shift-code__btn is-on';
+  go.textContent = '直す';
+  const 決める = () => {
+    const r = shiftRename(storeId, person.n, input.value);
+    if (!r.ok) {
+      window.alert(r.error);
+      return;
+    }
+    const 新 = String(input.value).replace(/\s+/g, ' ').trim();
+    const よそ = r.stores.filter((id) => id !== storeId).map((id) => (getStore(id) || {}).short || id);
+    shiftRenameOpen = '';
+    shiftRenameNote = `「${person.n}」さんを「${新}」さんに直しました（番号はそのまま）。`
+      + (よそ.length ? `${よそ.join('・')}の名簿もそろえました。` : '');
+    renderShiftStaff();
+  };
+  go.addEventListener('click', 決める);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !imeEnter(e)) 決める(); });
+  wrap.appendChild(go);
+  const stop = document.createElement('button');
+  stop.type = 'button';
+  stop.className = 'shift-code__btn';
+  stop.textContent = 'やめる';
+  stop.addEventListener('click', () => { shiftRenameOpen = ''; renderShiftStaff(); });
+  wrap.appendChild(stop);
+  return wrap;
 }
 
 /**
