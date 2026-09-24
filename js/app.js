@@ -12208,7 +12208,11 @@ function shiftGuideHtml(kind) {
     '前の半月の表は<b>「これまでのシフト表」</b>で見られます',
   ]));
 
-  out.push('<p class="modal__note" style="margin:20px 0 6px;">もっと詳しい説明は、⚙ 設定 →「使い方を見る」の6章（シフト）にあります。</p>');
+  // ★行き先は、ワークスの使い方の6章（シフト）へ直に。マインの「使い方を見る」はマインの使い方（help/mine/）へ行き、
+  //   そこに組む手順は無いため（2026-09-24、マニュアルの指摘）。この窓はワークスでもマインでも開きます
+  const 本 = `${typeof ASSET_BASE !== 'undefined' ? ASSET_BASE : ''}help/index.html#s6`;
+  out.push(`<p class="modal__note" style="margin:20px 0 6px;">もっと詳しい説明は、<a href="${本}" target="_blank" rel="noopener">`
+    + 'ワークスの使い方の6章（シフト）</a>にあります。</p>');
   return out.join('');
 }
 
