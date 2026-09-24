@@ -1808,6 +1808,61 @@ function calcPadOutside(e) {
 document.addEventListener('pointerdown', calcPadOutside, true);
 
 /** その入力欄に、テンキーを付けます */
+/* ------------------------------------------------------------
+ *  式を入れた欄は、離れたら**答え**を出します（2026-09-24・ko-dai さん）
+ *
+ *  ★**覚えているのは式のままです。**画面に出す字だけを替えます。
+ *    日報のマスには今までどおり式で入るので、あとから内わけが分かります。
+ *  ★もう一度その欄を押すと**式が戻る**ので、途中から打ち直せます。
+ *  ★打っている最中は替えません（テンキーで打っている欄も「打っている」に数えます）。
+ *  ★計算できない式は、そのまま見せます。答えに替えると、まちがいが見えなくなります。
+ * ---------------------------------------------------------- */
+
+/**
+ * その節で出す欄
+ *
+ * ★仕入は「掛仕入」だけ出します（**当日現金は出しません**。ko-dai さん・2026-09-24）。
+ * ★人件費の F は「人数」なので、そのまま出します。
+ * ★見出しも欄も、**ここ1か所**から作ります。2か所に書くと、片方だけ直ります。
+ */
+function cash出す列(入れ先, r, F名, G名) {
+  if (入れ先 === 'shiire') return [['g', r.gx, G名]];
+  return [['f', r.fx, F名], ['g', r.gx, G名]];
+}
+
+/** 欄に出す字。式なら答え、そうでなければそのまま */
+function cash式の見た目(v) {
+  const s = (v === undefined || v === null) ? '' : String(v);
+  if (!cashIsFormula(s)) return s;
+  const n = cashFormulaEval(s);
+  return n === null ? s : cashText(n);
+}
+
+/** 欄に入れる字を決めます（打っている最中は、式のまま） */
+function cash式を出す(i, 生) {
+  if (!i) return;
+  const raw = (生 === undefined || 生 === null) ? '' : String(生);
+  i.dataset.raw = raw;
+  if (cashTyping(i)) { i.value = raw; return; }
+  i.value = cash式の見た目(raw);
+}
+
+/** その欄を「式を入れられる欄」にします（押したら式・離れたら答え） */
+function cash式の欄にする(i) {
+  i.addEventListener('focus', () => {
+    // ★押したら式に戻します（途中から打ち直せるように）
+    const raw = i.dataset.raw;
+    if (raw !== undefined && raw !== i.value) i.value = raw;
+  });
+  i.addEventListener('input', () => { i.dataset.raw = i.value; });
+  i.addEventListener('blur', () => {
+    i.dataset.raw = i.value;
+    /* ★すぐには替えません。テンキーの中を触ったための blur なら、
+         まだ打っている最中です（calcPadFor がその欄を指したままです）。 */
+    setTimeout(() => { if (!cashTyping(i)) i.value = cash式の見た目(i.dataset.raw); }, 0);
+  });
+}
+
 function calcPadBind(input) {
   if (!calcTouch()) return;                 // パソコンは本物のキーボードで
   input.inputMode = 'none';                 // ★システムのキーボードを出しません
@@ -2286,6 +2341,7 @@ function renderNippouBox(done) {
       //   css は本部のファイル（14px）なので、ここで16pxにします
       input.style.fontSize = '16px';
       input.dataset.k = k;
+      cash式の欄にする(input);   // ★押したら式・離れたら答え
       // ★入れた文字を、そのまま覚えます（数に直しません）。
       //   「=1000+2000+3000」と入れたら、日報のマスにも計算式のまま入れるためです。
       //   数に直してしまうと、あとから日報を開いても内わけが分かりません。
@@ -2307,7 +2363,7 @@ function renderNippouBox(done) {
     // ★入れた文字をそのまま戻します。計算式は計算式のまま見えます
     // ★テンキーで打っている欄は触りません（focus が外れていても打っています）
     if (!cashTyping(i)) {
-      i.value = (v === undefined || v === null || v === '' || v === 0) ? '' : String(v);
+      cash式を出す(i, (v === undefined || v === null || v === '' || v === 0) ? '' : v);
     }
     // ★記録しても固めません。仕入・人件費と同じで、これらは
     //   現金売上の記録とは別のもの（日報の別のマスへ書くもの）です。
@@ -2833,7 +2889,9 @@ function renderGridBox() {
     h.className = 'cash-minus__head';
     h.style.margin = '14px 0 8px';
     h.style.fontWeight = '700';
-    h.textContent = `${見出し}（${F名} ／ ${G名}）`;
+    /* ★仕入は「掛仕入」だけ出します（当日現金は隠します。ko-dai さん・2026-09-24）。
+         ★人件費の F は「人数」なので、そのままです。 */
+    h.textContent = `${見出し}（${cash出す列(入れ先, {}, F名, G名).map((x) => x[2]).join(' ／ ')}）`;
     sec.appendChild(h);
 
     const wrap = document.createElement('div');
@@ -2863,7 +2921,7 @@ function renderGridBox() {
       row.appendChild(name);
       // ★人数から金額を自動で入れる行（交通費）で、両方の欄を結ぶために持っておきます
       const 欄 = {};
-      [['f', r.fx, F名], ['g', r.gx, G名]].forEach(([which, 式か, ラベル]) => {
+      cash出す列(入れ先, r, F名, G名).forEach(([which, 式か, ラベル]) => {
         const i = document.createElement('input');
         i.type = 'text';
         i.inputMode = 'numeric';
@@ -2881,7 +2939,8 @@ function renderGridBox() {
         i.dataset.col = which;
         i.dataset.colname = ラベル;      // ★テンキーの窓の見出しに使います
         const 持ち = (cashEdit[入れ先] || {})[r.name] || {};
-        if (document.activeElement !== i) i.value = 持ち[which] === undefined ? '' : String(持ち[which]);
+        cash式の欄にする(i);       // ★押したら式・離れたら答え
+        if (document.activeElement !== i) cash式を出す(i, 持ち[which] === undefined ? '' : 持ち[which]);
         // ★日報が計算しているマスには入れられません（式を壊さないため）
         i.readOnly = !!式か;
         if (式か) { i.placeholder = '日報が計算'; i.title = 'ここは日報の計算式です'; }
@@ -2896,6 +2955,7 @@ function renderGridBox() {
             const 人 = cashMinusNum(i.value);
             if (人 !== null) {
               欄.g.value = cashText(人 * 単価);
+              欄.g.dataset.raw = 欄.g.value;
               cashEdit[入れ先][r.name].g = 欄.g.value;
             }
           }
@@ -2956,7 +3016,7 @@ function renderGridFill() {
     if (cashTyping(i)) return;                    // ★打っている欄は、そのまま
     const 持ち = (cashEdit[i.dataset.grid] || {})[i.dataset.name] || {};
     const v = 持ち[i.dataset.col];
-    i.value = (v === undefined || v === null) ? '' : String(v);
+    cash式を出す(i, (v === undefined || v === null) ? '' : v);
   });
   renderGridNote();
   renderGridButton();
@@ -4535,6 +4595,7 @@ function journal行を作る(row) {
   input.inputMode = 'numeric';
   input.autocomplete = 'off';
   input.dataset.te = row.key;
+  cash式の欄にする(input);   // ★押したら式・離れたら答え
   input.dataset.name = row.name;          // テンキーの窓に出す名前
   input.setAttribute('aria-label', `${row.name}（紙の数を手で直す）`);
   // ★16px 未満だと、iOS が触ったときに画面を勝手に拡大します。
@@ -4667,7 +4728,7 @@ function renderNippouTable() {
     // ★読み取った数は、欄のうすい字（placeholder）で見せます。
     //   確かめが通らなかった数も出します。何を読んだかが分からないと、直せないためです
     input.placeholder = x.row.手 ? '' : (x.読めた ? fmt(x.読んだ) : '—');
-    if (!cashTyping(input)) input.value = x.手入力 ? fmt(x.紙) : '';
+    if (!cashTyping(input)) cash式を出す(input, x.手入力 ? fmt(x.紙) : '');
     input.style.fontWeight = x.手入力 ? '700' : '';
     input.style.background = x.手入力 ? '#fff4d6' : '';
     note.textContent = x.手入力 ? '手で直した数' : '';
@@ -10911,6 +10972,15 @@ function renderShiftRoster(組む) {
         + '<b>名前と番号は、押したときだけ出します。</b>'
       : 'まだ登録されていません。';
     box.appendChild(note);
+    // ★番号の申請は、閉じているあいだは**件数だけ**出します（名前は出しません。名簿と同じ決まり）
+    const 待ち = shiftReqCount(state.storeId);
+    if (待ち) {
+      const req = document.createElement('p');
+      req.className = 'card__note';
+      req.style.cssText = 'font-weight:700;color:var(--ng);';
+      req.textContent = `★番号の申請が${待ち}件あります。「名前と番号を出す」を押すと、承認できます。`;
+      box.appendChild(req);
+    }
 
     const row = document.createElement('div');
     row.className = 'card__actions';
@@ -10939,6 +11009,11 @@ function renderShiftRoster(組む) {
       + '見るだけなら、このままで大丈夫です。';
     box.appendChild(警告);
   }
+
+  // ★番号の申請（あるときだけ出します）。開いたときに、14日を過ぎたものを片づけます
+  shiftReqSweep(state.storeId);
+  const 申請の欄 = shiftReqBox(state.storeId);
+  if (申請の欄) box.appendChild(申請の欄);
 
   const note = document.createElement('p');
   note.className = 'card__note';
@@ -11000,6 +11075,161 @@ function renderShiftRoster(組む) {
   box.appendChild(row);
 
   box.appendChild(shiftCodeList(store, people));
+}
+
+/* -------- 番号の申請（番号をまだ持っていない人。2026-09-24、ko-dai さんの指示） --------
+ *
+ *  アルバイトが提出ページで「申請」→ ここで店長が承認 → その人の端末に番号が自動で入ります。
+ *  サーバーは cloudflare/worker.js の「申請」の節。行の形は js/config.js の SHIFT_REQ_STORE のところ。
+ *
+ *  ★承認は**ワークス（ふつうのPIN）でできます**（ko-dai さんの判断。店長にマネージの権限は渡さない）。
+ *    名簿がもともとふつうのPINで書けるので、承認だけ管理にしても守りは増えません（本部と確認ずみ、決裁.md）。
+ *  ★承認・断るは**専用の書き込み**（shiftApprove／shiftDeny）で送ります。t:'item' では送りません（行の形を守るため）。
+ *    誰が承認したかはサーバーが書きます（端末からは送りません）。
+ *  ★**同じ名前の人が名簿にいるときは承認できません。**承認すると、その人の番号を渡すことになるためです（本部の決め）。
+ *    本人なら、名簿の番号を今までどおり LINE で送ってください。
+ *  ★断ったら「みんなの画面から消しました」と出します。**「消しました」とは言いません**（シートの版履歴には残るため）。
+ *  ★名前は、閉じているあいだは出しません（件数だけ）。
+ * ---------------------------------------------------------- */
+/** 一言だけ出す知らせ（断ったあとなど）。1回出したら消えます */
+let shiftReqNote = '';
+
+/** その店舗の申請（消えたものは出しません。古い順） */
+function shiftReqList(storeId) {
+  if (typeof Store === 'undefined' || !Store.adapter || !storeId) return [];
+  const 箱 = Store.adapter.dump();
+  const 頭 = `${storeId}-`;
+  return Store.keysUnder(SHIFT_REQ_STORE)
+    .filter((id) => id.indexOf(頭) === 0)
+    .map((id) => ({ key: `${SHIFT_REQ_STORE}/${id}`, rec: 箱[`${SHIFT_REQ_STORE}/${id}`] }))
+    .filter((x) => x.rec && typeof x.rec === 'object' && !x.rec.消えた && x.rec.n)
+    .sort((a, b) => String(a.rec.at || '').localeCompare(String(b.rec.at || '')));
+}
+
+/** 14日を過ぎたか（読めない時刻も過ぎた扱い） */
+function shiftReqOld(rec) {
+  const at = Date.parse(String((rec && rec.at) || ''));
+  return !isFinite(at) || at < Date.now() - SHIFT_REQ_DAYS * 86400000;
+}
+
+/** 承認を待っている件数（★申請の画面を止めているあいだは 0。js/config.js の SHIFT_REQ_ON） */
+function shiftReqCount(storeId) {
+  if (!SHIFT_REQ_ON) return 0;
+  return shiftReqList(storeId).filter((x) => x.rec.st === 'wait' && !shiftReqOld(x.rec)).length;
+}
+
+/**
+ * 14日を過ぎた申請を片づける（名簿を開いたときだけ。サーバーはもう「見つかりません」を返しています）
+ * ★名前を行に残さないためです（断ったときと同じ形。本部の条件2）。送れる端末（PINあり）のときだけ
+ */
+function shiftReqSweep(storeId) {
+  if (!SHIFT_REQ_ON) return;
+  if (typeof Sync === 'undefined' || !Sync.enabled || !Sync.enabled() || !Sync.pin()) return;
+  shiftReqList(storeId).filter((x) => shiftReqOld(x.rec)).forEach((x) => shiftReqDeny(x.key, x.rec, false));
+}
+
+function shiftReqWhen(rec) {
+  const d = new Date(String(rec.at || ''));
+  if (!isFinite(d.getTime())) return '';
+  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** 承認：名簿に足して番号を作り、その番号を申請の行に書きます */
+function shiftReqApprove(storeId, key, rec) {
+  const name = String(rec.n || '').trim();
+  const people = ShiftStaff.people(storeId);
+  if (people.some((p) => p.n === name)) {
+    window.alert(`同じ名前の「${name}」さんが、もう名簿にいます。\n\n`
+      + '本人なら、名簿の番号を今までどおり LINE で送って、この申請は「断る」を押してください。\n'
+      + '別の人なら、名前を変えて申請し直してもらってください（名簿は1つの店舗に同じ名前を2人入れられません）。');
+    return;
+  }
+  if (isShiftTester(name)) {
+    window.alert(`名前に「テスト」が入っていると、見本（テスト用）の人になります。\n名前を変えて申請し直してもらってください。`);
+    return;
+  }
+  if (!window.confirm(`「${name}」さんを名簿に足して、番号を渡します。\n\n★本人だと確かめましたか？\n（知らない人の申請は「断る」を押してください）`)) return;
+  ShiftStaff.saveFromText(storeId, people.map((p) => p.n).concat([name]).join('\n'));
+  const who = ShiftStaff.people(storeId).find((p) => p.n === name);
+  if (!who || !who.c) {
+    window.alert('番号を作れませんでした。もう一度お試しください');
+    return;
+  }
+  Store.adapter.set(key, { ...rec, st: 'ok', c: who.c });
+  Sync.enqueue({ t: 'shiftApprove', k: key, v: { c: who.c } }, true);
+  shiftReqNote = `「${name}」さんを承認しました。その人の端末に番号が入ります（名簿にも足しました）。`;
+  renderKeepScroll();
+}
+
+/** 断る（承認を取り消すときも同じ）。行を「消えた」にします */
+function shiftReqDeny(key, rec, 聞く) {
+  if (聞く && !window.confirm(`「${rec.n}」さんの申請を断ります。よろしいですか？`
+    + (rec.st === 'ok' ? '\n\n★もう承認ずみです。名簿に足した名前は残るので、要らなければ名簿から消してください。' : ''))) return;
+  Store.adapter.set(key, { 消えた: true, 消した時: new Date().toISOString() });
+  Sync.enqueue({ t: 'shiftDeny', k: key }, true);
+  if (聞く) {
+    shiftReqNote = 'みんなの画面から消しました。';
+    renderKeepScroll();
+  }
+}
+
+/** 申請の欄（無ければ null。★申請の画面を止めているあいだは出しません） */
+function shiftReqBox(storeId) {
+  if (!SHIFT_REQ_ON) return null;
+  const list = shiftReqList(storeId).filter((x) => !shiftReqOld(x.rec));
+  const note1 = shiftReqNote;
+  shiftReqNote = '';
+  if (!list.length && !note1) return null;
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin:0 0 12px;';
+  const h = document.createElement('h3');
+  h.className = 'card__sub';
+  h.textContent = '番号の申請';
+  wrap.appendChild(h);
+  if (note1) {
+    const p = document.createElement('p');
+    p.className = 'card__note';
+    p.style.cssText = 'font-weight:700;color:var(--ok);';
+    p.textContent = note1;
+    wrap.appendChild(p);
+  }
+  if (list.length) {
+    const how = document.createElement('p');
+    how.className = 'card__note';
+    how.innerHTML = 'アルバイトが提出ページから申請すると、ここに出ます。<b>本人だと確かめてから</b>「承認」を押してください。'
+      + '承認すると名簿に足され、<b>その人の端末に番号が自動で入ります</b>（LINE で送らなくて大丈夫です）。';
+    wrap.appendChild(how);
+  }
+  list.forEach((x) => {
+    const line = document.createElement('div');
+    line.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--line);';
+    const name = document.createElement('b');
+    name.textContent = x.rec.n;
+    line.appendChild(name);
+    const when = document.createElement('span');
+    when.style.cssText = 'font-size:12px;color:var(--text-sub);';
+    const st = x.rec.st === 'ok' ? (x.rec.got ? '受け取りずみ' : '承認ずみ（まだ受け取っていません）') : '申請';
+    when.textContent = `${shiftReqWhen(x.rec)} ${st}`;
+    line.appendChild(when);
+    if (x.rec.st === 'wait') {
+      const ok = document.createElement('button');
+      ok.type = 'button';
+      ok.className = 'btn btn--small btn--primary';
+      ok.textContent = '承認';
+      ok.addEventListener('click', () => shiftReqApprove(storeId, x.key, x.rec));
+      line.appendChild(ok);
+    }
+    if (!(x.rec.st === 'ok' && x.rec.got)) {
+      const no = document.createElement('button');
+      no.type = 'button';
+      no.className = 'btn btn--small';
+      no.textContent = x.rec.st === 'ok' ? '取り消す' : '断る';
+      no.addEventListener('click', () => shiftReqDeny(x.key, x.rec, true));
+      line.appendChild(no);
+    }
+    wrap.appendChild(line);
+  });
+  return wrap;
 }
 
 /** 配る番号の一覧。番号は押した人の分だけ出します */

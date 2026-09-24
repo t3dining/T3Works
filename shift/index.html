@@ -46,7 +46,7 @@
 <link rel="icon" href="../img/shift-icon-64.png?v=0254ff8c">
 
 <link rel="stylesheet" href="css/submit.css?v=f772ad7a">
-<meta name="app-version" content="cabe3825">
+<meta name="app-version" content="1279c4c6">
 </head>
 <body>
 
@@ -95,6 +95,46 @@
            class="input input--big" id="gatePin" placeholder="番号">
     <p class="err is-hidden" id="gateErr"></p>
     <button type="button" class="btn btn--primary btn--wide" id="gateGo">すすむ</button>
+    <!-- ★番号をまだ持っていない人の入口（2026-09-24、ko-dai さんの指示）。
+         申請して、店長がワークスで承認すると、番号が自動で入ります -->
+    <!-- ★はじめは隠しておき、js/config.js の SHIFT_REQ_ON が true のときだけ JS が出します（JS が動かなければ出ません） -->
+    <div class="is-hidden" id="gateApplyBox">
+      <p class="hint" style="margin-top:18px;">番号をまだ持っていない人は、ここから申請できます。</p>
+      <button type="button" class="btn btn--wide" id="gateApply">番号をまだ持っていない</button>
+    </div>
+  </section>
+
+  <!-- ===== 1b. 番号の申請（番号をまだ持っていない人） =====
+       ★名前は本人が入れますが、**それだけでは誰にもなれません。**店長がワークスで承認して、
+         はじめて番号が入ります（門番は店長の目です）。番号で誰なのかが決まるのは今までどおりです -->
+  <section class="card is-hidden" id="apply">
+    <h1 class="card__title">番号の申請</h1>
+    <div id="applyForm">
+      <p class="card__note">
+        お店と名前を入れて「申請する」を押してください。<br>
+        <b>店長が承認すると、番号が自動で入ります</b>（番号を打たなくて大丈夫です）。
+      </p>
+      <div class="field">
+        <label class="field__label" for="applyStore">お店</label>
+        <select class="input" id="applyStore"></select>
+      </div>
+      <div class="field">
+        <label class="field__label" for="applyName">名前</label>
+        <input type="text" class="input" id="applyName" maxlength="20" autocomplete="off" placeholder="名前">
+      </div>
+      <p class="err is-hidden" id="applyErr"></p>
+      <button type="button" class="btn btn--primary btn--wide" id="applyGo">申請する</button>
+      <button type="button" class="btn btn--wide" id="applyBack" style="margin-top:10px;">番号を持っている人はこちら</button>
+    </div>
+    <div class="is-hidden" id="applyWait">
+      <p class="card__note">
+        <b id="applyWho"></b>で申請しました。<br>
+        <b>店長に「申請しました」と伝えてください。</b>承認されると、この画面が自動で進みます。
+      </p>
+      <p class="hint" id="applyState" style="white-space:pre-line;"></p>
+      <button type="button" class="btn btn--primary btn--wide" id="applyCheck">もう一度確かめる</button>
+      <button type="button" class="btn btn--wide" id="applyCancel" style="margin-top:10px;">申請をやめる</button>
+    </div>
   </section>
 
   <!-- ===== 2. 希望を入れる ===== -->
@@ -199,9 +239,9 @@
   </div>
 </div>
 
-<script src="../js/config.js?v=5fc7dc2b"></script>
+<script src="../js/config.js?v=db171659"></script>
 <!-- シフト表を絵に描くところ。ワークスの「JPEGで保存」と同じものです -->
 <script src="../js/shift-sheet.js?v=9b8102f7"></script>
-<script src="js/submit.js?v=bfb8b5de"></script>
+<script src="js/submit.js?v=baf0db3b"></script>
 </body>
 </html>

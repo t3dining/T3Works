@@ -283,7 +283,7 @@ function isClosedOn(dateStr) {
  *  画面
  * ============================================================ */
 function show(which) {
-  ['boot', 'gate', 'form'].forEach((id) => el(id).classList.toggle('is-hidden', id !== which));
+  ['boot', 'gate', 'apply', 'form'].forEach((id) => el(id).classList.toggle('is-hidden', id !== which));
 }
 
 function setErr(id, msg) {
@@ -418,6 +418,159 @@ function pastReady(list, now) {
   前.sort((a, b) => 番号(b) - 番号(a));   // 新しい順。前[0] が「1つ前」
   後.sort((a, b) => 番号(a) - 番号(b));   // 古い順
   return 前.concat(後);
+}
+
+/* ============================================================
+ *  1b. 番号の申請（番号をまだ持っていない人。2026-09-24、ko-dai さんの指示）
+ *
+ *  お店と名前を入れて「申請」→ 店長がワークスの名簿で承認 → この端末に番号が自動で入る。
+ *  サーバーの受け口は cloudflare/worker.js の「申請」の節（apply／applyCheck）。決まりは 決裁.md（2026-09-24 夕・夜）。
+ *
+ *  ★合言葉（key）はこの端末で作る乱数です。**この端末の中だけ**に置き、サーバーには印しか残りません。
+ *    申請の前に覚えておくので、返事が届かなくても、同じ合言葉で送り直せば同じ申請になります（2つにならない）。
+ *    ★長さは18バイト＝24文字（144ビット）。サーバーは22文字より短いものを断ります（決裁.md に決めたこととして残してあります）
+ *  ★承認を待つあいだは、**見えているあいだだけ**聞きに行きます（はじめ15秒おき、3分たったら60秒おき）。
+ *    ★**10分たったら自動で聞くのを止めます**（開きっぱなしで問い合わせを使い続けないため。本部の条件1）。
+ *    「もう一度確かめる」を押すか、開き直すと、また10分聞きます
+ * ============================================================ */
+const 申請の控え = `${SAVE}:apply`;
+const 申請を聞く長さms = 10 * 60000;
+let 申請の時計 = null;
+let 申請の聞きはじめ = 0;
+let 申請を聞いている = false;
+
+function 申請を読む() {
+  try {
+    const v = JSON.parse(localStorage.getItem(申請の控え) || 'null');
+    return v && v.key && v.store ? v : null;
+  } catch (e) {
+    return null;
+  }
+}
+function 申請を覚える(v) {
+  try {
+    if (v) localStorage.setItem(申請の控え, JSON.stringify(v));
+    else localStorage.removeItem(申請の控え);
+  } catch (e) { /* 覚えられない端末でも、この画面を開いているあいだは動きます */ }
+}
+
+/** 合言葉（英数と - _ で24文字＝144ビット）。★暗号用の乱数で作ります（Math.random は使いません） */
+function 合言葉を作る() {
+  const b = new Uint8Array(18);
+  crypto.getRandomValues(b);
+  let s = '';
+  b.forEach((x) => { s += String.fromCharCode(x); });
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function 店の名前(id) { return (getStore(id) || {}).name || id; }
+
+/** 申請の画面（お店と名前を入れる） */
+function 申請の画面(msg) {
+  clearTimeout(申請の時計);
+  const sel = el('applyStore');
+  if (!sel.options.length) {
+    sel.innerHTML = '<option value="">お店を選んでください</option>'
+      + SHIFT_STORES.map((id) => `<option value="${id}">${店の名前(id).replace(/[&<>"]/g, '')}</option>`).join('');
+  }
+  el('applyForm').classList.remove('is-hidden');
+  el('applyWait').classList.add('is-hidden');
+  setErr('applyErr', msg || '');
+  show('apply');
+}
+
+async function 申請する() {
+  const store = el('applyStore').value;
+  const name = el('applyName').value.replace(/\s+/g, ' ').trim();
+  if (!store) return setErr('applyErr', 'お店を選んでください');
+  if (!name) return setErr('applyErr', '名前を入れてください');
+  if (Array.from(name).length > 20) return setErr('applyErr', '名前は20文字までにしてください');
+  setErr('applyErr', '');
+  // ★前に送りかけた同じ申請があれば、同じ合言葉で送り直します（2つにならない）
+  const 前 = 申請を読む();
+  const v = 前 && 前.store === store && 前.name === name
+    ? 前 : { store, name, key: 合言葉を作る(), at: new Date().toISOString() };
+  申請を覚える(v);
+  const go = el('applyGo');
+  const 元の字 = go.textContent;
+  go.disabled = true;
+  go.textContent = '送っています…';
+  const res = await call({ mode: 'apply', store, name, key: v.key });
+  go.disabled = false;
+  go.textContent = 元の字;
+  if (res.ok) return 申請を待つ();
+  // ★電波・サーバーの都合で届かなかったときは、覚えたままにします（もう一度押せば同じ申請で送り直し）
+  if (res.たぐい) return setErr('applyErr', (res.error || 'つながりませんでした') + '。もう一度「申請する」を押してください');
+  // ★断られたとき（名前の形・いまは受け付けていない など）は、覚えたものを捨てます
+  申請を覚える(null);
+  setErr('applyErr', res.error || '申請できませんでした');
+}
+
+/** 承認を待つ画面 */
+function 申請を待つ() {
+  const v = 申請を読む();
+  if (!v) return 申請の画面();
+  el('applyForm').classList.add('is-hidden');
+  el('applyWait').classList.remove('is-hidden');
+  el('applyWho').textContent = `${店の名前(v.store)}の「${v.name}」`;
+  show('apply');
+  申請の聞きはじめ = Date.now();
+  申請を聞く();
+}
+
+function 申請の時刻() {
+  const d = new Date();
+  return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+async function 申請を聞く() {
+  clearTimeout(申請の時計);
+  申請の時計 = null;
+  const v = 申請を読む();
+  if (!v || 申請を聞いている) return;
+  申請を聞いている = true;
+  el('applyState').textContent = '確かめています…';
+  const res = await call({ mode: 'applyCheck', store: v.store, key: v.key }, { 送り直さない: true });
+  申請を聞いている = false;
+  // ★聞いているあいだに「申請をやめる」が押されたら、何もしません
+  const いま = 申請を読む();
+  if (!いま || いま.key !== v.key) return;
+  if (res.ok && res.st === 'ok' && res.code) return 承認された(res);
+  if (res.code === 'apply_gone') {
+    申請を覚える(null);
+    return 申請の画面(res.error);
+  }
+  if (res.code === 'apply_off') {
+    // ★いまサーバーが申請を受け付けていない（元に戻しているとき）。申請は覚えたまま、自動では聞きません
+    el('applyState').textContent = res.error;
+    return;
+  }
+  el('applyState').textContent = res.ok
+    ? `まだ承認されていません（${申請の時刻()}に確かめました）`
+    : `つながりませんでした（${申請の時刻()}）。少ししてから、もう一度確かめます`;
+  次に聞く();
+}
+
+function 次に聞く() {
+  if (document.hidden) return;   // ★見えていないあいだは聞きません（戻ってきたら聞きます）
+  const たった = Date.now() - 申請の聞きはじめ;
+  if (たった >= 申請を聞く長さms) {
+    el('applyState').textContent += '\n自動で確かめるのは止めました。店長が承認したら「もう一度確かめる」を押してください';
+    return;
+  }
+  申請の時計 = setTimeout(申請を聞く, たった < 3 * 60000 ? 15000 : 60000);
+}
+
+/** 承認された：番号を覚えて、ふつうに開きます */
+async function 承認された(res) {
+  clearTimeout(申請の時計);
+  申請を覚える(null);
+  me.code = String(res.code);
+  localStorage.setItem(`${SAVE}:code`, me.code);
+  el('applyState').textContent = '承認されました。開いています…';
+  const r = await call({ mode: 'open' });
+  if (r.ok) { applyOpen(r); return; }
+  showRetry(r.error || 'つながりませんでした');
 }
 
 /** 番号を入れ直す（端末を人に渡すときなど） */
@@ -1530,6 +1683,26 @@ async function send() {
  * ============================================================ */
 async function boot() {
   el('gateGo').addEventListener('click', submitPin);
+  // 番号の申請（番号をまだ持っていない人）。★js/config.js の SHIFT_REQ_ON が true のときだけ出します
+  el('gateApplyBox').classList.toggle('is-hidden', !SHIFT_REQ_ON);
+  el('gateApply').addEventListener('click', () => 申請の画面());
+  el('applyBack').addEventListener('click', () => { setErr('gateErr', ''); show('gate'); });
+  el('applyGo').addEventListener('click', 申請する);
+  el('applyName').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !imeEnter(e)) 申請する(); });
+  el('applyCheck').addEventListener('click', () => { 申請の聞きはじめ = Date.now(); 申請を聞く(); });
+  el('applyCancel').addEventListener('click', () => {
+    if (!window.confirm('申請をやめますか？\n（店長が承認しても、この端末には番号が入らなくなります）')) return;
+    clearTimeout(申請の時計);
+    申請を覚える(null);
+    show('gate');
+  });
+  // ★裏に回ったら聞くのを止め、戻ってきたらすぐ1回聞いて、また10分聞きます
+  document.addEventListener('visibilitychange', () => {
+    if (el('apply').classList.contains('is-hidden') || el('applyWait').classList.contains('is-hidden')) return;
+    if (document.hidden) { clearTimeout(申請の時計); return; }
+    申請の聞きはじめ = Date.now();
+    申請を聞く();
+  });
   el('gatePin').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !imeEnter(e)) submitPin(); });
   // 日本語キーボードのままだと「８１５」のように全角で入ってしまうので、半角に直します
   bindHalfWidthInput(el('gatePin'), 'code');
@@ -1566,7 +1739,8 @@ async function boot() {
   });
 
   // 番号を覚えていない人には、待たせずにすぐ聞きます
-  if (!me.code) return show('gate');
+  // ★申請して承認を待っている人は、待つ画面から（開き直したら、すぐ1回確かめます）
+  if (!me.code) return SHIFT_REQ_ON && 申請を読む() ? 申請を待つ() : show('gate');
 
   // 覚えているときは、返事が返るまで「読み込んでいます」のままにします。
   // ★ここで番号の画面を出してしまうと、毎回それが一瞬見えて
