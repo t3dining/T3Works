@@ -11825,7 +11825,7 @@ function renderShift() {
 
   // 足りない日をLINEに送る文。★表を直せば数も文も変わります
   shiftShortCopyBox(rec);
-  // ヘルプ要請・人員過多（4店舗だけ）の「ヘルプ要請を見る」
+  // ヘルプ要請・人員過多（4店舗だけ）の「ヘルプ要請・人員過多を見る」
   helpReqBtnSync();
 }
 
@@ -11979,8 +11979,15 @@ function shiftGridBlock(rec, wishes, days) {
  *   日付ごと … 表の一番下の「ヘルプ」の行に「ヘルプ要請」「人員過多」のボタン。
  *              押すとキッチンかホールかと人数を選びます。出したものはボタンの上に並び、
  *              押せば直せます（0人にすると取り消し）。
- *   店舗どうし … 上の「ヘルプ要請を見る」で、**他の3店舗**が出しているものを
+ *   店舗どうし … 上の「ヘルプ要請・人員過多を見る」で、**自分の店舗も含めた4店舗**が出しているものを
  *              日付ごとに見られます（どの店舗が・何人・キッチンかホールか）。
+ *              ★2026-09-24、ko-dai さんの指示で名前を「ヘルプ要請を見る」から変え、自分の店舗の分も出すようにしました。
+ *   ★ヘルプ要請は、**入った人数だけ自動で減り、そろったら消えます**（2026-09-24、ko-dai さんの指示）。
+ *              要請を出したときに、その日・その持ち場に入っている人数を `b` に控えます（→ helpReqStaffCount）。
+ *              あとから人が入れば（手で足す・他の店舗から「ヘルプに出す」で来る・希望を取り込む）その分だけ減ります。
+ *              ★人を外せば、また増えます（その日の人数で毎回数え直すため。書き換えはしません）。
+ *              ★`b` の無い要請（この直しより前に出したもの）は減りません。出し直すと減るようになります。
+ *              人員過多は、今までどおり出した人数のままです。
  * ★見た目は、すでにある .patty-box／.shift-patty／.memo-tags／.memo-tag／.modal を
  *   使い回しています（css/style.css は本部のもので、足していません）。
  *   色だけ、ヘルプ要請を赤（--ng）、人員過多を緑（--ok）にして見分けます。
@@ -11997,47 +12004,89 @@ function helpReqLaneName(id) {
   return l ? l.name : id;
 }
 
-/** その店舗・その日に出ているもの。0人のもの（取り消したもの）は入れません */
-function helpReqOf(storeId, dateStr) {
+/** 出したときのまま（生）の1項目。無ければ null */
+function helpReqRaw(storeId, dateStr, kindId, laneId) {
   const items = Store.getDay(HELP_REQ_STORE, helpReqKey(storeId, dateStr)).items || {};
+  const v = items[helpReqItem(dateStr, kindId, laneId)];
+  return v && typeof v === 'object' ? v : null;
+}
+
+/**
+ * その店舗・その日・その持ち場に、いま入っている人の数
+ *
+ * ★同じ人が仕込みと営業の両方にいても1人です（枠ではなく人で数えます）。
+ * ★他の店舗から「ヘルプに出す」で来た人も数えます（受け入れる店舗の表に入るため → helpSendWrite）。
+ * ★見本（テスト用）の人は数えません。表を生のまま読みます（時刻の補いは要らないため）。
+ */
+function helpReqStaffCount(storeId, dateStr, laneId) {
+  const { raw } = helpDayRaw(storeId, dateStr);
+  const 人 = new Set();
+  ['open', 'lunch', 'dinner'].forEach((slot) => (Array.isArray(raw[slot]) ? raw[slot] : []).forEach((e) => {
+    if (!e || !e.n || isShiftTester(e.n) || shiftLaneOf(e) !== laneId) return;
+    人.add(`${e.n}|${e[HELP_FROM_KEY] || ''}`);
+  }));
+  return 人.size;
+}
+
+/**
+ * ヘルプ要請の「あと何人」（出した人数から、そのあと入った人数を引いたもの。0 より小さくはしません）
+ * ★人員過多は引きません（出した人数のまま）。`b` の無い要請も引きません（→ 上の見出し）
+ */
+function helpReqLeft(storeId, dateStr, kindId, laneId, v) {
+  const n = v ? Math.max(0, Math.floor(Number(v.n)) || 0) : 0;
+  if (!n || kindId !== 'help' || v.b === undefined || v.b === null || !isFinite(Number(v.b))) return n;
+  const 入った = Math.max(0, helpReqStaffCount(storeId, dateStr, laneId) - Number(v.b));
+  return Math.max(0, n - 入った);
+}
+
+/**
+ * その店舗・その日に出ているもの。0人のもの（取り消したもの・そろったもの）は入れません
+ * { kind, lane, n: あと何人, total: 出した人数 }
+ */
+function helpReqOf(storeId, dateStr) {
   const out = [];
   HELP_REQ_KINDS.forEach((k) => SHIFT_LANES.forEach((l) => {
-    const v = items[helpReqItem(dateStr, k.id, l.id)];
-    const n = v ? Math.floor(Number(v.n)) : 0;
-    if (n > 0) out.push({ kind: k.id, lane: l.id, n });
+    const v = helpReqRaw(storeId, dateStr, k.id, l.id);
+    const n = helpReqLeft(storeId, dateStr, k.id, l.id, v);
+    if (n > 0) out.push({ kind: k.id, lane: l.id, n, total: Math.floor(Number(v.n)) || n });
   }));
   return out;
 }
 
-/** その日・その種類・その持ち場の人数（出していなければ 0） */
+/** その日・その種類・その持ち場の「あと何人」（出していない・そろったなら 0） */
 function helpReqCount(storeId, dateStr, kindId, laneId) {
-  const items = Store.getDay(HELP_REQ_STORE, helpReqKey(storeId, dateStr)).items || {};
-  const v = items[helpReqItem(dateStr, kindId, laneId)];
-  return v ? Math.max(0, Math.floor(Number(v.n)) || 0) : 0;
+  return helpReqLeft(storeId, dateStr, kindId, laneId, helpReqRaw(storeId, dateStr, kindId, laneId));
+}
+
+/** 「ヘルプ要請 キッチン２人」（途中まで入ったら「あと１人（２人中）」） */
+function helpReqNumText(r) {
+  return r.total && r.total > r.n ? `あと${shiftZen(r.n)}人（${shiftZen(r.total)}人中）` : `${shiftZen(r.n)}人`;
 }
 
 /**
- * 他の店舗が出しているもの（今日から先だけ）
+ * 4店舗が出しているもの（今日から先だけ。★自分の店舗の分も入れます）
  *
- * ★自分の店舗の分は入れません。自分の分は、組む画面の表にもう出ているからです。
+ * ★2026-09-24 までは他の3店舗の分だけでした（ko-dai さんの指示で、自分の分も並べて見られるように）。
+ * ★ヘルプ要請は「あと何人」で、そろったものは入れません（→ helpReqLeft）。
  * ★並びは 日付 → 店舗（SHIFT_HELP_STORES の順）→ 種類 → 持ち場。
  */
-function helpReqOthers(meId) {
+function helpReqAll() {
   const 店の順 = (id) => SHIFT_HELP_STORES.indexOf(id);
   const 種の順 = (id) => HELP_REQ_KINDS.findIndex((v) => v.id === id);
   const 場の順 = (id) => SHIFT_LANES.findIndex((v) => v.id === id);
   const out = [];
   const keys = Store.keysUnder(HELP_REQ_STORE);
   SHIFT_HELP_STORES.forEach((sid) => {
-    if (sid === meId) return;
     keys.filter((k) => k.startsWith(`${sid}-`)).forEach((key) => {
       const items = Store.getDay(HELP_REQ_STORE, key).items || {};
       Object.keys(items).forEach((ik) => {
         const [d, kind, lane] = ik.split('|');
-        const n = Math.floor(Number((items[ik] || {}).n)) || 0;
-        if (n <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(d || '') || d < TODAY_STR) return;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d || '') || d < TODAY_STR) return;
         if (種の順(kind) < 0 || 場の順(lane) < 0) return;
-        out.push({ d, store: sid, kind, lane, n });
+        const v = items[ik];
+        const n = helpReqLeft(sid, d, kind, lane, v);
+        if (n <= 0) return;
+        out.push({ d, store: sid, kind, lane, n, total: Math.floor(Number((v || {}).n)) || n });
       });
     });
   });
@@ -12075,7 +12124,7 @@ function shiftHelpRow(days) {
         b.style.borderColor = HELP_REQ_COLOR[r.kind];
         b.style.color = HELP_REQ_COLOR[r.kind];
         b.style.background = `color-mix(in srgb, ${HELP_REQ_COLOR[r.kind]} 12%, transparent)`;
-        b.textContent = `${helpReqKindName(r.kind)} ${helpReqLaneName(r.lane)}${shiftZen(r.n)}人`;
+        b.textContent = `${helpReqKindName(r.kind)} ${helpReqLaneName(r.lane)}${helpReqNumText(r)}`;
         b.addEventListener('click', () => openHelpReq(dateStr, r.kind, r.lane));
         list.appendChild(b);
       });
@@ -12127,6 +12176,24 @@ function shiftHelpRow(days) {
 }
 
 /**
+ * ヘルプ要請・人員過多を書く（小窓の「決める」）。n は打たれた人数（字でもよい）
+ *
+ * ★出していないものを0人で「決める」だけなら、書きません（要らない同期を増やさないため）。
+ *   そろって消えているものも、生の人数が残っていれば 0 を書きます（取り消した、を残すため）。
+ * ★ヘルプ要請は、いまその持ち場に入っている人数を `b` に控えます。ここから増えた分だけ「あと何人」が減ります。
+ *   直したとき（人数を変えたとき）も控え直すので、打った人数は「いまから、あと何人」です。
+ */
+function helpReqSave(storeId, dateStr, kindId, laneId, n0) {
+  const n = Math.min(HELP_REQ_MAX, Math.max(0, Math.floor(Number(n0)) || 0));
+  const 前 = helpReqRaw(storeId, dateStr, kindId, laneId);
+  if (!(n > 0 || (前 && Math.floor(Number(前.n)) > 0))) return false;
+  const v = { n, at: new Date().toISOString() };
+  if (kindId === 'help' && n > 0) v.b = helpReqStaffCount(storeId, dateStr, laneId);
+  Store.setItem(HELP_REQ_STORE, helpReqKey(storeId, dateStr), helpReqItem(dateStr, kindId, laneId), v);
+  return true;
+}
+
+/**
  * ヘルプ要請・人員過多を出す／直す小窓
  *
  * ★持ち場（キッチン／ホール）を選ぶと、その持ち場でいま出している人数が入ります。
@@ -12152,7 +12219,7 @@ function openHelpReq(dateStr, kindId, laneId) {
             autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
             placeholder="0" style="text-align:center;">
         </label>
-        <p class="modal__note">0人にすると取り消します。他の3店舗の「ヘルプ要請を見る」に出ます。</p>
+        <p class="modal__note" id="helpReqNote"></p>
         <div class="modal__actions modal__actions--confirm">
           <button type="button" class="btn" data-help-req-close>やめる</button>
           <button type="button" class="btn btn--primary" id="helpReqGo">決める</button>
@@ -12166,12 +12233,7 @@ function openHelpReq(dateStr, kindId, laneId) {
       const at = m._at;
       if (!at || !at.lane) return;
       const raw = toHalfWidthNumber(String(m.querySelector('#helpReqCount').value || '')).trim();
-      const n = Math.min(HELP_REQ_MAX, Math.max(0, Math.floor(Number(raw)) || 0));
-      // ★出していないものを0人で「決める」だけなら、書きません（要らない同期を増やさないため）
-      if (n > 0 || helpReqCount(at.store, at.d, at.kind, at.lane) > 0) {
-        Store.setItem(HELP_REQ_STORE, helpReqKey(at.store, at.d), helpReqItem(at.d, at.kind, at.lane),
-          { n, at: new Date().toISOString() });
-      }
+      helpReqSave(at.store, at.d, at.kind, at.lane, raw);
       m.classList.add('is-hidden');
       renderKeepScroll();
     });
@@ -12186,7 +12248,10 @@ function openHelpReq(dateStr, kindId, laneId) {
     m.querySelector('#helpReqTitle').textContent = `${shiftDayLabel(at.d, DOW)}　${helpReqKindName(at.kind)}`;
     m.querySelector('#helpReqTitle').style.color = HELP_REQ_COLOR[at.kind];
     m.querySelector('#helpReqCountLabel').textContent = at.kind === 'help'
-      ? '何人ほしいか' : '何人出せるか';
+      ? 'あと何人ほしいか' : '何人出せるか';
+    m.querySelector('#helpReqNote').textContent = (at.kind === 'help'
+      ? 'この日に人が入ると（手で足す・他の店舗からヘルプに来る）、入った人数だけ減り、そろうと消えます。' : '')
+      + '0人にすると取り消します。4店舗の「ヘルプ要請・人員過多を見る」に出ます。';
     const box = m.querySelector('#helpReqLanes');
     box.innerHTML = '';
     SHIFT_LANES.forEach((l) => {
@@ -12405,7 +12470,7 @@ function openHelpSend(dateStr) {
 }
 
 /**
- * 組む画面の上に「ヘルプ要請を見る」（4店舗だけ）
+ * 組む画面の上に「ヘルプ要請・人員過多を見る」（4店舗だけ）
  *
  * ★**自分の段に置きます。**いまの4つのボタン（募集を始める・提出を見る・
  *   希望を取り込む・これまでのシフト表）と同じ段に足すと、スマホでは5つが
@@ -12434,12 +12499,12 @@ function helpReqBtnSync() {
   row.style.display = on ? '' : 'none';
   if (!on) return;
   const b = document.getElementById('helpReqListBtn');
-  // ★他の店舗から出ていれば、数を添えます。開かなくても気づけるように
-  const n = helpReqOthers(state.storeId).filter((r) => r.kind === 'help').length;
-  b.textContent = n ? `ヘルプ要請を見る（${n}件）` : 'ヘルプ要請を見る';
+  // ★出ていれば、数を添えます（開くと出るものの数。自分の店舗の分も入ります）。開かなくても気づけるように
+  const n = helpReqAll().length;
+  b.textContent = n ? `ヘルプ要請・人員過多を見る（${n}件）` : 'ヘルプ要請・人員過多を見る';
 }
 
-/** 他の3店舗が出しているもの（日付ごと） */
+/** 4店舗が出しているもの（日付ごと。★自分の店舗の分も出します） */
 function openHelpReqList() {
   let m = document.getElementById('helpReqListModal');
   if (!m) {
@@ -12449,7 +12514,7 @@ function openHelpReqList() {
     m.innerHTML = `
       <div class="modal__backdrop" data-help-list-close></div>
       <div class="modal__panel modal__panel--wide" role="dialog" aria-modal="true" aria-labelledby="helpReqListTitle">
-        <h2 class="modal__title" id="helpReqListTitle">ヘルプ要請を見る</h2>
+        <h2 class="modal__title" id="helpReqListTitle">ヘルプ要請・人員過多を見る</h2>
         <p class="modal__note" id="helpReqListNote"></p>
         <div id="helpReqListBody"></div>
         <div class="modal__actions modal__actions--confirm" style="margin-top:14px;">
@@ -12461,14 +12526,15 @@ function openHelpReqList() {
       x.addEventListener('click', () => m.classList.add('is-hidden'));
     });
   }
-  const list = helpReqOthers(state.storeId);
-  const ほか = SHIFT_HELP_STORES.filter((id) => id !== state.storeId).map((id) => getStore(id).name);
-  m.querySelector('#helpReqListNote').textContent = `${ほか.join('・')}が出しているものです（今日から先）。`;
+  const list = helpReqAll();
+  const 店たち = SHIFT_HELP_STORES.map((id) => getStore(id).name);
+  m.querySelector('#helpReqListNote').textContent = `${店たち.join('・')}が出しているものです（今日から先。この店の分も出ます）。`
+    + 'ヘルプ要請は、人が入った分だけ減り、そろうと消えます。';
   const body = m.querySelector('#helpReqListBody');
   body.innerHTML = '';
   if (!list.length) {
     const p = document.createElement('p');
-    p.textContent = 'いまは、他の店舗から出ているものはありません。';
+    p.textContent = 'いまは、どの店舗からも出ていません。';
     p.style.cssText = 'margin:8px 0;color:var(--text-sub);';
     body.appendChild(p);
   }
@@ -12487,11 +12553,18 @@ function openHelpReqList() {
     const 店 = document.createElement('span');
     店.textContent = getStore(r.store).name;
     店.style.cssText = 'flex:0 0 7em;font-weight:700;';
+    // ★自分の店舗の分には、名前の下に小さく印を付けます（並べて見られるように出していますが、取りちがえないため）
+    if (r.store === state.storeId) {
+      const 印 = document.createElement('span');
+      印.textContent = 'この店';
+      印.style.cssText = 'display:block;font-size:11px;font-weight:400;color:var(--text-sub);';
+      店.appendChild(印);
+    }
     const 種 = document.createElement('span');
     種.textContent = helpReqKindName(r.kind);
     種.style.cssText = `flex:0 0 5.5em;font-weight:700;color:${HELP_REQ_COLOR[r.kind]};`;
     const 中 = document.createElement('span');
-    中.textContent = `${helpReqLaneName(r.lane)} ${shiftZen(r.n)}人`;
+    中.textContent = `${helpReqLaneName(r.lane)} ${helpReqNumText(r)}`;
     line.append(店, 種, 中);
     body.appendChild(line);
   });
@@ -12840,29 +12913,28 @@ function renderShiftEndTimes(使うか, dateStr, slotId, index, entry, 選べる
   seg.innerHTML = '';
   const 出勤 = Number(entry ? entry.t : shiftPickAt.time);
   const いま = String((entry ? entry.e : shiftPickAt.end) || '');
+  // 出勤より前は出しません
+  const 並び = 選べる時刻.filter((t) => !(isFinite(出勤) && Number(t) <= 出勤));
 
-  選べる時刻.forEach((t) => {
-    // 出勤より前は出しません
-    if (isFinite(出勤) && Number(t) <= 出勤) return;
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'seg__btn' + (いま === t ? ' is-on' : '');
-    b.textContent = shiftTimeText(t);
-    b.addEventListener('click', () => {
-      if (entry) {
-        const now = shiftDayOf(shiftRec(), dateStr);
-        now[slotId][index] = { ...now[slotId][index], e: t };
-        now[slotId] = shiftSort(now[slotId]);
-        saveShiftDay(dateStr, now);
-        closeShiftPick();
-        renderKeepScroll();
-      } else {
-        shiftPickAt.end = t;
-        renderShiftPick();
-      }
-    });
-    seg.appendChild(b);
-  });
+  // ★時と分を回して選びます（2026-09-24、ko-dai さんの指示。出勤と同じ形）。
+  //   直すときも閉じません。「—」を選ぶと退勤を外します（退勤は入れなくてもよいため）
+  seg.appendChild(shiftWheel(並び, いま, (t) => {
+    if (entry) {
+      const now = shiftDayOf(shiftRec(), dateStr);
+      const 直した = { ...now[slotId][index] };
+      if (t) 直した.e = t;
+      else delete 直した.e;
+      now[slotId][index] = 直した;
+      now[slotId] = shiftSort(now[slotId]);
+      saveShiftDay(dateStr, now);
+      shiftPickAt.index = now[slotId].indexOf(直した);
+      renderShiftPick();
+      renderKeepScroll();
+    } else {
+      shiftPickAt.end = t;
+      renderShiftPick();
+    }
+  }, 'field__input'));
 }
 
 /** 名前を、別のマスへ移します */
@@ -13005,11 +13077,49 @@ function renderShiftPick() {
   const 選べる時刻 = 時刻で入れる ? shiftRangeTimes(state.storeId) : slot.times;
   el.shiftPickTimes.innerHTML = '';
   el.shiftPickTimeField.classList.toggle('is-hidden', !選べる時刻.length);
+  // ★時と分を回して選ぶ店舗（`every` の4店舗と、時刻を入れる popo。2026-09-24 から popo も）
+  const 回して選ぶ = 選べる時刻.length && (時刻で入れる || !!slot.every);
   el.shiftPickTimeLabel.textContent = entry
-    ? (時刻で入れる ? '出勤時刻（押すと変わります）' : '開始時刻（押すと変わります）')
+    ? (時刻で入れる ? '出勤時刻' : '開始時刻') + (回して選ぶ ? '（選ぶと変わります）' : '（押すと変わります）')
     : (時刻で入れる ? '出勤時刻（選ばなければ、その人の希望どおりに入ります）'
       : '開始時刻（選ばなければ、その人の希望どおりに入ります）');
-  if (選べる時刻.length && !時刻で入れる && slot.every) {
+  if (時刻で入れる && 選べる時刻.length) {
+    // ★popo も、時と分を回して選びます（2026-09-24、ko-dai さんの指示「こじゃれと同じように」）。
+    //   前は30分おきのボタンを29個並べていました。
+    //   ★直すときも閉じません（時を選んだあと、続けて分を回せるように）。出勤時刻が変わると入る行も変わるので
+    //     （10:30 は立ち上げ、11:00 はランチ…）、行を移して、いまの人の行と位置を取り直します。
+    //   ★入っている人の出勤を空にはしません（「—」を選んだら元に戻します。空にするなら「外す」）
+    el.shiftPickTimes.appendChild(shiftWheel(選べる時刻,
+      entry ? String(entry.t || '') : shiftPickAt.time, (t) => {
+        if (entry) {
+          if (t === '') { renderShiftPick(); return; }
+          const now = shiftDayOf(shiftRec(), dateStr);
+          const 直した = { ...now[slotId][index], t };
+          // ★退勤が出勤より前になったら、退勤を外します（提出ページの setRange と同じ決め方）
+          if (直した.e !== undefined && 直した.e !== '' && Number(直した.e) <= Number(t)) delete 直した.e;
+          const 行き先 = shiftSlotByTime(t, state.storeId);
+          now[slotId].splice(index, 1);
+          now[行き先].push(直した);
+          now[行き先] = shiftSort(now[行き先]);
+          if (行き先 !== slotId) now[slotId] = shiftSort(now[slotId]);
+          saveShiftDay(dateStr, now);
+          shiftPickAt.slotId = 行き先;
+          shiftPickAt.index = now[行き先].indexOf(直した);
+          // 行が変わったら、小窓の見出し（「ランチ ・ ホール」）も書き直します
+          if (行き先 !== slotId) {
+            const [, mm, dd] = dateStr.split('-').map(Number);
+            const 曜 = new Date(dateStr.replace(/-/g, '/')).getDay();
+            const 持ち場 = SHIFT_LANES.find((l) => l.id === shiftPickAt.laneId) || SHIFT_LANES[0];
+            el.shiftPickWhen.textContent = `${mm}/${dd}（${DOW[曜]}） ${getShiftSlot(state.storeId, 行き先).name} ・ ${持ち場.name}`;
+          }
+          renderShiftPick();
+          renderKeepScroll();
+        } else {
+          shiftPickAt.time = t;
+          renderShiftPick();
+        }
+      }, 'field__input'));
+  } else if (選べる時刻.length && slot.every) {
     // ★こじゃれ・炭まろ・ちゃこる・おいでんテラスは、時と分を回して選びます
     //   （→ shiftWheel。2026-09-18、ko-dai さんの指示）。
     //   ★直すときも**閉じません。**時を選んだあと、続けて分を回せるようにするためです。
@@ -13093,7 +13203,11 @@ function renderShiftPick() {
      ★立ち上げから通しで入る人がいるので、立ち上げでも選べるようにしてあります */
   // ★時刻を入れる店舗（popo）では、Fは出勤・退勤から毎回決まります。
   //   手で切り替えるものではないので、この欄は出しません
-  const canFull = !時刻で入れる && (slotId === 'lunch' || slotId === 'open');
+  // ★F（通し）の無いお店（仕込み／営業の4店舗＝こじゃれ・炭まろ・ちゃこる・おいでんテラス）では出しません
+  //   （2026-09-24、ko-dai さんの指示「立ち上げのあとは？の部分は消して」）。ランチが無いので F も無く、
+  //   仕込みのあとは営業しかないためです。提出ページも同じ決め方です（shift/js/submit.js の「立ち上げのあとは？」）
+  const Fがある = shiftWishSlots(state.storeId).some((s) => s.id === SHIFT_FULL_ID);
+  const canFull = !時刻で入れる && Fがある && (slotId === 'lunch' || slotId === 'open');
   el.shiftPickFullField.classList.toggle('is-hidden', !canFull);
   if (canFull) {
     el.shiftPickFullLabel.textContent = slotId === 'open'

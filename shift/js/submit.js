@@ -1345,28 +1345,17 @@ function rangeRow(dateStr, entry) {
   const row = document.createElement('div');
   row.className = 'range';
 
+  // ★時と分を別々に回して選びます（2026-09-24、ko-dai さんの指示「popo もこじゃれと同じように」）。
+  //   前は30分おきの時刻を1つのプルダウンに並べていました（出勤29個・退勤29個）。
+  //   「—」は選んでいない（出勤なら、その日は入らない）です。
   const make = (name, いま, onPick, より後, times) => {
-    const wrap = document.createElement('label');
+    const wrap = document.createElement('div');
     wrap.className = 'range__one';
     const cap = document.createElement('span');
     cap.className = 'range__label';
     cap.textContent = name;
-    const sel = document.createElement('select');
-    sel.className = 'range__sel';
-    const から = document.createElement('option');
-    から.value = '';
-    から.textContent = '—';
-    sel.appendChild(から);
-    times.forEach((t) => {
-      if (より後 !== undefined && より後 !== '' && Number(t) <= Number(より後)) return;
-      const o = document.createElement('option');
-      o.value = t;
-      o.textContent = shiftTimeText(t);
-      if (String(いま) === t) o.selected = true;
-      sel.appendChild(o);
-    });
-    sel.addEventListener('change', () => onPick(sel.value));
-    wrap.append(cap, sel);
+    const 並び = times.filter((t) => !(より後 !== undefined && より後 !== '' && Number(t) <= Number(より後)));
+    wrap.append(cap, shiftWheel(並び, いま, onPick, 'range__sel'));
     return wrap;
   };
 

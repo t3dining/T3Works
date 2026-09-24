@@ -486,13 +486,15 @@ body.is-help { overflow: hidden; }
 /* -------- 出勤〜退勤を選ぶ（時刻を入れる店舗だけ） --------
    30分刻みで8時から24時までだと33個になるので、ボタンではなくプルダウンです。
    iPhone では時計のホイールのように出ます */
-.range { display: flex; gap: 10px; margin-top: 9px; }
-.range__one { flex: 1 1 0; display: block; }
+/* ★出勤・退勤は上下2段です（2026-09-24）。「時」と「分」を別々に選ぶ形（shiftWheel）にしたら、
+   横に2つ並べると1つが4つのプルダウンになり、スマホで「11時」「00分」の字が切れました */
+.range { display: flex; flex-direction: column; gap: 8px; margin-top: 9px; }
+.range__one { display: flex; align-items: center; gap: 10px; }
+.range__one .shift-wheel { flex: 1 1 auto; min-width: 0; }
 .range__label {
-  display: block;
-  font-size: 12px;
+  flex: 0 0 2.6em;
+  font-size: 13px;
   color: var(--text-sub);
-  margin-bottom: 4px;
 }
 .range__sel {
   width: 100%;
