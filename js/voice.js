@@ -912,7 +912,11 @@ const VoiceView = (() => {
     const panel = document.getElementById('voicePanel');
     const header = document.querySelector('.app-header');
     if (!panel) return;
-    if (!header) { panel.style.top = ''; return; }   // ヘッダーが無い画面では、今までどおり全面
+    if (!header) {   // ヘッダーが無い画面では、今までどおり全面（バーがノッチを払うのが正しい）
+      panel.style.top = '';
+      ノッチを二重に払わない(panel, null);
+      return;
+    }
     /* ★ヘッダー**全部**ではなく、**上の段（.app-header__inner）の下**に合わせます。
          ヘッダーの中には**店舗タブ（.store-tabs）も入って**いて、ご意見の画面では要らないのに
          その分だけ**暗い余白**になっていました（2026-09-23、ko-dai さんの指摘）。
@@ -921,6 +925,34 @@ const VoiceView = (() => {
     const 上の段 = header.querySelector('.app-header__inner');
     const 下端 = (上の段 || header).getBoundingClientRect().bottom;
     panel.style.top = `${Math.max(0, Math.round(下端))}px`;
+    ノッチを二重に払わない(panel, header);
+  }
+
+  /**
+   * ★パネルのバーから、ノッチ（画面上の切り欠き）の分の余白を引きます
+   *
+   * ★バー（`.interview__bar`）は、もともと**画面いっぱいに出す前提**で作られていて、
+   *   `padding: calc(env(safe-area-inset-top) + 10px) …` と、**自分でノッチの分を払います**。
+   *   パネルをヘッダーの下に動かしたので、**ヘッダーもノッチを払い、バーもノッチを払う**——
+   *   **二重**になり、iPhone ではノッチの高さ（50〜60pt）の暗い余白が出ていました
+   *   （2026-09-24、ko-dai さんの指摘。**最新版なのに直っていない**、で分かりました）。
+   * ★**机のブラウザでは再現しません。**`env(safe-area-inset-top)` が 0 だからです。
+   *   前の日に「余白 0px」と測ったのは、**ノッチの無い所で測っていた**だけでした。
+   *   ヘッダーとバーに作り物のノッチ（59px）を入れて、**同じ余白を出してから**直しています。
+   * ★引く量は、**ヘッダーが実際に払った分**（`.app-header` の `padding-top`）をそのまま使います。
+   *   CSS の式をここに書き写さないためです（書き写すと、2か所がずれたときに黙って余白が戻ります）。
+   * ★`css/style.css` は本部の持ち物で、`.interview__bar` は**面接マニュアルと QRコード も使う**ので、
+   *   CSS は直しません。ご意見のパネルのバーにだけ、ここで当てます。
+   */
+  function ノッチを二重に払わない(panel, header) {
+    const bar = panel.querySelector('.interview__bar');
+    if (!bar || typeof getComputedStyle !== 'function') return;
+    bar.style.paddingTop = '';   // ★先に外します。外さずに測ると、前に当てた値から**もう一度**引いてしまいます
+    if (!header) return;         // ヘッダーの下に置かないときは、バーがノッチを払うのが正しい
+    const ノッチ = parseFloat(getComputedStyle(header).paddingTop) || 0;
+    if (ノッチ <= 0) return;     // ノッチが無い端末では、何もしません
+    const いま = parseFloat(getComputedStyle(bar).paddingTop) || 0;
+    bar.style.paddingTop = `${Math.max(0, Math.round(いま - ノッチ))}px`;
   }
 
   function 開く() {
@@ -996,7 +1028,7 @@ const VoiceView = (() => {
   return {
     // ★`ヘッダーの下に置く` は検算から呼びます（実機の回転は試せないので、
     //   「**高さが変わったら追いかけるか**」だけを作り物の DOM で通します）
-    ヘッダーの下に置く,
+    ヘッダーの下に置く, ノッチを二重に払わない,
     入れ先, 種類たち, 状態たち, 本文の上限, 写真の上限, 動画の上限, 添付の数, 動画の秒,
     文字, 新しい印, キー, 全部, ひとつ, 新しい返事の数, 確かめる, 大きさの文,
   };
