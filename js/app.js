@@ -10991,7 +10991,16 @@ function renderShiftRoster(組む) {
   const h = document.createElement('h2');
   h.className = 'card__title';
   h.textContent = 'シフトに入る人';
-  box.appendChild(h);
+  // ★「シフトの使い方」（2026-09-24、ko-dai さんの指示）。開いているときは見出しの右に置きます
+  //   （閉じているときは、下の「◯人が登録されています」の行の右）
+  if (出す) {
+    const head = document.createElement('div');
+    head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;';
+    head.append(h, shiftGuideBtn());
+    box.appendChild(head);
+  } else {
+    box.appendChild(h);
+  }
 
   /* ★閉じているあいだは、名前も番号も**作りません**。
      隠すだけだと、画面の中には残ってしまうためです */
@@ -11002,7 +11011,12 @@ function renderShiftRoster(組む) {
       ? `${people.length}人が登録されています。`
         + '<b>名前と番号は、押したときだけ出します。</b>'
       : 'まだ登録されていません。';
-    box.appendChild(note);
+    // ★行の右の空いている所に「シフトの使い方」を置きます（2026-09-24、ko-dai さんの指示）。狭い画面では下に回ります
+    const 行 = document.createElement('div');
+    行.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;';
+    note.style.flex = '1 1 18em';
+    行.append(note, shiftGuideBtn());
+    box.appendChild(行);
     // ★番号の申請は、閉じているあいだは**件数だけ**出します（名前は出しません。名簿と同じ決まり）
     const 待ち = shiftReqCount(state.storeId);
     if (待ち) {
@@ -11739,6 +11753,463 @@ function shiftLinkPicker(person) {
     box.appendChild(b);
   });
   return box;
+}
+
+/* -------- シフトの使い方（2026-09-24、ko-dai さんの指示） --------
+ *
+ *  名簿の欄の「シフトの使い方」から開きます（閉じているときは「◯人が登録されています」の行の右、開いているときは見出しの右）。
+ *  初めて触る人が、名簿づくりから確定まで1人で進められるように、シフトの画面だけを順に説明します。
+ *  ★店舗の形ごとに分けます（仕込み・営業の4店舗／ランチのあるお店＝バグる／時刻を入れるお店＝popo）。開いた店舗の形が先に出ます。
+ *  ★見本の画面は、本物の画面と同じ部品（class）で組んだ絵です。押しても動きません。
+ *    名前は「Aさん」などの作り物、番号は「••••••」（6桁の数は誰かの番号になりえるので、例に書きません）。
+ *  ★枠の名前と時刻は、その店舗の設定から取ります（マネージで直した名前がそのまま出ます）。
+ *  ★中身は使い方（help/index.html の6章。マニュアルの持ち物）と重なります。**画面の文やボタンを変えたら、ここも直すこと。**
+ *    検算は .claude/skills/t3works-shift/shift-guide.js（ボタンの名前が本物の画面にあるかを数えます）。
+ * ---------------------------------------------------------- */
+function shiftGuideEsc(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+/** 店舗の形（'yoru' 仕込み・営業／'hiru' ランチのあるお店／'range' 出勤〜退勤の時刻を入れるお店） */
+function shiftGuideKindOf(storeId) {
+  if (shiftUsesRange(storeId)) return 'range';
+  return shiftSlotsOf(storeId).some((s) => s.id === 'lunch') ? 'hiru' : 'yoru';
+}
+const SHIFT_GUIDE_KINDS = ['yoru', 'hiru', 'range'];
+function shiftGuideStores(kind) {
+  return SHIFT_STORES.filter((id) => shiftGuideKindOf(id) === kind);
+}
+/** いま出している形（開き直すと、その店舗の形に戻ります） */
+let shiftGuideKind = '';
+
+/** 名簿の欄に置く「シフトの使い方」 */
+function shiftGuideBtn() {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'btn';
+  b.id = 'shiftGuideBtn';
+  b.textContent = 'シフトの使い方';
+  b.addEventListener('click', openShiftGuide);
+  return b;
+}
+
+function openShiftGuide() {
+  let m = document.getElementById('shiftGuideModal');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'shiftGuideModal';
+    m.className = 'modal is-hidden';
+    m.innerHTML = `
+      <div class="modal__backdrop" data-shift-guide-close></div>
+      <div class="modal__panel modal__panel--wide modal__panel--fixed-head" role="dialog" aria-modal="true"
+        aria-labelledby="shiftGuideTitle" style="max-width:760px;">
+        <div class="modal__topbar">
+          <h2 class="modal__title" id="shiftGuideTitle">シフトの使い方</h2>
+          <button type="button" class="modal__x" data-shift-guide-close title="閉じる" aria-label="閉じる">✕</button>
+        </div>
+        <div class="seg" id="shiftGuideKinds" style="flex-wrap:wrap;margin:0 0 10px;"></div>
+        <div class="modal__body" id="shiftGuideBody"></div>
+      </div>`;
+    document.body.appendChild(m);
+    m.querySelectorAll('[data-shift-guide-close]').forEach((x) => {
+      x.addEventListener('click', () => m.classList.add('is-hidden'));
+    });
+  }
+  shiftGuideKind = shiftGuideKindOf(state.storeId);
+  shiftGuideDraw(m);
+  m.classList.remove('is-hidden');
+}
+
+function shiftGuideDraw(m) {
+  const kinds = m.querySelector('#shiftGuideKinds');
+  kinds.innerHTML = '';
+  SHIFT_GUIDE_KINDS.filter((k) => shiftGuideStores(k).length).forEach((k) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'seg__btn' + (k === shiftGuideKind ? ' is-on' : '');
+    b.textContent = shiftGuideStores(k).map((id) => (getStore(id) || {}).short || id).join('・');
+    // ★短い名前（バグる・popo）は折らずにそのままの幅、長い名前（4店舗）が残りの幅を使います
+    //   （同じ幅だと、4店舗の名前がスマホで4行に折れました）
+    const 長い = b.textContent.length > 6;
+    b.style.flex = 長い ? '1 1 0' : '0 0 auto';
+    if (!長い) b.style.whiteSpace = 'nowrap';
+    b.addEventListener('click', () => {
+      shiftGuideKind = k;
+      shiftGuideDraw(m);
+    });
+    kinds.appendChild(b);
+  });
+  const body = m.querySelector('#shiftGuideBody');
+  body.innerHTML = shiftGuideHtml(shiftGuideKind);
+  body.scrollTop = 0;
+}
+
+/* ---- 説明の部品 ---- */
+function shiftGuideH(n, t) {
+  return `<h3 id="shiftGuide${n}" style="margin:22px 0 8px;font-size:15px;display:flex;align-items:center;gap:8px;">`
+    + `<span style="flex:0 0 auto;width:1.7em;height:1.7em;line-height:1.7em;text-align:center;border-radius:50%;`
+    + `background:var(--accent);color:#fff;font-size:12px;">${n}</span><span>${t}</span></h3>`;
+}
+function shiftGuideP(h) { return `<p style="margin:0 0 8px;line-height:1.75;">${h}</p>`; }
+function shiftGuideOl(items) {
+  return `<ol style="margin:0 0 8px;padding-left:1.5em;line-height:1.85;">${items.map((x) => `<li>${x}</li>`).join('')}</ol>`;
+}
+function shiftGuideUl(items) {
+  return `<ul style="margin:0 0 8px;padding-left:1.3em;line-height:1.8;">${items.map((x) => `<li>${x}</li>`).join('')}</ul>`;
+}
+/** 大事なところ（赤い線の囲み） */
+function shiftGuideWarn(h) {
+  return `<p style="margin:6px 0 10px;padding:8px 11px;border:1px solid var(--ng);border-radius:9px;line-height:1.7;">${h}</p>`;
+}
+/** 見本の画面の枠（押しても動きません） */
+function shiftGuideShot(inner, cap) {
+  return '<div aria-hidden="true" style="border:1px dashed var(--line);border-radius:12px;padding:12px;margin:10px 0 4px;'
+    + 'background:var(--surface-2);pointer-events:none;overflow-x:auto;">' + inner + '</div>'
+    + `<p class="modal__note" style="margin:0 0 14px;">▲ ${cap || '見本の画面です（押しても動きません）'}</p>`;
+}
+/** ボタンの見本 */
+function shiftGuideB(t, cls) {
+  return `<button type="button" tabindex="-1" class="btn${cls ? ` ${cls}` : ''}">${t}</button>`;
+}
+/** プルダウンの見本（中の字だけ） */
+function shiftGuideSel(t) {
+  return `<span class="field__input" style="display:inline-flex;align-items:center;justify-content:space-between;gap:10px;width:auto;min-width:5.5em;padding:7px 10px;">${t}<span style="color:var(--text-sub);">▾</span></span>`;
+}
+/** 時と分を回して選ぶ（shiftWheel）の見本 */
+function shiftGuideWheel(h, mm) {
+  return `<span style="display:inline-flex;align-items:center;gap:6px;">${shiftGuideSel(h)}<span>：</span>${shiftGuideSel(mm)}</span>`;
+}
+/** LINE の吹き出しの見本 */
+function shiftGuideLine(text) {
+  return '<div style="max-width:320px;margin:4px 0 0 auto;background:#8de055;color:#111;border-radius:14px 14px 2px 14px;'
+    + `padding:9px 12px;font-size:13px;line-height:1.6;white-space:pre-line;">${shiftGuideEsc(text)}</div>`;
+}
+
+/** 表の見本（2日分。data は [日付][枠][持ち場] = [{ t, n, cls, f }] と short・wish） */
+function shiftGuideGrid(rep, days, opt) {
+  const slots = shiftSlotsOf(rep);
+  const o = opt || {};
+  let h = '<div class="shift-grid-wrap"><table class="shift-grid"><tr><th></th>';
+  days.forEach((d) => { h += `<th class="shift-grid__date" colspan="${SHIFT_LANES.length}">${d.label}</th>`; });
+  h += '</tr><tr><th></th>';
+  days.forEach(() => SHIFT_LANES.forEach((l) => { h += `<th class="shift-grid__lane">${l.name}</th>`; }));
+  h += '</tr>';
+  slots.forEach((slot, si) => {
+    h += `<tr${si > 0 ? ' class="is-slot-top"' : ''}><th class="shift-grid__slot shift-grid__slot--${slot.id}">${shiftGuideEsc(slot.name)}</th>`;
+    days.forEach((d) => SHIFT_LANES.forEach((l, li) => {
+      const cell = ((d.cells || {})[slot.id] || {})[l.id] || {};
+      h += '<td class="shift-cell">';
+      (cell.people || []).forEach((e) => {
+        h += `<button type="button" tabindex="-1" class="shift-chip${e.cls ? ` ${e.cls}` : ''}">${e.t ? `${e.t} ` : ''}${e.n}`
+          + `${e.f ? '<b class="chip-f">F</b>' : ''}</button>`;
+      });
+      for (let k = 0; k < (cell.short || 0); k += 1) h += '<button type="button" tabindex="-1" class="shift-short">＋</button>';
+      const wish = li === 0 ? (cell.wish || 0) : 0;
+      h += `<button type="button" tabindex="-1" class="shift-add${wish ? ' has-wish' : ''}">${wish ? `＋${wish}` : '＋'}</button></td>`;
+    }));
+    h += '</tr>';
+  });
+  h += '<tr><th class="shift-grid__slot shift-grid__slot--memo">メモ</th>';
+  days.forEach((d) => {
+    h += `<td class="shift-grid__memo" colspan="${SHIFT_LANES.length}"><span class="shift-memo" style="display:block;min-height:1.6em;">${d.memo || ''}</span></td>`;
+  });
+  h += '</tr>';
+  if (o.help) {
+    h += '<tr><th class="shift-grid__slot shift-grid__slot--memo">ヘルプ</th>';
+    days.forEach((d) => {
+      h += `<td class="shift-grid__memo" colspan="${SHIFT_LANES.length}">`;
+      if (d.helpTags) h += `<div class="memo-tags">${d.helpTags}</div>`;
+      h += '<div class="patty-box"><button type="button" tabindex="-1" class="shift-patty">ヘルプ要請</button>'
+        + '<button type="button" tabindex="-1" class="shift-patty">人員過多</button></div>'
+        + '<div class="patty-box"><button type="button" tabindex="-1" class="shift-patty">ヘルプに出す</button></div></td>';
+    });
+    h += '</tr>';
+  }
+  return `${h}</table></div>`;
+}
+/** 表の上の札（ヘルプ要請など）の見本 */
+function shiftGuideTag(t, color) {
+  return `<button type="button" tabindex="-1" class="memo-tag is-on" style="border-color:${color};color:${color};`
+    + `background:color-mix(in srgb, ${color} 12%, transparent);">${t}</button>`;
+}
+
+/** 小窓の見本 */
+function shiftGuidePanel(title, inner) {
+  return '<div class="modal__panel" style="box-shadow:none;max-height:none;margin:0 auto;">'
+    + `<h2 class="modal__title">${title}</h2>${inner}</div>`;
+}
+
+/**
+ * 形ごとの中身
+ * ★枠の名前・時刻は、その形の一番目の店舗の設定から取ります（同じ形の店舗は同じ枠です）
+ */
+function shiftGuideHtml(kind) {
+  const 店 = shiftGuideStores(kind);
+  const rep = 店[0];
+  if (!rep) return '';
+  const 店名 = 店.map((id) => (getStore(id) || {}).name || id).join('・');
+  const slots = shiftSlotsOf(rep);
+  const 名 = (id) => shiftGuideEsc((slots.find((s) => s.id === id) || {}).name || id);
+  const 最後 = slots[slots.length - 1];
+  const ヘルプ = 店.some((id) => SHIFT_HELP_STORES.includes(id));
+  const yoru = kind === 'yoru';
+  const range = kind === 'range';
+  const out = [];
+  let n = 0;
+  const 次 = () => { n += 1; return n; };
+
+  /* ---- はじめに ---- */
+  out.push(shiftGuideP(`<b>${店名}</b>のシフトの作り方です。上から順に進めれば、名簿づくりから確定まで終わります。`
+    + '画面の絵は見本です（名前は作り物です）。'));
+  out.push(shiftGuideOl([
+    '<b>名簿</b>に名前を入れて、アルバイトに<b>番号</b>を配る',
+    '<b>シフト募集を始める</b>（提出の期限を決める）→ LINE で知らせる',
+    'アルバイトが<b>提出ページ</b>から希望を出す',
+    '集まった希望を<b>取り込んで</b>、表を<b>組む</b>'
+      + (ヘルプ ? '（足りない日は、他の店舗とヘルプを出し合う）' : ''),
+    '足りない日を LINE で募る',
+    '<b>シフトを確定する</b> → LINE で知らせる・印刷する',
+  ]));
+  out.push(shiftGuideWarn('★シフトの画面は<b>2つ</b>あります。<b>お店が組む画面</b>（この画面）と、'
+    + '<b>アルバイトが希望を出す提出ページ</b>（アルバイトのスマホ）です。アルバイトはこのアプリを使いません。'));
+
+  /* ---- 1 名簿 ---- */
+  out.push(shiftGuideH(次(), 'アルバイトを名簿に入れて、番号を配る'));
+  out.push(shiftGuideOl([
+    'この画面の一番上「シフトに入る人」で、<b>「名前と番号を出す」</b>を押します（まだ誰もいなければ「名前を登録する」）',
+    '大きな枠に、<b>1行に1人</b>ずつ名前を書いて<b>「名前を保存」</b>。1人ずつに番号ができます',
+    '下の「配る番号」で<b>「コピー」</b>を押し、本人に LINE で送ります（番号は「見る」で出ます）',
+    '送ったら、名前の左の<b>チェック</b>を付けます（どこまで送ったか分かります）',
+    '名前の右の<b>「キッチン」「ホール」</b>で、その人の普段の持ち場を決めます。希望を取り込むと、この持ち場に入ります',
+  ]));
+  out.push(shiftGuideShot(
+    '<div class="card" style="margin:0;">'
+      + '<h2 class="card__title">シフトに入る人</h2>'
+      + '<span class="field__input field__input--area" style="display:block;white-space:pre-line;min-height:5.2em;">Aさん\nBさん\nCさん</span>'
+      + `<div style="margin:10px 0 12px;">${shiftGuideB('名前を保存', 'btn--primary')}</div>`
+      + '<h3 class="card__sub">配る番号</h3>'
+      + ['Aさん', 'Bさん'].map((nm, i) => '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 0;border-bottom:1px solid var(--line);">'
+        + `<input type="checkbox" tabindex="-1" ${i === 0 ? 'checked' : ''} style="width:20px;height:20px;accent-color:var(--ok);">`
+        + `<b style="${i === 0 ? 'color:var(--text-sub);' : ''}">${nm}</b>`
+        + '<span style="display:inline-flex;gap:4px;">'
+        + `<span style="border-radius:7px;font-size:12px;font-weight:700;padding:7px 11px;${i === 0 ? 'border:1px solid var(--store);background:var(--store);color:#fff;' : 'border:1px solid var(--line);background:var(--surface-2);color:var(--text-weak);'}">キッチン</span>`
+        + `<span style="border-radius:7px;font-size:12px;font-weight:700;padding:7px 11px;${i === 1 ? 'border:1px solid var(--store);background:var(--store);color:#fff;' : 'border:1px solid var(--line);background:var(--surface-2);color:var(--text-weak);'}">ホール</span></span>`
+        + '<span style="font-family:ui-monospace,monospace;letter-spacing:.08em;color:var(--text-sub);min-width:6.5em;">••••••</span>'
+        + `${shiftGuideB('見る', 'btn--small')}${shiftGuideB('コピー', 'btn--small')}</div>`).join('')
+      + '</div>',
+    '名簿の見本です。番号は「••••••」で隠れていて、「見る」で出ます'));
+  out.push(shiftGuideUl([
+    '<b>番号は本人だけのもの</b>です。他の人に見せないでください（番号を知っていれば、その人として出せてしまいます）',
+    '名前を<b>ひらがなから漢字に</b>など、名前だけを直すときは、その人の行の<b>「名前を直す」</b>を使います（番号は変わりません）。'
+      + '大きな枠で書き換えると、番号が新しくなり、前の番号では入れなくなります',
+    '2つの店舗で働く人は<b>「他店舗にも所属」</b>で店舗を選びます（同じ番号で、提出ページで店舗を切り替えられます）',
+    '<b>番号の申請</b>：アルバイトが提出ページから申請すると、名簿を開いたときに「番号の申請」の欄が出ます。'
+      + '本人だと確かめて<b>「承認」</b>→ 名前を確かめて<b>「この名前で承認」</b>。番号がその人の画面に自動で入ります（LINE で送らなくて大丈夫です）。知らない人は「断る」',
+    '<b>「見本（テスト用）を作る」</b>→「アルバイトの画面を見る」で、アルバイトと同じ提出ページを見られます',
+  ]));
+
+  /* ---- 2 提出ページを渡す ---- */
+  out.push(shiftGuideH(次(), '提出ページを、アルバイトに渡す'));
+  out.push(shiftGuideP('店舗名の横の<b>「QR・URL」</b>を押すと、提出ページの QR コードと URL が出ます。'
+    + 'その場で読み取ってもらうか、<b>「URLをコピー」</b>で LINE に貼って送ります。URL は全員同じです（誰の希望かは番号で決まります）。'));
+  out.push(shiftGuideUl([
+    'アルバイトには、提出ページを<b>ホーム画面に置いてもらう</b>のがおすすめです（番号を覚えたままになります）',
+    'QR コードにも URL にも番号は入っていません。<b>番号は1人ずつ別に</b>送ってください',
+  ]));
+
+  /* ---- 3 募集 ---- */
+  out.push(shiftGuideH(次(), '期間を選んで、シフト募集を始める'));
+  out.push(shiftGuideOl([
+    '表の上の<b>‹ ›</b> で、組みたい半月（例：10/1〜10/15）にします。<b>「今期」</b>でいまの半月に戻ります',
+    '<b>「シフト募集を始める」</b>を押します',
+    '<b>提出の期限</b>（この日までに出してもらう日）を選んで<b>「始める」</b>',
+  ]));
+  out.push(shiftGuideShot(shiftGuidePanel('シフト募集を始める',
+    '<p class="doer__item">2026年 10/1〜10/15 の募集</p>'
+      + '<div class="field"><span class="field__label">提出の期限（この日までに出してもらいます）</span>'
+      + '<span class="field__input" style="display:block;">2026/09/28</span></div>'
+      + '<p class="modal__note">みんなの提出ページに、この期間と期限が出るようになります。</p>'
+      + `<div class="modal__actions modal__actions--confirm">${shiftGuideB('やめる')}${shiftGuideB('始める', 'btn--primary')}</div>`)));
+  out.push(shiftGuideP('始めると、表の上が<b>「募集中」</b>になり、<b>「シフト募集をLINEにコピー」</b>が出ます。'
+    + '押して、お店の LINE グループに貼り付けて送ってください（文はマネージで店舗ごとに直せます）。'));
+  out.push(shiftGuideShot(
+    '<div class="shift-top" style="margin:0;"><div class="shift-top__line"><span class="shift-phase shift-phase--open">募集中</span>'
+      + '<span class="shift-top__count">提出 0 / 5人</span></div>'
+      + `<div class="shift-top__acts">${shiftGuideB('シフト募集をLINEにコピー')}</div></div>`
+      + shiftGuideLine('10月前半のシフト提出をお願いします！\n期限は9月28日（月）までです！'),
+    'コピーした文を LINE に貼った見本です'));
+  out.push(shiftGuideUl([
+    '募集できるのは、店舗ごとに<b>1つの半月だけ</b>です。次の半月の募集を始めると、前の半月は締め切られます',
+  ]));
+
+  /* ---- 4 アルバイトの提出 ---- */
+  out.push(shiftGuideH(次(), 'アルバイトが希望を出す（アルバイトのスマホ）'));
+  const 提出の手順 = ['LINE でもらった URL を開き、配られた<b>番号</b>を入れて「すすむ」（番号がまだ無い人は「番号をまだ持っていない」から申請）'];
+  if (yoru) {
+    提出の手順.push(`出られる日に<b>「${名('open')}」</b>か<b>「${名('dinner')}」</b>を押します（${名('open')}を押すと、そのまま${名('dinner')}も入ります）`);
+    提出の手順.push('<b>何時から入れるか</b>を、<b>時</b>と<b>分</b>のプルダウンで選びます。選ばないまま出そうとすると止まります');
+  } else if (range) {
+    提出の手順.push('入れる日の<b>出勤</b>と<b>退勤</b>を、<b>時</b>と<b>分</b>のプルダウンで選びます（出勤が「—」の日は入れない日）');
+  } else {
+    提出の手順.push(`出られる日に<b>「${名('open')}」「F」「${名('lunch')}」「${名('dinner')}」</b>のどれかを押します（F は${名('lunch')}から${名('dinner')}まで通し）`);
+    提出の手順.push(`「◯◯ は何時から？」と出たら、入れる時刻を押します。${名('open')}を押した人には「${名('open')}のあとは？」（${名('lunch')}だけか F か）も出ます`);
+  }
+  提出の手順.push('日ごとの<b>連絡</b>（例：20時まで）も書けます。最後に一番下の<b>「出す」</b>');
+  提出の手順.push('締め切りまでは、何度でも出し直せます');
+  out.push(shiftGuideOl(提出の手順));
+  const 日のカード = (() => {
+    const 箱 = 'style="border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--surface);margin-bottom:10px;"';
+    const 枠ボタン = (t, on, color) => `<span style="flex:1 1 0;text-align:center;border-radius:9px;padding:10px 2px;font-size:13px;font-weight:700;`
+      + `${on ? `background:${color || 'var(--pick)'};border:1px solid ${color || 'var(--pick)'};color:#fff;` : 'background:var(--surface-2);border:1px solid var(--line);color:var(--text-weak);'}">${t}</span>`;
+    if (range) {
+      return `<div ${箱}><b>10/5（月）</b>`
+        + `<div style="display:flex;align-items:center;gap:10px;margin-top:8px;"><span style="flex:0 0 2.6em;font-size:13px;color:var(--text-sub);">出勤</span>${shiftGuideWheel('11時', '00分')}</div>`
+        + `<div style="display:flex;align-items:center;gap:10px;margin-top:8px;"><span style="flex:0 0 2.6em;font-size:13px;color:var(--text-sub);">退勤</span>${shiftGuideWheel('17時', '00分')}</div></div>`;
+    }
+    if (yoru) {
+      return `<div ${箱}><b>10/5（月）</b><div style="display:flex;gap:6px;margin-top:8px;">${枠ボタン(名('open'), false)}${枠ボタン(名('dinner'), true, 'var(--shift-dinner)')}</div>`
+        + `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;"><span style="font-size:12.5px;font-weight:700;">${名('dinner')} は何時から？</span>${shiftGuideWheel('17時', '30分')}</div></div>`;
+    }
+    return `<div ${箱}><b>10/5（月）</b><div style="display:flex;gap:6px;margin-top:8px;">${枠ボタン(名('open'), false)}${枠ボタン('F', false)}`
+      + `${枠ボタン(名('lunch'), true, 'var(--shift-lunch)')}${枠ボタン(名('dinner'), false)}</div>`
+      + `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;"><span style="font-size:12.5px;font-weight:700;">${名('lunch')} は何時から？</span>`
+      + ['11:00', '11:30', '12:00'].map((t, i) => `<span style="border:1px solid ${i === 0 ? 'var(--pick)' : 'var(--line)'};border-radius:8px;padding:6px 9px;font-size:12.5px;${i === 0 ? 'background:var(--pick);color:#fff;' : ''}">${t}</span>`).join('')
+      + '</div></div>';
+  })();
+  out.push(shiftGuideShot(
+    '<div style="max-width:360px;margin:0 auto;">'
+      + '<div style="font-size:22px;font-weight:800;margin:0 0 8px;">Aさん <span style="font-size:12px;font-weight:400;color:var(--text-sub);">さんの シフト提出</span></div>'
+      + 日のカード
+      + `<div><button type="button" tabindex="-1" class="btn btn--primary" style="width:100%;">出す</button></div></div>`,
+    'アルバイトの提出ページの見本です（アルバイトのスマホに出ます）'));
+
+  /* ---- 5 取り込む ---- */
+  out.push(shiftGuideH(次(), '集まった希望を見て、表に取り込む'));
+  out.push(shiftGuideOl([
+    '表の上の<b>「提出 3 / 5人」</b>で、何人出したかが分かります',
+    '<b>「提出を見る」</b>で、誰がどの日に出したかを一覧で見られます（出していない人も分かります）',
+    '<b>「希望を取り込む」</b>を押すと、出した希望が表に入ります。名簿で決めた持ち場（キッチン／ホール）の列に入ります',
+  ]));
+  out.push(shiftGuideShot(
+    '<div class="shift-top" style="margin:0;"><div class="shift-top__line"><span class="shift-phase shift-phase--open">募集中</span>'
+      + '<span class="shift-top__count">提出 3 / 5人</span></div><p class="shift-top__note">3人分を入れました</p>'
+      + `<div class="shift-top__acts">${shiftGuideB('提出を見る')}${shiftGuideB('希望を取り込む')}${shiftGuideB('これまでのシフト表')}</div></div>`));
+  out.push(shiftGuideUl([
+    '取り込んだあとに出してもらった分は、もう一度「希望を取り込む」を押すと足されます（一度入れた人は二重に入りません）',
+    'マスの<b>「＋2」</b>は、その日に希望を出していて、まだ表に入っていない人の数です',
+  ]));
+
+  /* ---- 6 組む ---- */
+  out.push(shiftGuideH(次(), '表を組む（足す・直す・動かす）'));
+  const 例 = (() => {
+    if (yoru) {
+      return [
+        { label: '10/5（月）', memo: '店長17時〜', cells: {
+          open: { k: { people: [{ t: '14:00', n: 'Aさん' }] } },
+          dinner: { k: { people: [{ t: '17:00', n: 'Aさん' }, { t: '18:00', n: 'Bさん' }] }, h: { people: [{ t: '17:00', n: 'Cさん' }], short: 1 } },
+        }, helpTags: shiftGuideTag('ヘルプ要請 ホールあと１人（２人中）', 'var(--ng)') },
+        { label: '10/6（火）', cells: {
+          open: { k: { wish: 2 } },
+          dinner: { k: { people: [{ t: '17:30', n: 'Dさん', cls: 'is-early' }] }, h: { people: [{ t: '17:00', n: 'Eさん' }] } },
+        } },
+      ];
+    }
+    if (range) {
+      return [
+        { label: '10/5（月）', cells: {
+          open: { k: { people: [{ t: '10:30〜15:00', n: 'Aさん' }] } },
+          lunch: { h: { people: [{ t: '11:00〜17:00', n: 'Bさん' }] } },
+          dinner: { k: { people: [{ t: '17:00〜23:00', n: 'Cさん' }] }, h: { people: [{ t: '11:30〜22:00', n: 'Dさん', cls: 'is-full' }], short: 1 } },
+        } },
+        { label: '10/6（火）', cells: { lunch: { k: { wish: 2 } }, dinner: { h: { people: [{ t: '18:00〜23:00', n: 'Eさん' }] } } } },
+      ];
+    }
+    return [
+      { label: '10/5（月）', cells: {
+        open: { k: { people: [{ t: '10:30', n: 'Aさん' }] } },
+        lunch: { k: { people: [{ t: '11:00', n: 'Bさん', cls: 'is-full', f: true }] }, h: { people: [{ t: '11:30', n: 'Cさん' }] } },
+        dinner: { h: { people: [{ t: '17:00', n: 'Dさん' }], short: 1 } },
+      } },
+      { label: '10/6（火）', cells: { lunch: { k: { wish: 2 } }, dinner: { k: { people: [{ t: '17:00', n: 'Eさん', cls: 'is-early' }] } } } },
+    ];
+  })();
+  out.push(shiftGuideShot(shiftGuideGrid(rep, 例, { help: ヘルプ }), '表の見本です（2日分）'));
+  const 組む手順 = [
+    '<b>マスの「＋」</b>を押すと、そのマスに入れる人を選べます。名前を押すと入ります',
+    range ? '入れる前に<b>出勤時刻</b>（と退勤時刻）を<b>時</b>と<b>分</b>で選べます。選ばなければ、その人が出した時刻で入ります。<b>出勤時刻で、入る行が決まります</b>'
+      : (yoru ? '入れる前に<b>開始時刻</b>を<b>時</b>と<b>分</b>で選べます。選ばなければ、その人が出した時刻で入ります'
+        : '入れる前に<b>開始時刻</b>を押して選べます。選ばなければ、その人が出した時刻で入ります'),
+    '<b>入っている名前を押す</b>と、時刻・持ち場を直したり、<b>「早上がり」</b>にしたり、<b>「この人を外す」</b>で外したりできます',
+    '名前を<b>長押ししてつまむ</b>と、別のマス（別の日・別の枠）へ動かせます',
+    '人が足りないマスには、「＋」の小窓の<b>「あと何人ほしいか」</b>で人数を入れます。<b>赤い「＋」</b>が付き、人を入れると消えます',
+    '<b>メモ</b>の行には、その日の連絡（社員の動きなど）を書けます',
+  ];
+  if (kind === 'hiru') 組む手順.push(`<b>F</b>（通し）は名前のうしろに「F」が付きます。${名('open')}や${名('lunch')}の人を押すと、ランチだけか F かを変えられます`);
+  if (range) 組む手順.push('灰色の人は通し（ランチからディナーまで）です。時刻から自動で決まります');
+  out.push(shiftGuideOl(組む手順));
+  out.push(shiftGuideShot(shiftGuidePanel('入る人を選ぶ',
+    `<p class="doer__item">10/5（月） ${shiftGuideEsc(最後.name)} ・ ホール</p>`
+      + '<div class="field"><span class="field__label">持ち場</span><div class="seg"><span class="seg__btn">キッチン</span><span class="seg__btn is-on">ホール</span></div></div>'
+      + `<div class="field"><span class="field__label">${range ? '出勤時刻' : '開始時刻'}（選ばなければ、その人の希望どおりに入ります）</span>`
+      + `${yoru || range ? shiftGuideWheel(range ? '18時' : '17時', '00分') : '<div class="seg seg--wrap"><span class="seg__btn">17:00</span><span class="seg__btn">17:30</span><span class="seg__btn">18:00</span></div>'}</div>`
+      + '<div class="field"><span class="field__label">あと何人ほしいか（その人数だけ赤く出ます）</span>'
+      + `<span style="display:inline-flex;gap:8px;align-items:center;"><span class="field__input" style="display:inline-block;width:5em;text-align:center;">1</span>${shiftGuideB('決める')}</span></div>`
+      + `<div style="display:flex;gap:6px;flex-wrap:wrap;">${shiftGuideB('Cさん')}${shiftGuideB('Eさん')}</div>`),
+    '「＋」を押したときの小窓の見本です'));
+
+  /* ---- 7 ヘルプ（4店舗だけ） ---- */
+  if (ヘルプ) {
+    out.push(shiftGuideH(次(), '他の店舗とヘルプを出し合う'));
+    out.push(shiftGuideP(`<b>${SHIFT_HELP_STORES.map((id) => (getStore(id) || {}).name || id).join('・')}</b>の4店舗は、表の一番下の<b>「ヘルプ」</b>の行で、人を貸し借りできます。`));
+    out.push(shiftGuideUl([
+      '<b>ヘルプ要請</b>（人がほしい日）… キッチンかホールかを選び、<b>あと何人ほしいか</b>を入れて「決める」。'
+        + 'その日に人が入ると（手で足す・他の店舗から来る）、<b>入った人数だけ自動で減り、そろうと消えます</b>',
+      '<b>人員過多</b>（人が余る日）… キッチンかホールかを選び、<b>何人出せるか</b>を入れて「決める」',
+      '<b>ヘルプに出す</b>… 自分の店舗の人を、他の店舗へ手伝いに出します。誰を・どの店舗に・キッチンかホールか・どの枠か・何時からを選んで「決める」。'
+        + '<b>向こうの店舗の表に、そのまま入ります</b>（名前のうしろに送り元の店舗が付きます）',
+      '出したものは、ボタンの上に札で並びます。札を押すと直せます（0人で取り消し）',
+      '表の上の<b>「ヘルプ要請・人員過多を見る」</b>で、<b>4店舗が出しているもの</b>（自分の店舗の分も）を日付ごとに見られます。出ていると件数が付きます',
+    ]));
+    out.push(shiftGuideShot(shiftGuidePanel('ヘルプ要請・人員過多を見る',
+      '<p class="modal__note">4店舗が出しているものです（今日から先。この店の分も出ます）。</p>'
+        + '<p style="margin:10px 0 4px;font-weight:700;">10/5（月）</p>'
+        + [['炭まろ', 'ヘルプ要請', 'var(--ng)', 'ホール あと１人（２人中）', true], ['ちゃこる', '人員過多', 'var(--ok)', 'キッチン １人', false]]
+          .map(([s, k, c, t, me]) => '<div style="display:flex;gap:10px;align-items:baseline;padding:5px 2px;border-bottom:1px solid var(--line);">'
+            + `<span style="flex:0 0 7em;font-weight:700;">${s}${me ? '<span style="display:block;font-size:11px;font-weight:400;color:var(--text-sub);">この店</span>' : ''}</span>`
+            + `<span style="flex:0 0 5.5em;font-weight:700;color:${c};">${k}</span><span>${t}</span></div>`).join('')),
+      '「ヘルプ要請・人員過多を見る」の見本です（炭まろで開いたとき）'));
+  }
+
+  /* ---- 足りない日を LINE で ---- */
+  out.push(shiftGuideH(次(), '足りない日を、LINE で募る'));
+  out.push(shiftGuideP('赤い「＋」（人が足りないマス）がある日があると、表の上に<b>「足りない日をLINEにコピー（◯日分）」</b>が出ます。'
+    + '押して LINE に貼ると、足りない日と人数が入った文になります。人を入れて赤い「＋」が消えれば、文からも消えます。'));
+  out.push(shiftGuideShot(
+    `<div class="shift-top__acts" style="margin:0;">${shiftGuideB('足りない日をLINEにコピー（2日分）')}</div>`
+      + shiftGuideLine(`10/5(月)${最後.name}１人\n10/8(木)${最後.name}２人\n\n少しでも入れる人いたらお願いします！`)));
+
+  /* ---- 確定 ---- */
+  out.push(shiftGuideH(次(), 'シフトを確定して、知らせる'));
+  out.push(shiftGuideOl([
+    '表ができたら、表の下の<b>「シフトを確定する」</b>を押し、確かめて<b>「確定する」</b>',
+    '確定すると、<b>アルバイトの提出ページに、決まったシフト表が出ます</b>（希望の受け付けは終わります）',
+    '<b>「シフト確定をLINEにコピー」</b>を押して、LINE グループに貼って知らせます',
+    '紙に貼るときは<b>「印刷」</b>、画像やファイルで送るときは<b>「PDFで保存」「JPEGで保存」</b>'
+      + (range ? '（popo は A4 横 2枚に分かれます）' : ''),
+  ]));
+  out.push(shiftGuideShot(
+    `<div style="display:flex;gap:8px;flex-wrap:wrap;">${shiftGuideB('シフトを確定する', 'btn--primary')}</div>`
+      + `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">${shiftGuideB('印刷')}${shiftGuideB('PDFで保存')}${shiftGuideB('JPEGで保存')}</div>`
+      + shiftGuideLine(`シフト確定しました！\n各自確認をお願いします！\n\n10/8(木)${最後.name}１人\n出れる人がいたら連絡ください！`)));
+  out.push(shiftGuideUl([
+    '確定したあとも、表は直せます。直した分は、アルバイトの画面にもそのまま出ます',
+    '確定を取り消して希望を集め直すときは<b>「募集をやり直す」</b>',
+    '前の半月の表は<b>「これまでのシフト表」</b>で見られます',
+  ]));
+
+  out.push('<p class="modal__note" style="margin:20px 0 6px;">もっと詳しい説明は、⚙ 設定 →「使い方を見る」の6章（シフト）にあります。</p>');
+  return out.join('');
 }
 
 function renderShift() {

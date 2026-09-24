@@ -381,6 +381,8 @@ function applyOpen(res) {
   先に取っておく();
   // ★申請で選んだお店のうち、まだ承認されていないお店（2026-09-24、お店を複数選べるようにしたとき）
   申請の残りを出す();
+  // ★承認で番号が入った直後なら、その番号を1度だけ見せます
+  番号を見せる();
 }
 
 /**
@@ -686,10 +688,37 @@ async function 承認された(v, r) {
   me.code = String(r.code);
   me.store = r.store || me.store;
   localStorage.setItem(`${SAVE}:code`, me.code);
+  // ★開いたら1度だけ番号を見せます（→ 番号を見せる）。「控えました」を押すまで出します
+  try { localStorage.setItem(番号を見せる印, '1'); } catch (e) { /* 覚えられなくても、この画面では出します */ }
+  番号を見せる残り = true;
   el('applyState').textContent = '承認されました。開いています…';
   const res = await call({ mode: 'open' });
   if (res.ok) { applyOpen(res); return; }
   showRetry(res.error || 'つながりませんでした');
+}
+
+/* -------- 承認で入った番号を、1度だけ見せる（2026-09-24、マニュアルの指摘） --------
+ * ★承認で入った番号は、**申請した画面にしか入りません。**本人は自分の番号を知らないので、
+ *   ホーム画面のアイコン（ブラウザとは別に覚える）や別のスマホで開くと、知らない番号を聞かれていました。
+ *   開いた画面の上に番号を出し、「控えました」を押すまで出しておきます。
+ * ★見せるのは、その人の端末に、その人自身の番号だけです（お店が LINE で送るのと同じもの）。
+ */
+const 番号を見せる印 = `${SAVE}:showCode`;
+let 番号を見せる残り = false;
+
+function 番号を見せる() {
+  const box = el('myCodeBox');
+  let 出す = 番号を見せる残り;
+  try { 出す = 出す || localStorage.getItem(番号を見せる印) === '1'; } catch (e) { /* 読めなくても、この画面の分は出します */ }
+  出す = 出す && !!me.code;
+  box.classList.toggle('is-hidden', !出す);
+  el('myCode').textContent = 出す ? me.code : '';
+}
+
+function 番号を控えた() {
+  番号を見せる残り = false;
+  try { localStorage.removeItem(番号を見せる印); } catch (e) { /* 消せなくても、この画面では閉じます */ }
+  番号を見せる();
 }
 
 /* -------- 開いたあとの「まだ承認されていないお店」 -------- */
@@ -753,6 +782,8 @@ function signOut() {
   申請の知らせ = [];
   残りを聞いた = false;
   el('applyRestBox').classList.add('is-hidden');
+  // ★前の人の番号も出さないようにします
+  番号を控えた();
   me.code = '';
   me.name = '';
   el('gatePin').value = '';
@@ -1857,6 +1888,7 @@ async function boot() {
   el('applyName').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !imeEnter(e)) 申請する(); });
   el('applyCheck').addEventListener('click', () => { 申請の聞きはじめ = Date.now(); 申請を聞く(); });
   el('applyRestCheck').addEventListener('click', 申請の残りを聞く);
+  el('myCodeOk').addEventListener('click', 番号を控えた);
   el('applyCancel').addEventListener('click', () => {
     if (!window.confirm('申請をやめますか？\n（店長が承認しても、この端末には番号が入らなくなります）')) return;
     clearTimeout(申請の時計);
