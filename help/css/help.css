@@ -237,6 +237,10 @@
   margin: 24px 0 10px; font-size: 16px; font-weight: 800;
   padding-left: 11px; border-left: 4px solid var(--accent);
 }
+/* h3 の一段下（2026-09-24、ワークス6章の名簿の手順で使い始めました）。章の目次には出ません（js/help.js は h3 だけを拾う） */
+.help-sec h4:not(:where(.help-shot__body h4)) {
+  margin: 18px 0 8px; font-size: 15px; font-weight: 800; color: var(--text);
+}
 
 /* ---- 印刷（PDFにするとき） ----
    ★PDF は公開のたびに作り直し、T3Works フォルダーの「マニュアル/」に置きます（2026-09-19、ko-dai さん。前は一番上の「使い方.pdf」）。
@@ -266,7 +270,7 @@
   .help-sec-toc__list a { min-height: 0; padding: 6pt 12pt; }
 
   .help-sec { break-before: page; margin-bottom: 0; }
-  .help-sec__head, .help-sec h3, .help-q__title { break-after: avoid; }
+  .help-sec__head, .help-sec h3, .help-sec h4, .help-q__title { break-after: avoid; }
   .help-shot, .help-important, .help-note, .help-first, .help-marks__row, .help-steps li { break-inside: avoid; }
   .help-q, .help-lead, .help-first, .help-sec__head { box-shadow: none; }
 }

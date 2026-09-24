@@ -6,7 +6,7 @@
 <title>マインの使い方</title>
 <link rel="icon" type="image/png" sizes="64x64" href="../../img/mine-icon-64.png?v=ea09f133">
 <link rel="stylesheet" href="../../css/style.css?v=1c41d5c8">
-<link rel="stylesheet" href="../css/help.css?v=81d84d71">
+<link rel="stylesheet" href="../css/help.css?v=4011d0ad">
 <!-- ★マイン（T3 Works Mine）の使い方。管理する人向けです（2026-09-19、ko-dai さんの指示で作りました）。
      ★ワークスと同じ画面の使い方は「ワークスの使い方」（../）にあります。ここは、管理する人だけが使う所を書きます。
        マインにしか無いもの（body の data-mode="mine" と .mine-only で出し分け）と、
@@ -14,7 +14,7 @@
      ★見た目と動きは ../css/help.css と ../js/help.js（4つの使い方で同じもの）。
      ★公開の道具が PDF「マニュアル/マインの使い方.pdf」を作ります（道具/公開する.py の `使い方の本`）。
      ★人の名前・番号・金額・合言葉は書きません。例は ◯ にします -->
-<meta name="app-version" content="aaa2e75b">
+<meta name="app-version" content="f190344c">
 </head>
 <body>
 
@@ -125,6 +125,10 @@
       番号は、シフトの画面の一番上にある「<b>シフトに入る人</b>」で作ります。
     </p>
 
+    <!-- ★★名簿の手順は、ワークスの使い方（help/index.html）の6章にも同じものがあります（2026-09-24、ko-dai さんの指示）。
+         直すときは両方。食いちがうと .claude/skills/t3works-manual/test_名簿の手順.py が鳴ります。
+         本ごとに違ってよいのは data-book の中だけです -->
+    <!--名簿の手順:はじめ-->
     <h3>名簿を開く</h3>
     <ol class="help-steps">
       <li>店舗を選んで「<b>シフト</b>」を開きます</li>
@@ -163,7 +167,7 @@
       <p>番号を知っていれば、その人として希望を出せてしまいます。<b>他の人に見せないでください。</b></p>
     </div>
     <p>
-      提出ページのURLは<b>全員おなじ</b>です。QRコードとURLの渡し方は、<a href="../#s6">ワークスの使い方 6番</a>にあります。
+      提出ページのURLは<b>全員おなじ</b>です。QRコードとURLの渡し方は、<span data-book="mine"><a href="../#s6">ワークスの使い方 6番</a>にあります</span>。
     </p>
 
     <!-- ★2026-09-24、シフトの分野が足しました（ko-dai さんの指示。公開 aaaf28e8）。前はマネージにしかありませんでした。
@@ -197,6 +201,7 @@
       見本の人は、シフトを組む画面には出ません（マネージでは見えます）。
     </div>
 
+    <!--名簿の手順:おわり-->
     <p>シフトを組む・確定する・他の店舗とヘルプを出し合うは、<a href="../#s6">ワークスの使い方 6番</a>を見てください。</p>
   </section>
 
