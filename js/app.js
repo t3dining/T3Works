@@ -10664,8 +10664,8 @@ function shiftTake() {
         if (taken.has(mark)) return;
         taken.add(mark);
         if (day[slot.id].some((e) => e.n === w.name)) return;
-        // ★マネージで決めてある「普段の持ち場」に入れます。
-        //   決めていない人は、ひとまず左の持ち場（キッチン）です
+        // ★名簿で決めてある「普段の持ち場」に入れます（マネージ・ワークス・マインの
+        //   どの名簿で決めても同じ印です）。決めていない人は、ひとまず左の持ち場（キッチン）です
         const entry = {
           n: w.name,
           t: w.t || shiftDefaultTime(state.storeId, w.s),
@@ -10934,7 +10934,7 @@ function renderShiftRoster(組む) {
     警告.className = 'card__note';
     警告.style.cssText = 'font-weight:700;color:var(--ng);'
       + 'border:1px solid var(--ng);border-radius:9px;padding:9px 11px;';
-    警告.innerHTML = '★この端末では、<b>名前・番号・チェックを直しても保存されません。</b><br>'
+    警告.innerHTML = '★この端末では、<b>名前・番号・チェック・持ち場を直しても保存されません。</b><br>'
       + '名簿を直すには<b>管理用のPIN</b>が要ります（マネージと同じPINです）。<br>'
       + '見るだけなら、このままで大丈夫です。';
     box.appendChild(警告);
@@ -11025,7 +11025,9 @@ function shiftCodeList(store, people) {
     + '<b>店舗を切り替えられる</b>ようになります。<br>'
     + '選んだ店舗の名簿にも<b>同じ番号で入る</b>ので、'
     + '<b>向こうでも押された状態</b>になります（二重に登録しなくて済みます）。<br>'
-    + '番号を送ったら、<b>名前の左のチェック</b>を付けてください（どこまで送ったか分かります）。';
+    + '番号を送ったら、<b>名前の左のチェック</b>を付けてください（どこまで送ったか分かります）。<br>'
+    + '<b>キッチン／ホール</b>は、その人の普段の持ち場です。希望を取り込むと、ここで決めた側に入ります'
+    + '（決めていない人はキッチン。もう一度押すと外れます）。<b>もう組んだ分は動きません。</b>';
   wrap.appendChild(url);
 
   // ★どこまで配ったか。26人にLINEで送るので、数が見えないと見失います
@@ -11067,6 +11069,34 @@ function shiftCodeList(store, people) {
     // 送りずみの人は、うすくして「もう済んだ」と分かるようにします
     if (p.s) name.style.color = 'var(--text-sub)';
     line.appendChild(name);
+
+    // ★普段の持ち場（キッチン／ホール）。マネージの名簿と同じもので、同じ印（`p`）を
+    //   `ShiftStaff.setLane` で直します。希望を取り込むと、ここで決めた側に入ります
+    //   （→ ShiftStaff.laneOf）。もう一度押すと「決めていない」に戻ります（マネージと同じ）。
+    //   ★持ち場は店舗ごとです。他店舗にも所属している人でも、向こうの持ち場は変わりません
+    // ★見た目は manage/css/admin.css の `.lane-btn` に寄せて、ここで持たせます
+    //   （css/style.css は本部のもの）。指で押すので、マネージより少し大きめです
+    const lanes = document.createElement('span');
+    lanes.style.cssText = 'display:inline-flex;gap:4px;flex:0 0 auto;';
+    SHIFT_LANES.forEach((lane) => {
+      const on = p.p === lane.id;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = lane.name;
+      b.title = on ? 'もう一度押すと、決めていない状態に戻ります' : `${lane.name}にする`;
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.style.cssText = 'border-radius:7px;font:inherit;font-size:12px;font-weight:700;'
+        + 'padding:7px 11px;cursor:pointer;white-space:nowrap;'
+        + (on
+          ? 'border:1px solid var(--store);background:var(--store);color:#fff;'
+          : 'border:1px solid var(--line);background:var(--surface-2);color:var(--text-weak);');
+      b.addEventListener('click', () => {
+        ShiftStaff.setLane(state.storeId, p.n, on ? '' : lane.id);
+        renderKeepScroll();
+      });
+      lanes.appendChild(b);
+    });
+    line.appendChild(lanes);
 
     const code = document.createElement('span');
     code.className = 'shift-code__num';
