@@ -787,7 +787,13 @@ const Sync = {
    */
   _dropAdminOps(送った) {
     const admin = typeof ADMIN_SETTINGS !== 'undefined' ? ADMIN_SETTINGS : [];
-    let あたる = (op) => op.t === 'setting' && admin.includes(op.n);
+    /* ★設定だけでなく、**op の種類**でも断られます（`voiceReply` など）。
+         2026-09-23 まで、ここは `t === 'setting'` しか捨てていませんでした。
+         管理でない人がご意見に返事を書くと、その op は捨てられず、
+         **次の同期でも丸ごと断られ、その端末の送信箱が永久に詰まりました**
+         （クローズのチェックも一緒に止まります）。シフトの分野が見つけました。 */
+    const 種類 = typeof ADMIN_OP_KINDS !== 'undefined' ? ADMIN_OP_KINDS : [];
+    let あたる = (op) => (op.t === 'setting' && admin.includes(op.n)) || 種類.includes(op.t);
 
     // ★一覧に当たるものが1つも無いのに断られたときは、**送った設定を全部捨てます。**
     //
@@ -799,7 +805,14 @@ const Sync = {
     if (!this.outbox().some(あたる)) {
       const 送った設定 = new Set((送った || [])
         .filter((op) => op.t === 'setting').map((op) => op.n));
-      if (送った設定.size) あたる = (op) => op.t === 'setting' && 送った設定.has(op.n);
+      // ★種類の方も、送ったものを見て捨てます（一覧がずれている時間のため。上と同じ理由）
+      const 送った種類 = new Set((送った || [])
+        .filter((op) => op.t !== 'setting' && op.t !== 'item' && op.t !== 'staff'
+          && op.t !== 'note' && op.t !== 'submit' && op.t !== 'unsubmit')
+        .map((op) => op.t));
+      if (送った設定.size || 送った種類.size) {
+        あたる = (op) => (op.t === 'setting' && 送った設定.has(op.n)) || 送った種類.has(op.t);
+      }
     }
 
     const 捨てる = this.outbox().filter(あたる);
@@ -811,9 +824,18 @@ const Sync = {
     //   （2026-09-07、シフトが名簿で実地に見つけました）。
     //   ★詰まりは外すが、**外したことは言う。**
     if (捨てる.length) {
-      const 名 = [...new Set(捨てる.map((op) => 設定の呼び名(op.n)))].join('・');
+      const 呼び名 = typeof OP_KIND_NAMES !== 'undefined' ? OP_KIND_NAMES : {};
+      const 名 = [...new Set(捨てる.map((op) => (op.t === 'setting'
+        ? 設定の呼び名(op.n)
+        : (呼び名[op.t] || op.t))))].join('・');
       this.lastError = `${名}は、この端末では保存できません`
         + '（管理用のPINが要ります）。直した分は元に戻ります。';
+    } else {
+      /* ★1つも捨てられなかったときは、**このまま永久に詰まります。**
+           知らない種類が増えたときに、ここへ来ます。
+           詰まりは外せなくても、**黙ってはいけません**（`CLAUDE.md`「黙って失敗しない」）。 */
+      this.lastError = 'この端末から送れないものが、送信箱に残っています'
+        + '（管理用のPINが要ります）。ko-dai さんに伝えてください。';
     }
   },
 
