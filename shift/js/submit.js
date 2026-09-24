@@ -297,7 +297,7 @@ async function submitPin() {
   if (!code) return setErr('gateErr', '番号を入れてください');
 
   // ★サーバー側で落ちると静かに送り直すので、悪い夜は1分をこえて待つことがあります。
-  //   押せないボタンに「すすむ」と出たままだと、固まったように見えるので字を変えます
+  //   押せないボタンに「進む」と出たままだと、固まったように見えるので字を変えます
   const go = el('gateGo');
   const 元の字 = go.textContent;
   go.disabled = true;

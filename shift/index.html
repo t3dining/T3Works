@@ -45,8 +45,8 @@
 <link rel="apple-touch-icon" href="../img/shift-icon-180.png?v=ab0bd671">
 <link rel="icon" href="../img/shift-icon-64.png?v=0254ff8c">
 
-<link rel="stylesheet" href="css/submit.css?v=db940cf7">
-<meta name="app-version" content="8e5e7582">
+<link rel="stylesheet" href="css/submit.css?v=5f629477">
+<meta name="app-version" content="8b4cae37">
 </head>
 <body>
 
@@ -84,8 +84,9 @@
        他の人の名前で出すことはできません -->
   <section class="card is-hidden" id="gate">
     <h1 class="card__title">あなたの番号を入れてください</h1>
+    <!-- ★番号は申請で配ります（2026-09-24、ko-dai さん「今番号をLINEで送る人はいません。今後登録する人は全て申請を出します」） -->
     <p class="card__note">
-      お店からLINEで送られた、<b>あなただけの番号</b>です。<br>
+      申請が承認されたときに画面に出た、<b>あなただけの番号</b>です。<br>
       1回入れれば、次からは出ません。
     </p>
     <!-- ★英字が入ることもあるので type="text"。iPhoneが勝手に大文字にしたり
@@ -94,7 +95,7 @@
            autocorrect="off" spellcheck="false"
            class="input input--big" id="gatePin" placeholder="番号">
     <p class="err is-hidden" id="gateErr"></p>
-    <button type="button" class="btn btn--primary btn--wide" id="gateGo">すすむ</button>
+    <button type="button" class="btn btn--primary btn--wide" id="gateGo">進む</button>
     <!-- ★番号をまだ持っていない人の入口（2026-09-24、ko-dai さんの指示）。
          申請して、店長がワークスで承認すると、番号が自動で入ります -->
     <!-- ★はじめは隠しておき、js/config.js の SHIFT_REQ_ON が true のときだけ JS が出します（JS が動かなければ出ません） -->
@@ -262,9 +263,9 @@
   </div>
 </div>
 
-<script src="../js/config.js?v=b07cd51d"></script>
+<script src="../js/config.js?v=216f9f75"></script>
 <!-- シフト表を絵に描くところ。ワークスの「JPEGで保存」と同じものです -->
 <script src="../js/shift-sheet.js?v=9b8102f7"></script>
-<script src="js/submit.js?v=f5ac5d63"></script>
+<script src="js/submit.js?v=82a49a1c"></script>
 </body>
 </html>

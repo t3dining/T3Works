@@ -123,7 +123,7 @@ body {
 .input--big {
   font-size: 22px; font-weight: 700; text-align: center;
   letter-spacing: .08em; padding: 13px 12px;
-  margin-bottom: 12px;   /* すぐ下の「すすむ」とくっつかないように */
+  margin-bottom: 12px;   /* すぐ下の「進む」とくっつかないように */
 }
 .field { display: block; }
 .field__label { display: block; font-size: 12.5px; color: var(--text-sub); margin-bottom: 5px; }
