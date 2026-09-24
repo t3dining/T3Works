@@ -11062,8 +11062,11 @@ function renderShiftRoster(組む) {
 
   const note = document.createElement('p');
   note.className = 'card__note';
-  note.innerHTML = '1行に1人。保存すると<b>1人ずつに番号</b>が作られます。'
-    + 'その番号を本人に送ってください。<br>'
+  // ★番号は申請で配ります（2026-09-24、ko-dai さん「今番号をLINEで送る人はいません。今後登録する人は全て申請を出します」）。
+  //   ここで手で足した人には番号が自動で入らないので、「見る」で本人に伝えてもらいます
+  note.innerHTML = '1行に1人。保存すると<b>1人ずつに番号</b>が作られます。<br>'
+    + '★<b>新しい人は、ここに書かずに提出ページから申請</b>してもらってください（承認すると、番号が本人のスマホに自動で入ります）。'
+    + 'ここで手で足した人には番号が自動で入らないので、下の一覧の「見る」で番号を見て、本人にだけ伝えてください。<br>'
     + '<b>番号は本人だけのもの</b>です。他の人に見せないでください'
     + '（番号を知っていれば、その人として出せてしまいます）。<br>'
     + '名前を消しても、<b>組みおわったシフトはそのまま残ります</b>。<br>'
@@ -14057,7 +14060,7 @@ function openShiftQr() {
         <img id="shiftQrImg" alt="シフト提出ページのQRコード" width="220" height="220"
           style="display:block;width:220px;height:220px;margin:0 auto 10px;">
         <p class="modal__note">スマホのカメラで読み取ると、シフト提出のページが開きます。<br>
-          番号は、ひとりずつ別に送ってください。</p>
+          番号がまだ無い人は、開いた画面の「番号をまだ持っていない」から申請できます。</p>
         <textarea class="field__input" id="shiftQrUrl" rows="2" readonly
           style="font-size:12.5px;text-align:center;margin-bottom:12px;resize:none;"></textarea>
         <div class="modal__actions modal__actions--confirm">
