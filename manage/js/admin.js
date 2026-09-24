@@ -1853,14 +1853,16 @@ function renderShiftCodes() {
  * 「名前を直す」を押したときの欄（番号はそのまま。→ shiftRename、js/config.js）
  *
  * ★名前の大きな欄で書き換えると番号が変わりますが、ここで直すと**番号は変わりません**。
- *   他店舗にも所属している人は、向こうの名簿の名前もそろいます。ワークスの名簿と同じものです。
+ * ★直すのは、この店の名簿だけです（2026-09-24、ko-dai さんの指示。名前は店ごと）。ワークスの名簿と同じものです。
  */
 function shiftRenameBox(storeId, person) {
   const wrap = document.createElement('div');
   wrap.className = 'shift-link';
   const cap = document.createElement('p');
   cap.className = 'admin-note';
+  const よその店 = shiftLinkedStores(person.c).filter((id) => id !== storeId).map((id) => (getStore(id) || {}).short || id);
   cap.textContent = `「${person.n}」さんの名前を直します。★番号はそのままです（この人はそのまま入れます）。`
+    + (よその店.length ? `直すのはこの店の名簿だけで、${よその店.join('・')}の名簿の名前は変わりません。` : '')
     + '組みおわったシフトは前の名前のまま残り、直す前に出してもらっていた希望は、取り込むと前の名前で入ります。';
   wrap.appendChild(cap);
   const input = document.createElement('input');
@@ -1881,10 +1883,9 @@ function shiftRenameBox(storeId, person) {
       return;
     }
     const 新 = String(input.value).replace(/\s+/g, ' ').trim();
-    const よそ = r.stores.filter((id) => id !== storeId).map((id) => (getStore(id) || {}).short || id);
     shiftRenameOpen = '';
     shiftRenameNote = `「${person.n}」さんを「${新}」さんに直しました（番号はそのまま）。`
-      + (よそ.length ? `${よそ.join('・')}の名簿もそろえました。` : '');
+      + (よその店.length ? `${よその店.join('・')}の名簿の名前は、そのままです。` : '');
     renderShiftStaff();
   };
   go.addEventListener('click', 決める);
@@ -1902,7 +1903,7 @@ function shiftRenameBox(storeId, person) {
 /**
  * その人が入る店舗を選ぶところ
  *
- * ★選ぶと、その店舗の名簿にも**同じ名前・同じ番号**で入ります。
+ * ★選ぶと、その店舗の名簿にも**同じ番号**で入ります（名前はこの店の名前。向こうで「名前を直す」で直せます）。
  *   なので**向こうの店舗から見ても、このボタンが押された状態**になり、
  *   同じ人を二重に登録する手間が消えます。
  */
@@ -1913,7 +1914,7 @@ function shiftLinkPicker(storeId, person) {
   const cap = document.createElement('p');
   cap.className = 'admin-note';
   cap.textContent = `${person.n} さんが入っている店舗を選んでください`
-    + '（選ぶと、向こうの名簿にも同じ番号で入ります）';
+    + '（選ぶと、向こうの名簿にも同じ番号で入ります。名前は店ごとに「名前を直す」で直せます）';
   wrap.appendChild(cap);
 
   const いま = new Set(shiftLinkedStores(person.c));

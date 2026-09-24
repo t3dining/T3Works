@@ -46,7 +46,7 @@
 <link rel="icon" href="../img/shift-icon-64.png?v=0254ff8c">
 
 <link rel="stylesheet" href="css/submit.css?v=f772ad7a">
-<meta name="app-version" content="9b925c57">
+<meta name="app-version" content="aed63083">
 </head>
 <body>
 
@@ -111,16 +111,23 @@
     <h1 class="card__title">番号の申請</h1>
     <div id="applyForm">
       <p class="card__note">
-        お店と名前を入れて「申請する」を押してください。<br>
+        お店を選び、名前を入れて「申請する」を押してください。<br>
         <b>店長が承認すると、番号が自動で入ります</b>（番号を打たなくて大丈夫です）。
       </p>
+      <!-- ★お店は複数選べます（2026-09-24、ko-dai さんの指示）。選んだお店ごとに申請が届き、
+           お店ごとに承認されます。承認されたお店から提出できます。ボタンは js が入れます -->
       <div class="field">
-        <label class="field__label" for="applyStore">お店</label>
-        <select class="input" id="applyStore"></select>
+        <span class="field__label" id="applyStoresLabel">お店（入っているお店を全部選んでください）</span>
+        <div class="day__slots" id="applyStores" role="group" aria-labelledby="applyStoresLabel" style="flex-wrap:wrap;margin:0 0 10px;"></div>
       </div>
       <div class="field">
         <label class="field__label" for="applyName">名前</label>
         <input type="text" class="input" id="applyName" maxlength="20" autocomplete="off" placeholder="名前">
+      </div>
+      <!-- ★持ち場（2026-09-24、ko-dai さんの指示）。承認されると、この持ち場で名簿に入ります -->
+      <div class="field">
+        <label class="field__label" for="applyLane">持ち場</label>
+        <select class="input" id="applyLane"></select>
       </div>
       <p class="err is-hidden" id="applyErr"></p>
       <button type="button" class="btn btn--primary btn--wide" id="applyGo">申請する</button>
@@ -129,7 +136,7 @@
     <div class="is-hidden" id="applyWait">
       <p class="card__note">
         <b id="applyWho"></b>で申請しました。<br>
-        <b>店長に「申請しました」と伝えてください。</b>承認されると、この画面が自動で進みます。
+        <b>選んだお店の店長に「申請しました」と伝えてください。</b>承認されたお店から提出できるようになり、この画面が自動で進みます。
       </p>
       <p class="hint" id="applyState" style="white-space:pre-line;"></p>
       <button type="button" class="btn btn--primary btn--wide" id="applyCheck">もう一度確かめる</button>
@@ -144,6 +151,12 @@
     <div class="me" id="meCard">
       <span class="me__name" id="meName"></span>
       <span class="me__of">さんの シフト提出</span>
+    </div>
+
+    <!-- ★申請で選んだお店のうち、まだ承認されていないお店（2026-09-24）。中身は js が入れます -->
+    <div class="card is-hidden" id="applyRestBox">
+      <p class="card__note" id="applyRest" style="white-space:pre-line;margin:0;"></p>
+      <button type="button" class="btn btn--wide" id="applyRestCheck" style="margin-top:10px;">承認されたか確かめる</button>
     </div>
 
     <div class="card card--period">
@@ -239,9 +252,9 @@
   </div>
 </div>
 
-<script src="../js/config.js?v=e583bfd3"></script>
+<script src="../js/config.js?v=a5ace49a"></script>
 <!-- シフト表を絵に描くところ。ワークスの「JPEGで保存」と同じものです -->
 <script src="../js/shift-sheet.js?v=9b8102f7"></script>
-<script src="js/submit.js?v=baf0db3b"></script>
+<script src="js/submit.js?v=e245e684"></script>
 </body>
 </html>

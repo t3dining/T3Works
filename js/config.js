@@ -6128,7 +6128,11 @@ function shiftRosterShows() {
 /* -------- 番号の申請（番号をまだ持っていない人。2026-09-24） --------
  *
  *  アルバイトが提出ページで「申請」→ 店長がワークス・マインの名簿で承認 → その人の端末に番号が自動で入ります。
- *  行は `_shiftreq/<店舗id>-<申請id>` = { n: 名前, at: 出した時刻, h: 合言葉の印, st: 'wait'|'ok', c: 番号, got: 受け取った時刻 }。
+ *  行は `_shiftreq/<店舗id>-<申請id>` = { n: 名前, at: 出した時刻, h: 合言葉の印, st: 'wait'|'ok', p: 持ち場, c: 番号, got: 受け取った時刻 }。
+ *  ★お店は複数選べます（2026-09-24、ko-dai さんの指示）。提出ページは**同じ合言葉で店ごとに**申請するので、
+ *    店ごとに1行ずつでき、**申請id はどの店でも同じ**です（申請id は合言葉の印だから）。
+ *    店ごとに別々に承認し、承認された店だけで提出できます。**番号は1人に1つ**で、2つ目の店の承認は
+ *    1つ目の店の番号をそのまま使います（→ js/app.js の shiftReqApprove・下の shiftCodeFrom）。
  *  ★行を書くのはサーバー（cloudflare/worker.js の「申請」の節）と、承認・断るの専用の書き込み（shiftApprove／shiftDeny）だけです。
  *  ★決まりは 決裁.md（2026-09-24 夕・夜）。本部の条件と、ko-dai さんの判断（ワークスで承認・数の上限なし）
  * ---------------------------------------------------------- */
@@ -6149,6 +6153,35 @@ const SHIFT_REQ_STORE = '_shiftreq';
 const SHIFT_REQ_ON = true;
 /** これより古い申請は出さず、名簿を開いたときに片づけます（サーバーも「見つかりません」を返します） */
 const SHIFT_REQ_DAYS = 14;
+
+/**
+ * 申請id から番号を決める（同じ id なら、どの端末で作っても同じ番号）
+ *
+ * ★複数の店にまとめて申請した人を、2つの店がほぼ同時に承認したときのためです。
+ *   承認の前に最新を取り直しますが（js/app.js の shiftReqFresh）、それでもすれ違うと
+ *   店ごとに別の番号ができ、その人は片方の店でしか提出できなくなります。
+ *   同じ id から同じ番号を作れば、すれ違っても番号は1つです。
+ * ★申請id は会社の鍵で作った印なので（cloudflare/worker.js の「申請」）、番号の並びに癖は出ません。
+ *   id は PIN のある端末にしか届かず、その端末では名簿の番号もそのまま見られるので、見える人は増えません。
+ * ★もう誰かが使っている番号は飛ばします（`used`）。作れなければ ''。
+ */
+function shiftCodeFrom(seed, used) {
+  const taken = new Set((used || []).map(String));
+  const top = 10 ** SHIFT_CODE_LENGTH;
+  const low = 10 ** (SHIFT_CODE_LENGTH - 1);
+  for (let i = 0; i < 50; i += 1) {
+    // FNV-1a（32ビット）。合言葉の印は元から散らばっているので、分ければ足ります
+    let h = 2166136261;
+    const text = `${seed}|${i}`;
+    for (let j = 0; j < text.length; j += 1) {
+      h ^= text.charCodeAt(j);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    const n = String(low + (h % (top - low)));
+    if (!taken.has(n)) return n;
+  }
+  return '';
+}
 
 /* -------- 他店舗にも所属している人 -------- */
 
@@ -6179,7 +6212,9 @@ function shiftLinkedStores(code) {
 /**
  * その人が入る店舗を決め直す
  *
- * ★入れる店舗には**同じ名前・同じ番号**で足し、外す店舗からは消します。
+ * ★入れる店舗には**同じ番号**で足し（名前はいま押している店の名前）、外す店舗からは消します。
+ * ★★**名前は店ごとです**（2026-09-24、ko-dai さんの指示「店舗間で変更が連動せず」）。
+ *   もう入っている店の名前は**書き換えません**。前は「名前だけそろえます」で、よその店の名前を上書きしていました。
  * ★もとの店舗は必ず残します（そこから押しているので、外せてしまうと
  *   その人がどこにも居なくなります）。
  * ★★**人は番号で見ます。名前では見ません**（2026-09-18 に直しました。本部の残り③の①）。
@@ -6204,8 +6239,7 @@ function shiftSetLinked(fromStore, name, code, stores, mergeInto) {
 
     if (want.has(id)) {
       if (at >= 0) {
-        // もう入っている。名前だけそろえます（他の人と同じ名前になるときは、そろえません）
-        if (!list.some((p, i) => i !== at && p.n === name)) list[at] = { ...list[at], n: name };
+        // もう入っている。★名前は、その店のまま（店ごとに違ってよい）
       } else {
         const 同名 = id === fromStore ? -1 : list.findIndex((p) => p.n === name);
         if (同名 >= 0) {
@@ -6306,12 +6340,15 @@ function shiftReissue(storeId, name) {
  * ★名簿の大きな欄で名前を書き換えると「前の人が消えて、新しい人が増えた」になり、**番号が変わります**
  *   （→ shiftRosterConfirm）。承認で番号を受け取った人は、それで入れなくなります。
  *   こちらは**番号を変えずに名前だけ**替えるので、その人はそのまま入れます。
- * ★他店舗にも所属している人は、**同じ番号の人を全部の店の名簿で**替えます（shiftReissue と同じ考え）。
- *   替える先の店に**同じ名前の別の人**がいれば、どの店も替えずに止めます（名簿は1つの店に同じ名前を2人入れられません）。
+ * ★★**直すのは、この店の名簿だけです**（2026-09-24、ko-dai さんの指示「名前の変更は店舗間で連動せず、
+ *   店舗ごとに同じ番号の人の名前が登録できるように」）。他店舗にも所属している人でも、よその店の名前は変わりません。
+ *   前は同じ番号の人を全部の店で替えていました。★番号は全部の店で1つのままです（番号を作り直すときは shiftReissue で全部の店）。
+ * ★この店に**同じ名前の別の人**がいれば、直しません（名簿は1つの店に同じ名前を2人入れられません）。
+ * ★提出ページには、開いた店の名前で出ます。出した希望にも、その店の名前で入ります（cloudflare/worker.js・gas/シフト.gs の shiftWhoAt）。
  * ★替えないもの：組みおわったシフト（前の名前のまま残ります）／直す前に出してもらっていた希望（取り込むと前の名前で入ります）。
  *   希望の行は番号で持っているので、次に出し直してもらえば新しい名前になります。
  * ★見本（名前に「テスト」）かどうかが変わる直しはさせません（見本かどうかが、シフトに出るかを決めるため）。
- * 返り値 { ok: true, stores: [替えた店舗] } ／ { ok: false, error }
+ * 返り値 { ok: true, stores: [直した店舗＝この店だけ] } ／ { ok: false, error }
  */
 function shiftRename(storeId, oldName, newName) {
   const name = String(newName === null || newName === undefined ? '' : newName).replace(/\s+/g, ' ').trim();
@@ -6322,22 +6359,16 @@ function shiftRename(storeId, oldName, newName) {
     return { ok: false, error: '名前に「テスト」を足したり外したりはできません（見本の人かどうかが変わるため）' };
   }
   const map = ShiftStaff.all();
-  const who = (map[storeId] || []).find((p) => p.n === oldName);
+  const list = map[storeId] || [];
+  const who = list.find((p) => p.n === oldName);
   if (!who) return { ok: false, error: `「${oldName}」さんが名簿に見つかりません（他の端末で直されたかもしれません。開き直してください）` };
-  const c = String(who.c || '');
-  const 相手 = [];
-  Object.keys(map).forEach((id) => (map[id] || []).forEach((p) => {
-    if (p === who || (c && String(p.c || '') === c)) 相手.push({ id, p });
-  }));
-  for (const x of 相手) {
-    if ((map[x.id] || []).some((q) => q !== x.p && q.n === name)) {
-      const 店 = getStore(x.id) || {};
-      return { ok: false, error: `${店.name || x.id}の名簿に、同じ名前の「${name}」さんがもういます。別の名前にしてください` };
-    }
+  if (list.some((q) => q !== who && q.n === name)) {
+    const 店 = getStore(storeId) || {};
+    return { ok: false, error: `${店.name || storeId}の名簿に、同じ名前の「${name}」さんがもういます。別の名前にしてください` };
   }
-  相手.forEach((x) => { x.p.n = name; });
+  who.n = name;
   ShiftStaff.save(map);
-  return { ok: true, stores: [...new Set(相手.map((x) => x.id))] };
+  return { ok: true, stores: [storeId] };
 }
 
 /** その店舗でシフトを組むか（名簿だけの店舗と見分けます） */

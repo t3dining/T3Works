@@ -11122,22 +11122,90 @@ function renderShiftRoster(組む) {
  *    本人なら、名簿の番号を今までどおり LINE で送ってください。
  *  ★断ったら「みんなの画面から消しました」と出します。**「消しました」とは言いません**（シートの版履歴には残るため）。
  *  ★名前は、閉じているあいだは出しません（件数だけ）。
+ *  ★★お店を複数選んで申請できます（2026-09-24、ko-dai さんの指示）。店ごとに1行ずつ届き、**店ごとに承認します**。
+ *    承認された店だけで提出できます。**番号は1人に1つ**：2つ目の店の承認は、1つ目の店の番号でその店の名簿に入れます。
+ *    同じ申請の行は、申請id（行のキーの「店舗id-」のあと）が同じです（→ shiftReqSiblings）。
+ *  ★承認の前に、いまの名簿と申請を取り直します（→ shiftReqFresh）。名簿は全店舗で1つの設定なので、
+ *    よその店が承認した直後に古い名簿のまま足すと、よその店が足した人を上書きして消してしまうためです。
+ *  ★名前は店ごとです。2つ目の店では、その店で直した名前で入ります（よその店の名前は変わりません）。
  * ---------------------------------------------------------- */
 /** 一言だけ出す知らせ（断ったあとなど）。1回出したら消えます */
 let shiftReqNote = '';
 /** 「承認」を押して、名前を直しているところの申請（行のキー） */
 let shiftReqEditing = '';
+/** 承認の前の取り直しを待っているあいだ（★取り直しで名簿が描き直されても、2回承認しないため） */
+let shiftReqBusy = false;
 
-/** その店舗の申請（消えたものは出しません。古い順） */
-function shiftReqList(storeId) {
-  if (typeof Store === 'undefined' || !Store.adapter || !storeId) return [];
+/**
+ * 全部の店の申請（消えたものは出しません）
+ * { key: 行のキー, store: 店舗id, id: 申請id, rec: 行の中身 }。★店舗id に「-」は入らないので、最初の「-」で分けます
+ */
+function shiftReqRows() {
+  if (typeof Store === 'undefined' || !Store.adapter) return [];
   const 箱 = Store.adapter.dump();
-  const 頭 = `${storeId}-`;
-  return Store.keysUnder(SHIFT_REQ_STORE)
-    .filter((id) => id.indexOf(頭) === 0)
-    .map((id) => ({ key: `${SHIFT_REQ_STORE}/${id}`, rec: 箱[`${SHIFT_REQ_STORE}/${id}`] }))
-    .filter((x) => x.rec && typeof x.rec === 'object' && !x.rec.消えた && x.rec.n)
+  return Store.keysUnder(SHIFT_REQ_STORE).map((k) => {
+    const at = k.indexOf('-');
+    const key = `${SHIFT_REQ_STORE}/${k}`;
+    return { key, store: at > 0 ? k.slice(0, at) : '', id: at > 0 ? k.slice(at + 1) : '', rec: 箱[key] };
+  }).filter((x) => x.store && x.id && x.rec && typeof x.rec === 'object' && !x.rec.消えた && x.rec.n);
+}
+
+/** その店舗の申請（消えたものは出しません。古い順）。rows を渡せば、読み直しません */
+function shiftReqList(storeId, rows) {
+  if (!storeId) return [];
+  return (rows || shiftReqRows()).filter((x) => x.store === storeId)
     .sort((a, b) => String(a.rec.at || '').localeCompare(String(b.rec.at || '')));
+}
+
+/** 同じ申請（同じ合言葉）で、よその店に出ている行。rows を渡せば、読み直しません */
+function shiftReqSiblings(key, rows) {
+  const all = rows || shiftReqRows();
+  const me = all.find((x) => x.key === key);
+  const id = me ? me.id : String(key || '').slice(String(key || '').indexOf('-') + 1);
+  return all.filter((x) => x.key !== key && x.id === id && !shiftReqOld(x.rec));
+}
+
+/**
+ * 同じ申請で、よその店がもう承認した番号（無ければ ''）
+ * ★2つ以上あれば、先に承認された方（すれ違いで番号が2つできても、どの端末でも同じ方を選びます）
+ */
+function shiftReqSiblingCode(key, rows) {
+  const ok = shiftReqSiblings(key, rows).filter((x) => x.rec.st === 'ok' && x.rec.c)
+    .sort((a, b) => String(a.rec.承認の時 || '~').localeCompare(String(b.rec.承認の時 || '~'))
+      || String(a.store).localeCompare(String(b.store)));
+  return ok.length ? String(ok[0].rec.c) : '';
+}
+
+/**
+ * 承認の前に、いまの名簿と申請を取り直す（送信箱の分も送ります）
+ *
+ * ★名簿（shiftStaff）は全店舗で1つの設定で、**丸ごと上書き**です（js/sync.js）。
+ *   よその店が承認して名簿に足した直後に、この端末の古い名簿のまま足すと、**よその店が足した人を消します。**
+ *   同期は普段60秒おきなので、取り直さないと最大60秒すれ違います。取り直せば1秒ほどです。
+ * ★★**取り直せなかったら、承認しません**（返り値に理由の文。取り直せたら ''）。
+ *   はじめは「取り直せなくても手元の分で進める」にしていましたが、本部の指摘で改めました（2026-09-24 深夜）：
+ *   取り直せないのは、よその端末がまさに同期している最中や電波の悪いときで、**すれ違いが一番起きやすいとき**です。
+ *   そこで進めると、上書きで消えるのは**よその店の人**で、消えたことは誰にも見えません。
+ * ★取り直せたかは `Sync.lastSyncAt` が新しくなったかで見ます（js/sync.js は同期が通ったときだけ作り直します）。
+ *   前の同期が終わらないまま `flush()` を呼ぶと、js/sync.js の「重ねません」で**何もせずに帰る**ので、
+ *   `await` が終わっただけでは取り直せたことになりません。
+ * ★同期しない端末（口が無い）は、上書きする相手がいないので、そのまま進めます。
+ */
+async function shiftReqFresh() {
+  if (typeof Sync === 'undefined' || !Sync.enabled || !Sync.enabled() || !Sync.flush) return '';
+  if (!Sync.pin()) return 'PIN が入っていないので、承認できません。PIN を入れてから、もう一度押してください。';
+  const 取り直せない = 'いまの名簿を取り直せませんでした（電波が悪いか、同期が混み合っています）。\n'
+    + '少し待ってから、もう一度「この名前で承認」を押してください。';
+  try {
+    const 期限 = Date.now() + 15000;
+    while (Sync.running && Date.now() < 期限) await new Promise((r) => setTimeout(r, 200));
+    if (Sync.running) return 取り直せない;
+    const 前 = Sync.lastSyncAt;
+    await Sync.flush();
+    return Sync.lastSyncAt && Sync.lastSyncAt !== 前 && !Sync.lastError ? '' : 取り直せない;
+  } catch (e) {
+    return 取り直せない;
+  }
 }
 
 /** 14日を過ぎたか（読めない時刻も過ぎた扱い） */
@@ -11162,6 +11230,11 @@ function shiftReqSweep(storeId) {
   shiftReqList(storeId).filter((x) => shiftReqOld(x.rec)).forEach((x) => shiftReqDeny(x.key, x.rec, false));
 }
 
+/** 申請で選んだ持ち場の名前（無い・知らないものは ''） */
+function shiftReqLane(rec) {
+  return (SHIFT_LANES.find((l) => l.id === (rec && rec.p)) || {}).name || '';
+}
+
 function shiftReqWhen(rec) {
   const d = new Date(String(rec.at || ''));
   if (!isFinite(d.getTime())) return '';
@@ -11174,6 +11247,9 @@ function shiftReqWhen(rec) {
  * ★名前は店長が直してから足せます（2026-09-24、ko-dai さんの指示。ひらがなを漢字に、名前だけをフルネームに など）。
  *   直した名前で名簿に入り、その人の端末にも直した名前で出ます。あとから直して番号が変わる、を防ぐためです。
  *   申請の行の名前（n）は、申請されたときのままにしておきます（行は店長の画面にしか出ません）。
+ * ★★同じ申請を、よその店がもう承認していれば、**その番号で**この店の名簿に入れます（番号は1人に1つ）。
+ *   まだなら、申請id から番号を作ります（→ shiftCodeFrom。2つの店がすれ違って承認しても同じ番号になる）。
+ * ★呼ぶ前に shiftReqFresh で取り直してください（名簿の上書きを防ぐ）。ここでは、行をもう一度読み直してから決めます。
  */
 function shiftReqApprove(storeId, key, rec, 直した名前) {
   const name = String(直した名前 === undefined || 直した名前 === null ? (rec.n || '') : 直した名前).replace(/\s+/g, ' ').trim();
@@ -11185,29 +11261,72 @@ function shiftReqApprove(storeId, key, rec, 直した名前) {
     window.alert('名前は20文字までにしてください');
     return;
   }
-  const people = ShiftStaff.people(storeId);
-  if (people.some((p) => p.n === name)) {
-    window.alert(`同じ名前の「${name}」さんが、もう名簿にいます。\n\n`
-      + '本人なら、名簿の番号を今までどおり LINE で送って、この申請は「断る」を押してください。\n'
-      + '別の人なら、名前を変えて申請し直してもらってください（名簿は1つの店舗に同じ名前を2人入れられません）。');
+  // ★取り直しのあいだに、他の端末で承認・断られていたら何もしません（番号を2つ作らない）
+  const いま = Store.adapter.dump()[key];
+  if (いま && (いま.消えた || いま.st !== 'wait')) {
+    shiftReqEditing = '';
+    shiftReqNote = 'この申請は、他の端末でもう承認されたか、断られていました。';
+    shiftRosterDone();
     return;
   }
-  if (isShiftTester(name)) {
+  const rows = shiftReqRows();
+  const よその番号 = shiftReqSiblingCode(key, rows);
+  const よその店 = よその番号
+    ? shiftReqSiblings(key, rows).filter((x) => x.rec.st === 'ok' && String(x.rec.c) === よその番号)
+      .map((x) => (getStore(x.store) || {}).name || x.store)
+    : [];
+  const map = ShiftStaff.all();
+  const list = map[storeId] || [];
+  // ★よその店で承認した番号の人が、もうこの店の名簿にいる（「他店舗にも所属」で先に足してあった）
+  const もういる = よその番号 ? list.find((p) => String(p.c || '') === よその番号) : null;
+  const 同名 = list.find((p) => p.n === name);
+  if (同名 && 同名 !== もういる) {
+    window.alert(`同じ名前の「${name}」さんが、もう名簿にいます。\n\n`
+      + (よその番号
+        ? `この人は${よその店.join('・')}で承認ずみです。本人なら、この申請は「断る」を押し、`
+          + `${よその店[0]}の名簿の「他店舗にも所属」でこの店を選んでください（1人にまとまり、番号が1つになります）。\n`
+        : '本人なら、名簿の番号を今までどおり LINE で送って、この申請は「断る」を押してください。\n')
+      + '別の人なら、名前を直して承認してください（名簿は1つの店舗に同じ名前を2人入れられません）。');
+    return;
+  }
+  if (isShiftTester(name) && !もういる) {
     window.alert(`名前に「テスト」が入っていると、見本（テスト用）の人になります。\n名前を変えて申請し直してもらってください。`);
     return;
   }
   const 直した = name !== String(rec.n || '').trim() ? `\n（申請された名前：${rec.n}）` : '';
-  if (!window.confirm(`「${name}」さんとして名簿に足して、番号を渡します。${直した}\n\n★本人だと確かめましたか？\n（知らない人の申請は「断る」を押してください）`)) return;
-  ShiftStaff.saveFromText(storeId, people.map((p) => p.n).concat([name]).join('\n'));
-  const who = ShiftStaff.people(storeId).find((p) => p.n === name);
+  const 持ち場 = shiftReqLane(rec);
+  const よその文 = よその番号 ? `\n★${よその店.join('・')}で承認ずみの人です。同じ番号でこの店にも入ります。` : '';
+  if (!window.confirm((もういる
+    ? `「${もういる.n}」さんは、もうこの店の名簿にいます（${よその店.join('・')}で承認ずみの人と同じ番号）。\nこの申請を承認ずみにします。`
+    : `「${name}」さんとして名簿に足して、番号を渡します。${直した}`
+      + (持ち場 ? `\n持ち場：${持ち場}（申請で選んだもの）` : '') + よその文)
+    + '\n\n★本人だと確かめましたか？\n（知らない人の申請は「断る」を押してください）')) return;
+  let code = '';
+  if (もういる) {
+    code = String(もういる.c);
+    // 持ち場が決まっていなければ、申請で選んだものにします
+    if (持ち場 && !もういる.p) ShiftStaff.setLane(storeId, もういる.n, rec.p);
+  } else {
+    // ★申請id（行のキーの「店舗id-」のあと）から作ります。どの店・どの端末で作っても同じ番号です。
+    //   使っている番号は**全部の店の名簿**から集めます（ShiftStaff.codes() はシフトを組む店だけなので使いません）
+    const 使用中 = Object.keys(map).reduce((a, id) => a.concat((map[id] || []).map((q) => String(q.c || ''))), [])
+      .filter(Boolean);
+    code = よその番号 || shiftCodeFrom(key.slice(key.indexOf('-') + 1), 使用中) || makeShiftCode(使用中);
+    // ★申請で選んだ持ち場で名簿に入れます（2026-09-24、ko-dai さんの指示）。持ち場の無い申請は、決めないまま
+    map[storeId] = list.concat([{ n: name, c: code, s: false, p: 持ち場 ? rec.p : '' }]);
+    ShiftStaff.save(map);
+  }
+  const who = ShiftStaff.people(storeId).find((p) => String(p.c || '') === code);
   if (!who || !who.c) {
     window.alert('番号を作れませんでした。もう一度お試しください');
     return;
   }
-  Store.adapter.set(key, { ...rec, st: 'ok', c: who.c });
+  Store.adapter.set(key, { ...(いま || rec), st: 'ok', c: who.c });
   Sync.enqueue({ t: 'shiftApprove', k: key, v: { c: who.c } }, true);
   shiftReqEditing = '';
-  shiftReqNote = `「${name}」さんを承認しました。その人の端末に番号が入ります（名簿にも足しました）。`;
+  shiftReqNote = `「${who.n}」さんを承認しました。その人の端末に番号が入ります（`
+    + (もういる ? 'もう名簿にいた人です' : '名簿にも足しました' + (持ち場 ? `。持ち場は${持ち場}` : ''))
+    + (よその番号 ? `。${よその店.join('・')}と同じ番号です` : '') + '）。';
   shiftRosterDone();
 }
 
@@ -11227,7 +11346,8 @@ function shiftReqDeny(key, rec, 聞く) {
 /** 申請の欄（無ければ null。★申請の画面を止めているあいだは出しません） */
 function shiftReqBox(storeId) {
   if (!SHIFT_REQ_ON) return null;
-  const list = shiftReqList(storeId).filter((x) => !shiftReqOld(x.rec));
+  const rows = shiftReqRows();
+  const list = shiftReqList(storeId, rows).filter((x) => !shiftReqOld(x.rec));
   const note1 = shiftReqNote;
   shiftReqNote = '';
   if (!list.length && !note1) return null;
@@ -11260,8 +11380,19 @@ function shiftReqBox(storeId) {
     const when = document.createElement('span');
     when.style.cssText = 'font-size:12px;color:var(--text-sub);';
     const st = x.rec.st === 'ok' ? (x.rec.got ? '受け取りずみ' : '承認ずみ（まだ受け取っていません）') : '申請';
-    when.textContent = `${shiftReqWhen(x.rec)} ${st}`;
+    const 持ち場 = shiftReqLane(x.rec);
+    when.textContent = `${shiftReqWhen(x.rec)} ${st}${持ち場 ? `・${持ち場}` : ''}`;
     line.appendChild(when);
+    // ★よその店にも同じ申請を出している人（お店を複数選んだ人）。承認は店ごとです
+    const よそ = shiftReqSiblings(x.key, rows);
+    if (よそ.length) {
+      const also = document.createElement('span');
+      also.style.cssText = 'font-size:12px;color:var(--text-sub);width:100%;';
+      also.textContent = '他の店にも申請：' + よそ.map((y) => ((getStore(y.store) || {}).short || y.store)
+        + (y.rec.st === 'ok' ? '（承認ずみ）' : '')).join('・');
+      line.appendChild(also);
+    }
+    const よその番号 = x.rec.st === 'wait' ? shiftReqSiblingCode(x.key, rows) : '';
     if (x.rec.st === 'wait' && shiftReqEditing === x.key) {
       // ★承認の前に、名簿に入れる名前を直せます（そのままでもかまいません）
       wrap.appendChild(line);
@@ -11269,7 +11400,9 @@ function shiftReqBox(storeId) {
       edit.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 0 10px;';
       const cap = document.createElement('span');
       cap.style.cssText = 'font-size:12px;color:var(--text-sub);width:100%;';
-      cap.textContent = '名簿に入れる名前（ひらがなを漢字に、名前だけをフルネームに などは、ここで直してから承認してください。あとから直すより確かです）';
+      cap.textContent = '名簿に入れる名前（ひらがなを漢字に、名前だけをフルネームに などは、ここで直してから承認してください。あとから直すより確かです）'
+        + (shiftReqLane(x.rec) ? `。持ち場は申請で選んだ「${shiftReqLane(x.rec)}」で入ります（あとで名簿のボタンで変えられます）` : '')
+        + (よその番号 ? '。★他の店で承認ずみの人です。同じ番号で、この店の名簿にもここで決めた名前で入ります（名前は店ごとです）' : '');
       edit.appendChild(cap);
       const input = document.createElement('input');
       input.type = 'text';
@@ -11282,7 +11415,23 @@ function shiftReqBox(storeId) {
       go.type = 'button';
       go.className = 'btn btn--small btn--primary';
       go.textContent = 'この名前で承認';
-      const 決める = () => shiftReqApprove(storeId, x.key, x.rec, input.value);
+      // ★押したら、まず最新を取り直してから承認します（→ shiftReqFresh。よその店の承認と名簿を上書きし合わないため）
+      const 決める = async () => {
+        if (shiftReqBusy) return;
+        shiftReqBusy = true;
+        const 名前 = input.value;
+        go.disabled = true;
+        go.textContent = '確かめています…';
+        try {
+          const だめ = await shiftReqFresh();
+          if (だめ) window.alert(だめ);
+          else shiftReqApprove(storeId, x.key, x.rec, 名前);
+        } finally {
+          shiftReqBusy = false;
+          go.disabled = false;
+          go.textContent = 'この名前で承認';
+        }
+      };
       go.addEventListener('click', 決める);
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !imeEnter(e)) 決める(); });
       edit.appendChild(go);
@@ -11503,7 +11652,8 @@ function shiftCodeList(store, people) {
  * 「名前を直す」を押したときの欄（番号はそのまま）
  *
  * ★名簿の大きな欄で書き換えると番号が変わりますが、ここで直すと**番号は変わりません**。
- *   承認で番号を受け取った人も、そのまま入れます。他店舗にも所属している人は、向こうの名簿の名前もそろいます。
+ *   承認で番号を受け取った人も、そのまま入れます。
+ * ★直すのは、この店の名簿だけです（2026-09-24、ko-dai さんの指示。名前は店ごと）。他店舗にも所属している人でも、向こうの名前は変わりません。
  */
 function shiftRenameBox(person) {
   const box = document.createElement('div');
@@ -11511,7 +11661,9 @@ function shiftRenameBox(person) {
     + 'align-items:center;border-bottom:1px solid var(--line);';
   const cap = document.createElement('span');
   cap.style.cssText = 'font-size:12px;color:var(--text-sub);width:100%;';
+  const よその店 = shiftLinkedStores(person.c).filter((id) => id !== state.storeId).map((id) => (getStore(id) || {}).short || id);
   cap.textContent = `「${person.n}」さんの名前を直します。★番号はそのままです（この人はそのまま入れます）。`
+    + (よその店.length ? `直すのはこの店の名簿だけで、${よその店.join('・')}の名簿の名前は変わりません。` : '')
     + '組みおわったシフトは前の名前のまま残り、直す前に出してもらっていた希望は、取り込むと前の名前で入ります。';
   box.appendChild(cap);
   const input = document.createElement('input');
@@ -11532,10 +11684,9 @@ function shiftRenameBox(person) {
       return;
     }
     const 新 = String(input.value).replace(/\s+/g, ' ').trim();
-    const よそ = r.stores.filter((id) => id !== state.storeId).map((id) => (getStore(id) || {}).short || id);
     shiftRenameOpen = '';
     shiftRenameNote = `「${person.n}」さんを「${新}」さんに直しました（番号はそのまま）。`
-      + (よそ.length ? `${よそ.join('・')}の名簿もそろえました。` : '');
+      + (よその店.length ? `${よその店.join('・')}の名簿の名前は、そのままです。` : '');
     shiftRosterDone();
   };
   go.addEventListener('click', 決める);
@@ -11553,7 +11704,7 @@ function shiftRenameBox(person) {
 /**
  * 「他店舗にも所属」を押したときの、店舗選び
  *
- * ★選ぶと、その店舗の名簿にも**同じ名前・同じ番号**で入ります。
+ * ★選ぶと、その店舗の名簿にも**同じ番号**で入ります（名前はこの店の名前。向こうで「名前を直す」で直せます）。
  *   なので**向こうの店舗から見ても、このボタンが押された状態**になります。
  *   同じ人を二重に登録する手間が消えます。
  */
@@ -11565,7 +11716,7 @@ function shiftLinkPicker(person) {
   const cap = document.createElement('span');
   cap.style.cssText = 'font-size:12px;color:var(--text-sub);width:100%;';
   cap.textContent = `${person.n} さんが入っている店舗を選んでください`
-    + '（ここで選ぶと、向こうの名簿にも同じ番号で入ります）';
+    + '（ここで選ぶと、向こうの名簿にも同じ番号で入ります。名前は店ごとに「名前を直す」で直せます）';
   box.appendChild(cap);
 
   const いま = new Set(shiftLinkedStores(person.c));

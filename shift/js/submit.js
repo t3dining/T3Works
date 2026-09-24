@@ -379,6 +379,8 @@ function applyOpen(res) {
   // ★`all` が入っていない返事（GASを貼り直す前）でも動くように、
   //   そのときだけ裏で取りに行きます。**貼り直しの前後どちらでも動きます**
   先に取っておく();
+  // ★申請で選んだお店のうち、まだ承認されていないお店（2026-09-24、お店を複数選べるようにしたとき）
+  申請の残りを出す();
 }
 
 /**
@@ -432,6 +434,13 @@ function pastReady(list, now) {
  *  ★承認を待つあいだは、**見えているあいだだけ**聞きに行きます（はじめ15秒おき、3分たったら60秒おき）。
  *    ★**10分たったら自動で聞くのを止めます**（開きっぱなしで問い合わせを使い続けないため。本部の条件1）。
  *    「もう一度確かめる」を押すか、開き直すと、また10分聞きます
+ *  ★★お店は複数選べます（2026-09-24、ko-dai さんの指示）。**同じ合言葉で、選んだ店ごとに**申請します。
+ *    店ごとに1行ずつ届き、店ごとに承認されます。**承認されたお店から**提出できるようになります
+ *    （番号は1人に1つ。2つ目の店は、1つ目の店と同じ番号で名簿に入れます → js/app.js の shiftReqApprove）。
+ *    1つでも承認されたら、番号を覚えて開きます。残りのお店は「まだ承認されていません」と出し、
+ *    開くたびに1回だけ確かめます（承認されると、お店の切り替えに出ます）。
+ *  ★覚える形：{ stores: [店舗id…], name, lane, key, at, 済: { 店舗id: 'ok'|'gone'|'other' } }。
+ *    前の形（お店1つの store）も読みます。
  * ============================================================ */
 const 申請の控え = `${SAVE}:apply`;
 const 申請を聞く長さms = 10 * 60000;
@@ -442,7 +451,13 @@ let 申請を聞いている = false;
 function 申請を読む() {
   try {
     const v = JSON.parse(localStorage.getItem(申請の控え) || 'null');
-    return v && v.key && v.store ? v : null;
+    if (!v || typeof v !== 'object' || !v.key) return null;
+    // ★前の形（お店1つ：store）も読みます
+    const stores = Array.isArray(v.stores)
+      ? v.stores.filter((id) => typeof id === 'string' && id)
+      : (typeof v.store === 'string' && v.store ? [v.store] : []);
+    if (!stores.length) return null;
+    return { ...v, stores, 済: v.済 && typeof v.済 === 'object' ? v.済 : {} };
   } catch (e) {
     return null;
   }
@@ -453,6 +468,9 @@ function 申請を覚える(v) {
     else localStorage.removeItem(申請の控え);
   } catch (e) { /* 覚えられない端末でも、この画面を開いているあいだは動きます */ }
 }
+
+/** まだ答えの出ていないお店（承認も、断られも、していない） */
+function 申請の残り(v) { return v.stores.filter((id) => !v.済[id]); }
 
 /** 合言葉（英数と - _ で24文字＝144ビット）。★暗号用の乱数で作ります（Math.random は使いません） */
 function 合言葉を作る() {
@@ -468,10 +486,31 @@ function 店の名前(id) { return (getStore(id) || {}).name || id; }
 /** 申請の画面（お店と名前を入れる） */
 function 申請の画面(msg) {
   clearTimeout(申請の時計);
-  const sel = el('applyStore');
-  if (!sel.options.length) {
-    sel.innerHTML = '<option value="">お店を選んでください</option>'
-      + SHIFT_STORES.map((id) => `<option value="${id}">${店の名前(id).replace(/[&<>"]/g, '')}</option>`).join('');
+  // ★お店は押して選びます（いくつでも。もう一度押すと外れます）。2026-09-24、ko-dai さんの指示
+  const box = el('applyStores');
+  if (!box.children.length) {
+    SHIFT_STORES.forEach((id) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'slot';
+      b.dataset.store = id;
+      b.textContent = 店の名前(id);
+      // 3つずつ並べます（6店舗が1行だと、名前が折れて読めません）
+      b.style.flex = '1 1 30%';
+      b.setAttribute('aria-pressed', 'false');
+      b.addEventListener('click', () => {
+        const on = !b.classList.contains('is-on');
+        b.classList.toggle('is-on', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      box.appendChild(b);
+    });
+  }
+  // ★持ち場（キッチン／ホール）。承認されると、この持ち場で名簿に入ります（2026-09-24、ko-dai さんの指示）
+  const lane = el('applyLane');
+  if (!lane.options.length) {
+    lane.innerHTML = '<option value="">キッチンかホールを選んでください</option>'
+      + SHIFT_LANES.map((l) => `<option value="${l.id}">${l.name}</option>`).join('');
   }
   el('applyForm').classList.remove('is-hidden');
   el('applyWait').classList.add('is-hidden');
@@ -479,31 +518,60 @@ function 申請の画面(msg) {
   show('apply');
 }
 
+/** 選んだお店（並びはお店の順） */
+function 選んだお店() {
+  return [...el('applyStores').children].filter((b) => b.classList.contains('is-on')).map((b) => b.dataset.store);
+}
+
+function 持ち場の名前(id) { return (SHIFT_LANES.find((l) => l.id === id) || {}).name || ''; }
+
+const 見つからない文 = 'この申請は見つかりません（断られたか、期限が切れました）。もう一度申請するか、お店に聞いてください';
+
 async function 申請する() {
-  const store = el('applyStore').value;
+  const stores = 選んだお店();
   const name = el('applyName').value.replace(/\s+/g, ' ').trim();
-  if (!store) return setErr('applyErr', 'お店を選んでください');
+  const lane = el('applyLane').value;
+  if (!stores.length) return setErr('applyErr', 'お店を選んでください（入っているお店を全部）');
   if (!name) return setErr('applyErr', '名前を入れてください');
   if (Array.from(name).length > 20) return setErr('applyErr', '名前は20文字までにしてください');
+  if (!lane) return setErr('applyErr', 'キッチンかホールを選んでください');
   setErr('applyErr', '');
-  // ★前に送りかけた同じ申請があれば、同じ合言葉で送り直します（2つにならない）
+  // ★前に送りかけた同じ申請（お店・名前・持ち場が同じ）があれば、同じ合言葉で送り直します（2つにならない）
   const 前 = 申請を読む();
-  const v = 前 && 前.store === store && 前.name === name
-    ? 前 : { store, name, key: 合言葉を作る(), at: new Date().toISOString() };
+  const 同じ = 前 && 前.name === name && 前.lane === lane
+    && 前.stores.slice().sort().join(',') === stores.slice().sort().join(',');
+  const v = 同じ ? 前 : { stores, name, lane, key: 合言葉を作る(), at: new Date().toISOString(), 済: {} };
   申請を覚える(v);
   const go = el('applyGo');
   const 元の字 = go.textContent;
   go.disabled = true;
   go.textContent = '送っています…';
-  const res = await call({ mode: 'apply', store, name, key: v.key });
+  // ★お店ごとに、同じ合言葉で送ります（店ごとに1行。サーバーは同じ合言葉を2つ目の行にしません）
+  const 答え = await Promise.all(申請の残り(v).map((store) => call({ mode: 'apply', store, name, lane, key: v.key })
+    .then((res) => ({ store, res }))));
   go.disabled = false;
   go.textContent = 元の字;
-  if (res.ok) return 申請を待つ();
-  // ★電波・サーバーの都合で届かなかったときは、覚えたままにします（もう一度押せば同じ申請で送り直し）
-  if (res.たぐい) return setErr('applyErr', (res.error || 'つながりませんでした') + '。もう一度「申請する」を押してください');
+  let 届かない = null;
+  let 断られた = null;
+  答え.forEach(({ store, res }) => {
+    if (res.ok) return;
+    if (res.たぐい) 届かない = 届かない || res;
+    else if (res.code === 'apply_gone') v.済[store] = 'gone';   // 同じ合言葉の申請が、そのお店で断られていた
+    else 断られた = 断られた || res;
+  });
   // ★断られたとき（名前の形・いまは受け付けていない など）は、覚えたものを捨てます
-  申請を覚える(null);
-  setErr('applyErr', res.error || '申請できませんでした');
+  if (断られた) {
+    申請を覚える(null);
+    return setErr('applyErr', 断られた.error || '申請できませんでした');
+  }
+  if (!申請の残り(v).length) {
+    申請を覚える(null);
+    return setErr('applyErr', 見つからない文);
+  }
+  申請を覚える(v);
+  // ★電波・サーバーの都合で届かなかったお店があるときは、覚えたままにします（もう一度押せば同じ申請で送り直し）
+  if (届かない) return setErr('applyErr', (届かない.error || 'つながりませんでした') + '。もう一度「申請する」を押してください');
+  return 申請を待つ();
 }
 
 /** 承認を待つ画面 */
@@ -512,7 +580,8 @@ function 申請を待つ() {
   if (!v) return 申請の画面();
   el('applyForm').classList.add('is-hidden');
   el('applyWait').classList.remove('is-hidden');
-  el('applyWho').textContent = `${店の名前(v.store)}の「${v.name}」`;
+  el('applyWho').textContent = `${v.stores.map(店の名前).join('・')}の「${v.name}」`
+    + (持ち場の名前(v.lane) ? `（${持ち場の名前(v.lane)}）` : '');
   show('apply');
   申請の聞きはじめ = Date.now();
   申請を聞く();
@@ -523,6 +592,51 @@ function 申請の時刻() {
   return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+/** まだ答えの出ていないお店に、承認されたかを聞く（お店ごとに同時に） */
+function 申請を店ごとに聞く(v) {
+  return Promise.all(申請の残り(v).map((store) => call({ mode: 'applyCheck', store, key: v.key }, { 送り直さない: true })
+    .then((res) => ({ store, res }))));
+}
+
+/**
+ * 聞いた答えを、覚えている申請に当てる（v.済 を書きかえます）
+ * ★番号は1人に1つです。持っている番号（または、この回で先に承認されたお店の番号）と違う番号なら 'other'
+ *   （2つのお店がすれ違って別の番号を作ったとき。ふつうは起きません）
+ * 返り値 { code, name, store, off, 届かない: [店舗id…] }
+ */
+function 申請の答えを当てる(v, 答え, 持っている番号) {
+  const out = { code: 持っている番号 || '', name: '', store: '', off: '', 届かない: [] };
+  答え.forEach(({ store, res }) => {
+    if (res.ok && res.st === 'ok' && res.code) {
+      const c = String(res.code);
+      if (!out.code) out.code = c;
+      if (c === out.code) {
+        v.済[store] = 'ok';
+        if (!out.store) { out.store = store; out.name = res.name || ''; }
+      } else {
+        v.済[store] = 'other';
+      }
+      return;
+    }
+    if (res.code === 'apply_gone') { v.済[store] = 'gone'; return; }
+    // ★いまサーバーが申請を受け付けていない（元に戻しているとき）。申請は覚えたまま、自動では聞きません
+    if (res.code === 'apply_off') { out.off = res.error || 'いまは申請を受け付けていません'; return; }
+    if (!res.ok) out.届かない.push(store);
+  });
+  return out;
+}
+
+/** お店ごとの様子（待つ画面と、開いたあとの「承認待ち」で使います） */
+function 申請の様子(v) {
+  return v.stores.map((id) => {
+    const x = v.済[id];
+    if (x === 'ok') return `${店の名前(id)}：承認されました`;
+    if (x === 'gone') return `${店の名前(id)}：見つかりません（断られたか、期限が切れました）`;
+    if (x === 'other') return `${店の名前(id)}：別の番号で承認されました。お店に「番号が2つある」と伝えてください`;
+    return `${店の名前(id)}：まだ承認されていません`;
+  }).join('\n');
+}
+
 async function 申請を聞く() {
   clearTimeout(申請の時計);
   申請の時計 = null;
@@ -530,24 +644,25 @@ async function 申請を聞く() {
   if (!v || 申請を聞いている) return;
   申請を聞いている = true;
   el('applyState').textContent = '確かめています…';
-  const res = await call({ mode: 'applyCheck', store: v.store, key: v.key }, { 送り直さない: true });
+  const 答え = await 申請を店ごとに聞く(v);
   申請を聞いている = false;
   // ★聞いているあいだに「申請をやめる」が押されたら、何もしません
   const いま = 申請を読む();
   if (!いま || いま.key !== v.key) return;
-  if (res.ok && res.st === 'ok' && res.code) return 承認された(res);
-  if (res.code === 'apply_gone') {
+  const r = 申請の答えを当てる(いま, 答え, '');
+  if (r.code) return 承認された(いま, r);
+  if (!申請の残り(いま).length) {
     申請を覚える(null);
-    return 申請の画面(res.error);
+    return 申請の画面(見つからない文);
   }
-  if (res.code === 'apply_off') {
-    // ★いまサーバーが申請を受け付けていない（元に戻しているとき）。申請は覚えたまま、自動では聞きません
-    el('applyState').textContent = res.error;
+  申請を覚える(いま);
+  if (r.off) {
+    el('applyState').textContent = r.off;
     return;
   }
-  el('applyState').textContent = res.ok
-    ? `まだ承認されていません（${申請の時刻()}に確かめました）`
-    : `つながりませんでした（${申請の時刻()}）。少ししてから、もう一度確かめます`;
+  el('applyState').textContent = 申請の様子(いま) + '\n' + (r.届かない.length
+    ? `（${申請の時刻()}）つながらなかったお店があります。少ししてから、もう一度確かめます`
+    : `（${申請の時刻()}に確かめました）`);
   次に聞く();
 }
 
@@ -561,21 +676,83 @@ function 次に聞く() {
   申請の時計 = setTimeout(申請を聞く, たった < 3 * 60000 ? 15000 : 60000);
 }
 
-/** 承認された：番号を覚えて、ふつうに開きます */
-async function 承認された(res) {
+/**
+ * 承認された（どれか1つのお店で）：番号を覚えて、承認されたお店で開きます
+ * ★残りのお店がまだなら、申請は覚えたままにします（開いたあとに「まだ承認されていません」と出すため）
+ */
+async function 承認された(v, r) {
   clearTimeout(申請の時計);
-  申請を覚える(null);
-  me.code = String(res.code);
+  申請を覚える(申請の残り(v).length ? v : null);
+  me.code = String(r.code);
+  me.store = r.store || me.store;
   localStorage.setItem(`${SAVE}:code`, me.code);
   el('applyState').textContent = '承認されました。開いています…';
-  const r = await call({ mode: 'open' });
-  if (r.ok) { applyOpen(r); return; }
-  showRetry(r.error || 'つながりませんでした');
+  const res = await call({ mode: 'open' });
+  if (res.ok) { applyOpen(res); return; }
+  showRetry(res.error || 'つながりませんでした');
+}
+
+/* -------- 開いたあとの「まだ承認されていないお店」 -------- */
+/** 確かめて分かったこと（断られた・番号が違う）。開き直すまで出しておきます */
+let 申請の知らせ = [];
+/** 開いたときに自動で確かめるのは、1回だけです（問い合わせを使いすぎないため） */
+let 残りを聞いた = false;
+
+function 申請の残りを出す() {
+  const box = el('applyRestBox');
+  const v = SHIFT_REQ_ON && me.code ? 申請を読む() : null;
+  if (!v) {
+    box.classList.toggle('is-hidden', !申請の知らせ.length);
+    el('applyRest').textContent = 申請の知らせ.join('\n');
+    el('applyRestCheck').classList.add('is-hidden');
+    return;
+  }
+  // ★もう切り替えに出ているお店は、承認されています（名簿に番号がある＝open の stores に入る）
+  v.stores.forEach((id) => { if (!v.済[id] && me.stores.includes(id)) v.済[id] = 'ok'; });
+  const 残り = 申請の残り(v);
+  申請を覚える(残り.length ? v : null);
+  el('applyRest').textContent = 申請の知らせ.concat(残り.map((id) => `${店の名前(id)}：まだ承認されていません`
+    + '（承認されると、お店の切り替えのボタンに出ます）')).join('\n');
+  el('applyRestCheck').classList.toggle('is-hidden', !残り.length);
+  box.classList.toggle('is-hidden', !残り.length && !申請の知らせ.length);
+  if (残り.length && !残りを聞いた) {
+    残りを聞いた = true;
+    申請の残りを聞く();
+  }
+}
+
+async function 申請の残りを聞く() {
+  const v = 申請を読む();
+  if (!v || !me.code) return;
+  const btn = el('applyRestCheck');
+  btn.disabled = true;
+  const 答え = await 申請を店ごとに聞く(v);
+  btn.disabled = false;
+  const いま = 申請を読む();
+  if (!いま || いま.key !== v.key) return;
+  申請の答えを当てる(いま, 答え, me.code);
+  答え.forEach(({ store }) => {
+    const x = いま.済[store];
+    if (x === 'gone' || x === 'other') 申請の知らせ.push(申請の様子({ stores: [store], 済: いま.済 }));
+    // ★承認されたお店は、切り替えに足します（押すとサーバーに聞き直して、その店舗に入れかわります）。
+    //   ここで開き直さないのは、選びかけの希望を消さないためです
+    if (x === 'ok' && !me.stores.includes(store)) {
+      me.stores = me.stores.concat([store]);
+      renderStoreSwitch();
+    }
+  });
+  申請を覚える(いま);
+  申請の残りを出す();
 }
 
 /** 番号を入れ直す（端末を人に渡すときなど） */
 function signOut() {
   localStorage.removeItem(`${SAVE}:code`);
+  // ★申請の残り（まだ承認されていないお店）も忘れます。次に入る人の画面に出さないため
+  申請を覚える(null);
+  申請の知らせ = [];
+  残りを聞いた = false;
+  el('applyRestBox').classList.add('is-hidden');
   me.code = '';
   me.name = '';
   el('gatePin').value = '';
@@ -1690,6 +1867,7 @@ async function boot() {
   el('applyGo').addEventListener('click', 申請する);
   el('applyName').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !imeEnter(e)) 申請する(); });
   el('applyCheck').addEventListener('click', () => { 申請の聞きはじめ = Date.now(); 申請を聞く(); });
+  el('applyRestCheck').addEventListener('click', 申請の残りを聞く);
   el('applyCancel').addEventListener('click', () => {
     if (!window.confirm('申請をやめますか？\n（店長が承認しても、この端末には番号が入らなくなります）')) return;
     clearTimeout(申請の時計);
