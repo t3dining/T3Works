@@ -2374,6 +2374,7 @@ function renderNippouBox(done) {
   renderNippouMinusNote();
   renderGridBox();
   journal日ごとAuto();   // ★日報の日ごとの数を、裏で読み直します（読むだけ）
+  journal社員Auto();     // ★社員の月額を、裏で聞きます（読むだけ・その店舗の分だけ）
   /* ★率は**見るだけのもの**です。ここで落ちると、この下の「どこに書くか」の札や
        日報からの取り込みまで動かなくなり、**閉店の作業が止まります。**
        だから、落ちても画面は進めます（コンソールには残します）。
@@ -2575,7 +2576,9 @@ function journal日ごとAuto() {
   const test = nippouTestFor(state.storeId);
   if (!test && !NippouFolders.get(state.storeId)) return;
   const 覚え = NippouDays.get(state.storeId, state.y, state.m);
-  if (覚え && 覚え.at && (Date.now() - new Date(覚え.at).getTime()) < 日ごとの読み直し) return;
+  // ★社員の行の無い古い形は、時間にかかわらず読み直します（開くたびに1回だけ）
+  if (覚え && 覚え.at && !journal日報の古い形(覚え)
+      && (Date.now() - new Date(覚え.at).getTime()) < 日ごとの読み直し) return;
   日ごとAuto[key] = true;
   journal日ごとLoad();
 }
@@ -2622,6 +2625,104 @@ function cashGridAuto() {
  *   固めるのは「日報がそのマスを計算しているとき」だけです。
  */
 /* ------------------------------------------------------------
+ *  社員の人件費（ko-dai さん・2026-09-25）
+ *
+ *  ⑤人件費の「社員」の欄（アルバイトの上）に、1日分を入れます。
+ *      1日分 ＝ 月額 ÷ その月の日数（切り捨て。端数はその月の最後の日にまとめます）
+ *      → 最後の日までの合計が、ちょうど月額になります
+ *
+ *  ★**月額も人数も、ここに書きません。**給与の額は外に出してはいけないもので、
+ *    このファイルは GitHub Pages で誰でも読めます。月額は GAS のスクリプト プロパティ
+ *    （JOURNAL_STAFF。gas/日報に書く.gs）にあり、**その店舗の月額だけ**を聞いてきます。
+ *  ★聞いた月額は**端末ごと**に覚えます（NippouDays と同じ置き方）。6時間で聞き直します。
+ *  ★入れるのは、その日の社員の欄が**まだ一度も入っていないとき**だけです。
+ *    手で直した数・消した欄には触りません（交通費の自動と同じ考えです）。
+ *  ★入れるのは画面の中身（cashEdit）だけで、**記録には書きません。**開いただけの日に
+ *    記録ができるのを避けるためです。何か打つか、日報に書いたときに一緒に残ります。
+ * ---------------------------------------------------------- */
+const JournalStaff = {
+  _key(storeId) { return `t3works.journalStaff.${storeId}`; },
+  get(storeId) {
+    try { return JSON.parse(localStorage.getItem(this._key(storeId)) || 'null'); }
+    catch (e) { return null; }
+  },
+  /** 月額（分からなければ null）と、分からない理由 */
+  save(storeId, 月額, なぜ) {
+    try {
+      localStorage.setItem(this._key(storeId), JSON.stringify({
+        月額: (typeof 月額 === 'number' && Number.isFinite(月額) && 月額 > 0) ? Math.round(月額) : null,
+        なぜ: String(なぜ || ''),
+        at: new Date().toISOString(),
+      }));
+    } catch (e) { /* 入らなくても、聞き直せば済みます */ }
+  },
+};
+
+/** ⑤人件費の「社員」の行か（★GAS の nippou社員の行か_ と同じ決まり。試験/社員 が見くらべます） */
+function journal社員の行か(name) {
+  return String(name || '').replace(/[\s　]/g, '') === '社員';
+}
+
+/** その店舗の社員の月額（分からなければ null） */
+function journal社員の月額(storeId) {
+  const 覚え = JournalStaff.get(storeId);
+  const n = 覚え ? 覚え.月額 : null;
+  return (typeof n === 'number' && Number.isFinite(n) && n > 0) ? n : null;
+}
+
+/** その日の社員の1日分（月額が分からなければ null）。最後の日に端数を足します */
+function journal社員の日額(月額, y, m, d) {
+  if (typeof 月額 !== 'number' || !Number.isFinite(月額) || 月額 <= 0) return null;
+  const 日数 = new Date(y, m, 0).getDate();
+  if (!(d >= 1 && d <= 日数)) return null;
+  const 円 = Math.round(月額);
+  const 基 = Math.floor(円 / 日数);
+  return d === 日数 ? 円 - 基 * (日数 - 1) : 基;
+}
+
+/** その日の「社員」の欄に、1日分を入れます（まだ一度も入っていないときだけ・画面の中身だけ） */
+function journal社員を入れる(w) {
+  if (!w || !cashEdit || !cashEdit.jinken) return;
+  const 行 = (w.jinken || []).find((r) => journal社員の行か(r.name));
+  if (!行 || 行.gx) return;                         // ★日報が計算しているマスには入れません
+  const 額 = journal社員の日額(journal社員の月額(state.storeId), state.y, state.m, state.d);
+  if (額 === null) return;
+  const 持ち = cashEdit.jinken[行.name] || {};
+  if (持ち.g !== undefined) return;                  // ★一度でも入った欄（直した・消したも）には触りません
+  cashEdit.jinken[行.name] = { ...持ち, g: cashText(額) };
+}
+
+/* ★月額を聞きに行きます（★読むだけ）。日報は開かないので、日報フォルダが無い店でも聞けます */
+const 社員Auto = {};
+
+function journal社員Auto() {
+  const store = state.storeId;
+  if (社員Auto[store]) return;                       // この画面では1回だけ
+  if (!Sync.enabled || !Sync.enabled() || !Sync.pin()) return;
+  const 覚え = JournalStaff.get(store);
+  // ★未登録と返ってきたときは、時間にかかわらず聞き直します（登録したらすぐ出るように）
+  if (覚え && 覚え.月額 && 覚え.at
+      && (Date.now() - new Date(覚え.at).getTime()) < 日ごとの読み直し) return;
+  社員Auto[store] = true;
+  journal社員Load(store);
+}
+
+async function journal社員Load(store) {
+  const 店 = STORES.find((x) => x.id === store);
+  try {
+    const res = await Sync.ask('nippouWrite', {
+      mode: '社員', store, storeName: 店 ? 店.name : '',
+    }, { ms: ASK_上限.日報, hedge: true });
+    // ★古い GAS は「社員」を知りません（返事に 社員 がありません）。そのときは何もしません
+    if (!res || !res.ok || !('社員' in res)) return;
+    JournalStaff.save(store, res.社員 && res.社員.月額, res.なぜ);
+    render();
+  } catch (e) {
+    /* ★黙って進みます（次に開いたときに、また聞きます） */
+  }
+}
+
+/* ------------------------------------------------------------
  *  原価率・人件費率（その日と、今月の1日から今日まで）
  *
  *  ★率の決め方は「お金・会議」の分野のものです。**式はあちらの部品を呼びます**
@@ -2667,8 +2768,18 @@ function journal日報の日(storeId, dateStr) {
   const 覚え = NippouDays.get(storeId, Number(hit[1]), Number(hit[2]));
   const 日 = 覚え && 覚え.days && 覚え.days[String(Number(hit[3]))];
   if (!日) return null;
+  /* ★社員の行（staff）が入っていない形は、古い GAS が返したものです（2026-09-25 より前）。
+       社員が人件費に入っているのか分からないので**使いません**（アプリの数に戻ります）。
+       使うと、社員を2回数えることがあります。journal日ごとAuto が読み直します */
+  if (!('staff' in 日)) return null;
   const 取る = (k) => (typeof 日[k] === 'number' ? 日[k] : null);
-  return { 原価: 取る('cost'), 人件費: 取る('labor'), 税込: 取る('inc'), 税抜: 取る('ex') };
+  return { 原価: 取る('cost'), 人件費: 取る('labor'), 社員: 取る('staff'), 税込: 取る('inc'), 税抜: 取る('ex') };
+}
+
+/** その月の覚えに、社員の行の無い古い形が混ざっているか */
+function journal日報の古い形(覚え) {
+  const days = (覚え && 覚え.days) || {};
+  return Object.keys(days).some((k) => !(days[k] && 'staff' in days[k]));
 }
 
 /** 打った数を足します（式「=1000+2000」も読みます。1つも入っていなければ null） */
@@ -2684,9 +2795,14 @@ function journal率の入力(手) {
     });
     return ある ? 計 : null;
   };
+  const 社員だけ = {};
+  Object.keys((手 && 手.jinken) || {}).forEach((名) => {
+    if (journal社員の行か(名)) 社員だけ[名] = 手.jinken[名];
+  });
   return {
     原価: 足す(手 && 手.shiire, ['f', 'g']),   // ④仕入明細の 当日現金 ＋ 掛仕入
     人件費: 足す(手 && 手.jinken, ['g']),      // ⑤人件費の 金額（人数は率に関係ありません）
+    社員: 足す(社員だけ, ['g']),               // そのうち「社員」の行
   };
 }
 
@@ -2724,7 +2840,11 @@ function journal率の1日(storeId, dateStr, いまの日) {
       ...journal率の入力({ shiire: cashEdit.shiire, jinken: cashEdit.jinken }),
       ...journal率の売上(cashEdit.j, cashEdit.sure, cashEdit.手),
     };
-    const 何か = [自分.原価, 自分.人件費, 自分.税込, 自分.税抜].some((x) => x !== null);
+    /* ★社員の欄はアプリが自動で入れます（journal社員を入れる）。社員**だけ**なら
+         「まだ何も入れていない」と同じに見ます。そうしないと、開いただけの日が
+         いつもアプリの数になり、日報の数が使われなくなります */
+    const 社員でない数 = 自分.人件費 !== null && 自分.人件費 !== (自分.社員 || 0);
+    const 何か = [自分.原価, 自分.税込, 自分.税抜].some((x) => x !== null) || 社員でない数;
     return (何か || !日報) ? 自分 : 日報;
   }
   if (日報) return 日報;
@@ -2747,29 +2867,56 @@ function journal率の1日(storeId, dateStr, いまの日) {
  *   その日の仕入も一緒に外します。片方だけ足すと、ありえない率が出ます。
  */
 function journal率まとめ(storeId, y, m, d) {
-  const 今日 = journal率の1日(storeId, ymd(y, m, d), true);
-  const 累計 = { 原価: 0, 人件費: 0, 税込: 0, 税抜: 0, 日数: 0 };
+  const 月額 = journal社員の月額(storeId);
+  const 分ける = (分, i) => ({ ...分, ...journal率の人件費(分, journal社員の日額(月額, y, m, i)) });
+  const 今日 = 分ける(journal率の1日(storeId, ymd(y, m, d), true), d);
+  const 累計 = { 原価: 0, 総合計: 0, アルバイト: 0, 税込: 0, 税抜: 0, 日数: 0 };
   for (let i = 1; i <= d; i++) {
-    const 分 = (i === d) ? 今日 : journal率の1日(storeId, ymd(y, m, i), false);
+    const 分 = (i === d) ? 今日 : 分ける(journal率の1日(storeId, ymd(y, m, i), false), i);
     // ★売上の分からない日は、まるごと数えません
     if (分.税込 === null && 分.税抜 === null) continue;
     累計.日数 += 1;
     累計.原価 += 分.原価 || 0;
-    累計.人件費 += 分.人件費 || 0;
+    累計.総合計 += 分.総合計 || 0;
+    累計.アルバイト += 分.アルバイト || 0;
     累計.税込 += 分.税込 || 0;
     累計.税抜 += 分.税抜 || 0;
   }
   /* ★1日も無いときは 0 ではなく「分からない」にします。
        0 にすると「売上0円の月」と見分けがつきません */
-  if (!累計.日数) { 累計.原価 = null; 累計.人件費 = null; 累計.税込 = null; 累計.税抜 = null; }
+  if (!累計.日数) {
+    累計.原価 = null; 累計.総合計 = null; 累計.アルバイト = null; 累計.税込 = null; 累計.税抜 = null;
+  }
   return { 今日, 月: 累計 };
+}
+
+/**
+ * その日の人件費を「総合計」と「アルバイトのみ」に分けます
+ *   分           … journal率の1日 の答え（人件費＝⑤人件費の金額の合計、社員＝そのうち「社員」の行）
+ *   社員の1日分 … journal社員の日額（月額が分からなければ null）
+ *
+ *   アルバイトのみ ＝ 人件費 − 社員の行
+ *   総合計         ＝ 社員の行が入っている日は、人件費そのもの（日報と同じ数になります）
+ *                    入っていない日は、アルバイトのみ ＋ 社員の1日分
+ * ★入っていない日を埋めるのは、アプリを使う前の日や、社員を書いていない日のためです。
+ *   埋めないと、累計の総合計に社員が一部しか入りません。
+ */
+function journal率の人件費(分, 社員の1日分) {
+  const 人 = (分.人件費 === undefined) ? null : 分.人件費;
+  const 社 = (分.社員 === undefined) ? null : 分.社員;
+  const アルバイト = 人 === null ? null : 人 - (社 || 0);
+  let 総合計 = 人;
+  if (社 === null && 社員の1日分 !== null && 社員の1日分 !== undefined) 総合計 = (アルバイト || 0) + 社員の1日分;
+  return { 総合計, アルバイト };
 }
 
 /** 率（分からなければ null）。★式は会議資料の部品をそのまま使います */
 function journal率(分) {
+  const 割る = (上, 下) => ((上 === null || 上 === undefined || !下) ? null : 上 / 下);
   return {
     原価率: (分.原価 === null || !分.税込) ? null : meetingCostRate({ cost: 分.原価, inc: 分.税込 }),
-    人件費率: (分.人件費 === null || !分.税抜) ? null : 分.人件費 / 分.税抜,
+    人件費率: 割る(分.総合計, 分.税抜),                // 総合計（社員を入れる）
+    アルバイト人件費率: 割る(分.アルバイト, 分.税抜), // アルバイトのみ
   };
 }
 
@@ -2804,27 +2951,48 @@ function renderRitsuBox() {
   const 足す = (a, b) => (a === null || b === null ? null : a + b);
 
   const 円 = (n) => (n === null || n === undefined ? '—' : '¥' + cashText(n));
-  const 行 = [
-    ['原価率', journal率の文(日率.原価率), journal率の文(月率.原価率)],
-    ['人件費率', journal率の文(日率.人件費率), journal率の文(月率.人件費率)],
-    ['F/L', journal率の文(足す(日率.原価率, 日率.人件費率)), journal率の文(足す(月率.原価率, 月率.人件費率))],
-    // ★税抜の総売上（ko-dai さんの指示・2026-09-23）。率ではなく金額です
-    ['税抜売上', 円(今日.税抜), 円(月.税抜)],
+  /* ★表は2つです（ko-dai さんの指示・2026-09-25。紙の表と同じ並び）。
+       総合計       … 人件費に社員を入れる
+       アルバイトのみ … 社員を入れない（原材料費率は同じ数です） */
+  const 表 = (名, 人日, 人月) => ({
+    名,
+    行: [
+      ['原材料費率', 日率.原価率, 月率.原価率],
+      ['人件費率', 人日, 人月],
+      ['F/L比率', 足す(日率.原価率, 人日), 足す(月率.原価率, 人月)],
+    ],
+  });
+  const 表たち = [
+    表('総合計', 日率.人件費率, 月率.人件費率),
+    表('アルバイトのみ', 日率.アルバイト人件費率, 月率.アルバイト人件費率),
   ];
 
+  // ★css/style.css は本部のものなので、表の見た目はここで付けます
+  const 枠 = 'border:1px solid var(--line);padding:6px 8px';
+  const 見出しの枠 = `${枠};text-align:center;font-weight:400;font-size:12.5px;color:var(--text-sub)`;
   const 中 = [];
   中.push('<p class="cash-minus__head" style="margin:14px 0 8px;font-weight:700">'
     + '原価率・人件費率</p>');
-  中.push('<div style="display:grid;grid-template-columns:auto 1fr 1fr;gap:6px 12px;align-items:baseline">');
-  中.push('<span></span>'
-    + '<span style="font-size:12.5px;color:var(--text-sub)">当日</span>'
-    + '<span style="font-size:12.5px;color:var(--text-sub)">累計</span>');
-  行.forEach(([名, 日, 月分]) => {
-    中.push(`<span style="font-size:13.5px;font-weight:700">${名}</span>`
-      + `<span style="font-size:15px">${日}</span>`
-      + `<span style="font-size:15px;font-weight:700">${月分}</span>`);
+  表たち.forEach((t, n) => {
+    中.push(`<p style="margin:${n ? 14 : 0}px 0 6px;font-size:13.5px;font-weight:700">${t.名}</p>`);
+    中.push('<table style="width:100%;border-collapse:collapse;font-size:15px">');
+    中.push(`<tr><th style="${見出しの枠}">項目</th><th style="${見出しの枠}">当日</th>`
+      + `<th style="${見出しの枠}">累計</th></tr>`);
+    t.行.forEach(([名, 日, 月分], i) => {
+      // ★F/L比率の上は二重線（紙の表と同じ）
+      const 上 = i === t.行.length - 1 ? ';border-top:3px double var(--line)' : '';
+      中.push(`<tr><td style="${枠}${上};text-align:center;font-size:13.5px">${名}</td>`
+        + `<td style="${枠}${上};text-align:right">${journal率の文(日)}</td>`
+        + `<td style="${枠}${上};text-align:right;font-weight:700">${journal率の文(月分)}</td></tr>`);
+    });
+    中.push('</table>');
   });
-  中.push('</div>');
+  // ★税抜の総売上（ko-dai さんの指示・2026-09-23）。率ではなく金額なので、表の外に置きます
+  中.push('<table style="width:100%;border-collapse:collapse;font-size:15px;margin-top:14px">');
+  中.push(`<tr><td style="${枠};text-align:center;font-size:13.5px">税抜売上</td>`
+    + `<td style="${枠};text-align:right">${円(今日.税抜)}</td>`
+    + `<td style="${枠};text-align:right;font-weight:700">${円(月.税抜)}</td></tr>`);
+  中.push('</table>');
 
   /* ★説明の文は出しません（ko-dai さんの指示・2026-09-23）。
        ★代わりに、**数が出せないときは「—」**のままにします。0% と書くと、
@@ -2846,6 +3014,8 @@ function renderGridBox() {
     el.cashGrid = box;
   }
   const w = cashGridNow();
+  journal社員を入れる(w);        // ★社員の1日分（まだ一度も入っていないときだけ・画面の中身だけ）
+  const 社員の印 = (JournalStaff.get(state.storeId) || {}).月額 === null ? '未登録' : '';
 
   /* ★作り直すのは、並びが変わったときだけです。
      打つたびに作り直すと、**打っている最中の欄が消えて作られ、
@@ -2855,7 +3025,7 @@ function renderGridBox() {
      出前館の欄が平気なのは、そちらが作り直していないからです。 */
   const 印 = !w ? 'なし'
     : `${state.storeId}/${ymd(state.y, state.m, state.d)}/`
-      + w.shiire.map((r) => r.name).join(',') + '|' + w.jinken.map((r) => r.name).join(',');
+      + w.shiire.map((r) => r.name).join(',') + '|' + w.jinken.map((r) => r.name).join(',') + '|' + 社員の印;
   if (el.cashGrid.dataset.sign === 印) { renderGridFill(); cashGridAuto(); return; }
   /* ★打っている最中は作り直しません（キーボードが閉じます）。
        印を覚えないので、欄から離れたときに作り直されます。
@@ -2944,6 +3114,11 @@ function renderGridBox() {
         // ★日報が計算しているマスには入れられません（式を壊さないため）
         i.readOnly = !!式か;
         if (式か) { i.placeholder = '日報が計算'; i.title = 'ここは日報の計算式です'; }
+        // ★社員の欄：月額を聞いたら「未登録」だったとき（GAS のスクリプト プロパティ JOURNAL_STAFF）
+        if (!式か && 社員の印 && 入れ先 === 'jinken' && which === 'g' && journal社員の行か(r.name)) {
+          i.placeholder = '月額が未登録';
+          i.title = (JournalStaff.get(state.storeId) || {}).なぜ || '';
+        }
         i.addEventListener('input', () => {
           if (!cashEdit[入れ先][r.name]) cashEdit[入れ先][r.name] = {};
           cashEdit[入れ先][r.name][which] = i.value;
@@ -15745,6 +15920,11 @@ function bindEvents() {
  *  起動
  * ============================================================ */
 async function init() {
+  /* ★起動の見張り（index.html の <head>）が、この印を読みます（2026-09-25）。
+       'storage' … 端末の保存を開いているところ ／ true … 最初の描画まで終わった
+       ★名前を変えるときは index.html と2か所いっしょに。ずれると、全部の端末に帯が出ます
+         （test_start_watch.py が見ています） */
+  window.T3_START = 'storage';
   readHash();
   writeHash(true);
   bindEvents();
@@ -15768,6 +15948,7 @@ async function init() {
   window.addEventListener('pageshow', () => cashResume());
 
   render();
+  window.T3_START = true;   // ★起動の見張りへ：最初の描画まで終わりました
 
   // 新しい版が公開されたら画面下で知らせる（PINの有無に関係なく動かす）
   Updater.start();
