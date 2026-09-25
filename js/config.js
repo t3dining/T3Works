@@ -4334,6 +4334,65 @@ const CASH_GAS_VERSION = '6d958ba3';
  */
 const NIPPOU_GAS_VERSION = '670e602e';
 
+/* ------------------------------------------------------------
+ *  月別の売上目標（ジャーナルの「◯月目標」の円グラフ。ko-dai さん・2026-09-26）
+ *
+ *  ★入れるのは**マネージだけ**です（ko-dai さんの指示・2026-09-26）。ワークスは見るだけです。
+ *    ワークス（js/app.js）とマネージ（manage/js/admin.js）の両方が使うので、ここに置きます（書き写さない）。
+ *  ★置き場は記録 _salesgoal/<店舗>-<年>-<月> の goal。設定ではなく記録なのは、月ごとに増えていくものだからです。
+ *  ★比べるのは**税抜**です（ko-dai さんの決め・2026-09-26）。
+ *  ★**金額をこのファイルに書かないこと**（GitHub Pages で誰でも読めます）。
+ * ---------------------------------------------------------- */
+const SALES_GOAL_STORE = '_salesgoal';
+
+
+/** その店舗・その月の目標の入れ先（'kojare-2026-09' の形。★店舗ごとに分けます） */
+function journal目標の入れ先(storeId, y, m) {
+  return `${storeId}-${y}-${String(m).padStart(2, '0')}`;
+}
+
+/** その月の目標（税抜・円）。入っていなければ null */
+function journal目標(storeId, y, m) {
+  const rec = Store.getDay(SALES_GOAL_STORE, journal目標の入れ先(storeId, y, m));
+  const v = rec && rec.items && rec.items.goal ? rec.items.goal.value : null;
+  const n = Number(v);
+  return v !== null && v !== '' && Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+
+/**
+ * 打った目標を数にします。読めなければ { なぜ }
+ *   全角・コンマ・うしろの「円」も読みます。「万」も読みます（数字のキーボードでは打てませんが、貼ると入ります）
+ *   ★空は「目標を消す」です（{ 円: null }）
+ *   ★1万円より小さい数は入れません（「万」を付け忘れた数を、そのまま目標にしないため）
+ */
+function journal目標を読む(文) {
+  const t = toHalfWidthNumber(文).replace(/円$/, '');
+  if (t === '') return { 円: null };
+  const hit = /^(\d+(?:\.\d+)?)(万)?$/.exec(t);
+  if (!hit) return { なぜ: '数字で入れてください' };
+  const 円 = Math.round(Number(hit[1]) * (hit[2] ? 10000 : 1));
+  if (!(円 >= 10000)) return { なぜ: '1万円より小さい目標は入れられません（円で入れてください）' };
+  return { 円 };
+}
+
+/**
+ * マネージで打った目標から、書き直す店舗を決めます（書くのはマネージ。ここは決めるだけ）
+ *   打った … { 店舗id: 欄の文字 }
+ *   返り   … { 直す: [[店舗id, 円 | null]], まちがい: [{ id, なぜ }] }
+ * ★変わった店舗だけを返します（変わっていない店まで書くと、同期とシートの版履歴が無駄に増えます）
+ * ★1つでも読めない欄があれば、マネージは**どれも保存しません**（半分だけ入るのを避けるため）
+ */
+function journal目標の直し(y, m, 打った) {
+  const 直す = [];
+  const まちがい = [];
+  Object.keys(打った || {}).forEach((id) => {
+    const 読み = journal目標を読む(打った[id]);
+    if (読み.なぜ) { まちがい.push({ id, なぜ: 読み.なぜ }); return; }
+    if (読み.円 !== journal目標(id, y, m)) 直す.push([id, 読み.円]);
+  });
+  return { 直す, まちがい };
+}
+
 
 /* ------------------------------------------------------------
  *  4-5) アルバイトの教育（教育マニュアル）

@@ -2731,6 +2731,149 @@ function saveSalesTargets() {
   setTimeout(() => el.targetsSaved.classList.add('is-hidden'), 2500);
 }
 
+/* -------- 月別の売上目標（ジャーナルの持ち物・ko-dai さん・2026-09-26） --------
+ *
+ *  ワークスのジャーナル（現金売上）の画面の「◯月目標」の円グラフが、その月の税抜累計売上をこの金額で割ります。
+ *  ★入れられるのは**マネージだけ**です（ko-dai さんの指示・2026-09-26）。ワークスは見るだけで、
+ *    入っていない月は「目標金額が設定されていません」と出ます。
+ *  ★置き場（記録 _salesgoal/<店舗>-<年>-<月>）・数にする決まり・書き直す店舗の決め方は js/config.js
+ *    （journal目標の入れ先・journal目標を読む・journal目標の直し）。ワークスと同じものを呼びます（書き写さない）。
+ *  ★欄は index.html に置かず、ここで作って「年間の売上目標」の枠のすぐ下に差し込みます（index.html は共通のため）。
+ *  ★1つでも読めない欄があれば、どれも保存しません。保存するのは変わった店舗だけです。
+ *  ★**金額をこのファイルに書かないこと**（公開されます）。
+ */
+const 月別目標 = { y: 0, m: 0, 枠: null };
+
+function 月別目標の店舗() {
+  // ★ジャーナルの画面がある店舗だけ（キャッチだけの行き先には出しません）
+  return STORES.filter((s) => JOURNAL_STORES.indexOf(s.id) >= 0);
+}
+
+function 月別目標の枠() {
+  /* ★欄は1回だけ作って使い回します（本部との約束・2026-09-26）。renderAll は同期で中身が変わるたびに呼ばれるので、
+       毎回差し込むと同期のたびに欄が増えます。覚えていなくても id で探し直します */
+  if (月別目標.枠 && 月別目標.枠.isConnected) return 月別目標.枠;
+  const 前の = document.getElementById('monthTargets');
+  if (前の) { 月別目標.枠 = 前の; return 前の; }
+  const 年間 = document.getElementById('targetFields');
+  const 年間の枠 = 年間 && 年間.closest('section');
+  if (!年間の枠) return null;
+  const sec = document.createElement('section');
+  sec.className = 'admin-block';
+  sec.id = 'monthTargets';
+  sec.innerHTML = `
+    <div class="admin-block__head">
+      <h2 class="admin-block__title">月別の売上目標</h2>
+      <span class="admin-count" data-mt="count"></span>
+    </div>
+    <p class="admin-note">
+      店舗ごとの<b>その月の売上目標</b>（<b>税抜</b>）を円で入れてください。
+      ワークスのジャーナル（現金売上）の画面の<b>「◯月目標」の円グラフ</b>が、その月の税抜累計売上をこの金額で割って出します。<br>
+      入れていない月は、ワークスに「目標金額が設定されていません」と出ます。<b>ワークスからは入れられません。</b><br>
+      空にして保存すると、その月の目標は消えます。
+    </p>
+    <div class="admin-actions" style="margin-bottom:8px">
+      <button type="button" class="btn" data-mt="prev">‹ 前の月</button>
+      <b data-mt="ym"></b>
+      <button type="button" class="btn" data-mt="next">次の月 ›</button>
+    </div>
+    <div class="admin-fields" data-mt="fields"></div>
+    <p class="admin-note" data-mt="err" style="color:var(--ng);display:none"></p>
+    <div class="admin-actions">
+      <button type="button" class="btn btn--primary" data-mt="save">目標を保存</button>
+      <span class="admin-saved is-hidden" data-mt="saved">保存しました</span>
+    </div>`;
+  sec.addEventListener('click', (e) => {
+    const b = e.target && e.target.closest ? e.target.closest('button[data-mt]') : null;
+    if (!b) return;
+    if (b.dataset.mt === 'save') saveMonthlyTargets();
+    if (b.dataset.mt === 'prev') 月別目標の月を変える(-1);
+    if (b.dataset.mt === 'next') 月別目標の月を変える(1);
+  });
+  年間の枠.insertAdjacentElement('afterend', sec);
+  月別目標.枠 = sec;
+  return sec;
+}
+
+const 月別目標の部品 = (名) => 月別目標.枠.querySelector(`[data-mt="${名}"]`);
+
+/** いま欄に打ってある文字（{ 店舗id: 文字 }） */
+function 月別目標の打った() {
+  const 打った = {};
+  [...月別目標の部品('fields').querySelectorAll('input[data-store]')].forEach((i) => { 打った[i.dataset.store] = i.value; });
+  return 打った;
+}
+
+function renderMonthlyTargets() {
+  if (!月別目標の枠()) return;
+  if (!月別目標.y) {
+    const 今 = new Date();
+    月別目標.y = 今.getFullYear();
+    月別目標.m = 今.getMonth() + 1;
+  }
+  const { y, m } = 月別目標;
+  const 店舗 = 月別目標の店舗();
+  const n = 店舗.filter((s) => journal目標(s.id, y, m) !== null).length;
+  月別目標の部品('ym').textContent = `${y}年${m}月`;
+  月別目標の部品('count').textContent = n ? `${y}年${m}月：${n}店舗 入っています` : `${y}年${m}月：まだ登録なし`;
+  // ★is-hidden は部品ごとに決めてある印で、admin-note には効きません（出たままになりました）。display で出し入れします
+  月別目標の部品('err').style.display = 'none';
+
+  const 欄たち = 月別目標の部品('fields');
+  欄たち.innerHTML = '';
+  店舗.forEach((s) => {
+    const wrap = document.createElement('label');
+    wrap.className = 'field';
+    const label = document.createElement('span');
+    label.className = 'field__label';
+    label.textContent = s.name;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.inputMode = 'numeric';
+    input.className = 'field__input';
+    input.dataset.store = s.id;
+    input.autocomplete = 'off';
+    // ★入力例に本当の金額を書かないこと。ここは公開されるファイルです
+    input.placeholder = '税抜の金額（円）';
+    const 今の = journal目標(s.id, y, m);
+    input.value = 今の === null ? '' : String(今の);
+    wrap.append(label, input);
+    欄たち.appendChild(wrap);
+  });
+}
+
+function 月別目標の月を変える(向き) {
+  // ★保存していない欄があれば、月を変える前に聞きます（変えると打った分が消えます）
+  const { 直す, まちがい } = journal目標の直し(月別目標.y, 月別目標.m, 月別目標の打った());
+  if ((直す.length || まちがい.length)
+    && !window.confirm('保存していない目標があります。月を変えると、打った分は消えます。よろしいですか。')) return;
+  const 次 = new Date(月別目標.y, 月別目標.m - 1 + 向き, 1);
+  月別目標.y = 次.getFullYear();
+  月別目標.m = 次.getMonth() + 1;
+  renderMonthlyTargets();
+}
+
+function saveMonthlyTargets() {
+  const { y, m } = 月別目標;
+  const { 直す, まちがい } = journal目標の直し(y, m, 月別目標の打った());
+  const err = 月別目標の部品('err');
+  if (まちがい.length) {
+    const 名 = (id) => (STORES.find((s) => s.id === id) || {}).name || id;
+    err.textContent = '保存していません。' + まちがい.map((x) => `${名(x.id)}：${x.なぜ}`).join('／');
+    err.style.display = '';
+    return;
+  }
+  // ★記録です（同期でワークスにも届きます）。空にした店舗は null で「未入力」に戻します
+  直す.forEach(([id, 円]) => {
+    Store.setItem(SALES_GOAL_STORE, journal目標の入れ先(id, y, m), 'goal', { value: 円 });
+  });
+  renderMonthlyTargets();
+  const 出た = 月別目標の部品('saved');
+  出た.textContent = 直す.length ? `保存しました（${直す.length}店舗）` : '変わったところはありません';
+  出た.classList.remove('is-hidden');
+  setTimeout(() => 出た.classList.add('is-hidden'), 2500);
+}
+
 /* -------- 日報フォルダ --------
  *
  *  会議資料の「日報から取り込む」が見に行く、店舗ごとのGoogleドライブの
@@ -3433,6 +3576,7 @@ function renderAll() {
     renderCatchStaff();
     renderNippouFolders();
     renderSalesTargets();
+    renderMonthlyTargets();   // ★月別の売上目標（ジャーナル。本部の許可 2026-09-26・決裁.md）
     renderExpenseImport();
     renderSyncStatus();
     return;

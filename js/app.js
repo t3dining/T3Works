@@ -3133,9 +3133,9 @@ function renderRitsuBox() {
  *  ★累計は率の表と同じ数です（journal率まとめ の 月.税抜。その月の1日から、開いている日まで）。
  *  ★輪の外の短い線は「目安」＝ 開いている日 ÷ その月の日数（その日の売上がまだなら前の日まで）。遅れ・進みを言葉でも出します。
  *
- *  ★目標は毎月変わるので、**この画面で入れます**（ko-dai さんの決め・2026-09-26）。
- *    入れ先は記録の _salesgoal/<店舗>-<年>-<月> の goal です。他の端末にも届きます。
- *    店舗ごとに入れ先を分けてあるので、別の店舗の目標を上書きしません。
+ *  ★目標は**マネージだけで入れます**（ko-dai さんの指示・2026-09-26。はじめはこの画面で入れる形でしたが、
+ *    同じ日に「マネージからのみ」に変えました）。ここは見るだけです。入っていなければ「目標金額が設定されていません」。
+ *    置き場（記録 _salesgoal/<店舗>-<年>-<月>）と数にする決まりは js/config.js（ワークスとマネージの両方が使うため）。
  *    ★**金額をこのファイルに書かないこと**（GitHub Pages で誰でも読めます）。
  *  ★昨年の売上は自動です。会議資料の「日報から取り込む」と同じ口（GAS の nippou。gas/コード.gs）で、
  *    昨年の同じ月の日報の「まとめ」のページを読みます（★読むだけ・GAS は直していません）。
@@ -3143,41 +3143,10 @@ function renderRitsuBox() {
  *    ★読んだ数は**端末ごと**に覚えます（共有の記録には入れません）。昨年の数は変わらないので、
  *      読めたら30日は読み直しません。読めなかった（日報が無い・形が合わない）ときは6時間で読み直します。
  * ---------------------------------------------------------- */
-const SALES_GOAL_STORE = '_salesgoal';
-
 /** 画面に出す文の < > & " を打ち消します（読めなかったわけ・日報の名前は、よそから来た文です） */
 function journalEsc(s) {
   return String(s === null || s === undefined ? '' : s)
     .replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-}
-
-/** その店舗・その月の目標の入れ先（'kojare-2026-09' の形。★店舗ごとに分けます） */
-function journal目標の入れ先(storeId, y, m) {
-  return `${storeId}-${y}-${pad2(m)}`;
-}
-
-/** その月の目標（税抜・円）。入っていなければ null */
-function journal目標(storeId, y, m) {
-  const rec = Store.getDay(SALES_GOAL_STORE, journal目標の入れ先(storeId, y, m));
-  const v = rec && rec.items && rec.items.goal ? rec.items.goal.value : null;
-  const n = Number(v);
-  return v !== null && v !== '' && Number.isFinite(n) && n > 0 ? Math.round(n) : null;
-}
-
-/**
- * 打った目標を数にします。読めなければ { なぜ }
- *   全角・コンマ・うしろの「円」も読みます。「万」も読みます（数字のキーボードでは打てませんが、貼ると入ります）
- *   ★空は「目標を消す」です（{ 円: null }）
- *   ★1万円より小さい数は入れません（「万」を付け忘れた数を、そのまま目標にしないため）
- */
-function journal目標を読む(文) {
-  const t = toHalfWidthNumber(文).replace(/円$/, '');
-  if (t === '') return { 円: null };
-  const hit = /^(\d+(?:\.\d+)?)(万)?$/.exec(t);
-  if (!hit) return { なぜ: '数字で入れてください' };
-  const 円 = Math.round(Number(hit[1]) * (hit[2] ? 10000 : 1));
-  if (!(円 >= 10000)) return { なぜ: '1万円より小さい目標は入れられません（円で入れてください）' };
-  return { 円 };
 }
 
 /* ---- 昨年の同じ月の売上（端末ごとに覚えます。キーはこの年の年月です） ---- */
@@ -3258,9 +3227,6 @@ async function journal昨年Load(store, y, m) {
   }
 }
 
-const 目標を直す中 = {};   // 目標の欄を開いている店舗・月（'kojare/2026-9'）
-const 目標のまちがい = {}; // 読めなかった目標のわけ（欄の下に出します）
-
 /**
  * 円グラフ1枚分（会議資料の goalCard と同じ形。★あちらは会議の持ち物なので、呼ばずに同じ作りで書きます）
  *   今 … 累計（税抜）／ 相手 … 目標 か 昨年の売上 ／ 目安 … 開いている日 ÷ 日数
@@ -3320,20 +3286,11 @@ function renderGoalBox() {
     box.id = 'cashGoal';
     box.className = 'cash-grid__sec';
     box.addEventListener('click', journal目標の押した);
-    box.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter' || imeEnter(e)) return;
-      if (e.target && e.target.dataset && 'goalInput' in e.target.dataset) { e.preventDefault(); journal目標を決める(); }
-    });
     el.cashGoal = box;
   }
   if (el.cashGoal.previousElementSibling !== el.cashRitsu) {
     el.cashRitsu.insertAdjacentElement('afterend', el.cashGoal);
   }
-  /* ★目標を打っている最中は作り直しません（キーボードが閉じます）。
-       同期が終わるたびに render() が呼ばれるので、打っているあいだにも何度も通ります */
-  const 焦点 = document.activeElement;
-  if (焦点 && el.cashGoal.contains(焦点) && 焦点.tagName === 'INPUT') return;
-
   const store = state.storeId;
   const { y, m, d } = state;
   const key = `${store}/${y}-${m}`;
@@ -3345,33 +3302,19 @@ function renderGoalBox() {
   const 目安の日 = (今日.税抜 === null && 今日.税込 === null) ? d - 1 : d;
   const 目安 = Math.min(Math.max(目安の日 / 日数, 0), 1);
 
+  /* ★目標はマネージだけで入れます（ko-dai さんの指示・2026-09-26）。ここは見るだけで、入れる欄を出しません。
+       入っていない月は「目標金額が設定されていません」（ko-dai さんの文）と出します。黙って消しません */
   const 目標 = journal目標(store, y, m);
   const 目標の名 = `${m}月目標`;
   const 小さいボタン = 'margin-top:10px;padding:6px 10px;font-size:12.5px;min-height:0';
-  const 欄の形 = 'width:100%;box-sizing:border-box;margin-top:10px;padding:8px 10px;font-size:16px;'
-    + 'text-align:right;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text)';
-  let 目標カード;
-  if (目標を直す中[key] || 目標 === null) {
-    const まちがい = 目標のまちがい[key]
-      ? `<p style="margin:6px 0 0;font-size:12px;color:var(--ng);line-height:1.5">${journalEsc(目標のまちがい[key])}</p>` : '';
-    const 下 = `
-      <input type="text" inputmode="decimal" autocomplete="off" data-goal-input
-             aria-label="${目標の名}（税抜）" placeholder="金額（円）" style="${欄の形}"
-             value="${目標 === null ? '' : 目標}">
-      ${まちがい}
-      <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap">
-        <button type="button" class="btn" data-goal="save" style="${小さいボタン}">決める</button>
-        ${目標 === null ? '' : `<button type="button" class="btn" data-goal="cancel" style="${小さいボタン}">やめる</button>`}
-      </div>`;
-    目標カード = 目標 === null
-      ? journal進みの空き({ 名: 目標の名, 色: 'var(--money)', 文: 'この月の目標売上（税抜）を入れてください', 下 })
-      : journal進みの空き({ 名: 目標の名, 色: 'var(--money)', 文: '目標売上（税抜）を直します。空にすると消えます', 下 });
-  } else {
-    目標カード = journal進みカード({
+  const 目標カード = 目標 === null
+    ? journal進みの空き({
+      名: 目標の名, 色: 'var(--money)',
+      文: '目標金額が設定されていません<br><span style="font-size:11.5px;color:var(--text-weak)">マネージの「月別の売上目標」で入れます</span>',
+    })
+    : journal進みカード({
       名: 目標の名, 色: 'var(--money)', 今, 相手: 目標, 相手の名: '目標', こえた: '目標をこえました', 目安,
-      下: `<button type="button" class="btn" data-goal="edit" style="${小さいボタン}">目標を直す</button>`,
     });
-  }
 
   const 昨 = JournalLastYear.get(store, y, m);
   const 読み直す = `<button type="button" class="btn" data-goal="reload" style="${小さいボタン}">もう一度読む</button>`;
@@ -3402,50 +3345,12 @@ function renderGoalBox() {
     + `<div class="meeting-goals">${目標カード}${昨対カード}</div>`;
 }
 
+/** 押したとき（★「もう一度読む」だけです。目標はここでは入れません） */
 function journal目標の押した(e) {
   const b = e.target && e.target.closest ? e.target.closest('[data-goal]') : null;
-  if (!b) return;
-  const key = `${state.storeId}/${state.y}-${state.m}`;
-  const 何 = b.dataset.goal;
-  if (何 === 'edit') {
-    目標を直す中[key] = true;
-    delete 目標のまちがい[key];
-    renderGoalBox();
-    const i = el.cashGoal.querySelector('[data-goal-input]');
-    if (i) { i.focus(); i.select(); }
-  } else if (何 === 'cancel') {
-    delete 目標を直す中[key];
-    delete 目標のまちがい[key];
-    /* ★欄に焦点が残っていると、renderGoalBox は「打っている最中」と見て描き直しません。
-         押しても焦点が欄に残る端末があるので、先に外します */
-    const i = el.cashGoal.querySelector('[data-goal-input]');
-    if (i) i.blur();
-    renderGoalBox();
-  } else if (何 === 'save') {
-    journal目標を決める();
-  } else if (何 === 'reload') {
-    delete 昨年Auto[key];
-    journal昨年Load(state.storeId, state.y, state.m);
-  }
-}
-
-function journal目標を決める() {
-  const i = el.cashGoal && el.cashGoal.querySelector('[data-goal-input]');
-  if (!i) return;
-  const key = `${state.storeId}/${state.y}-${state.m}`;
-  const 読み = journal目標を読む(i.value);
-  if (読み.なぜ) {
-    目標のまちがい[key] = 読み.なぜ;
-    i.blur();
-    renderGoalBox();
-    return;
-  }
-  // ★記録です（同期で他の端末にも届きます）。空なら null を入れて「未入力」に戻します
-  Store.setItem(SALES_GOAL_STORE, journal目標の入れ先(state.storeId, state.y, state.m), 'goal', { value: 読み.円 });
-  delete 目標を直す中[key];
-  delete 目標のまちがい[key];
-  i.blur();
-  renderGoalBox();
+  if (!b || b.dataset.goal !== 'reload') return;
+  delete 昨年Auto[`${state.storeId}/${state.y}-${state.m}`];
+  journal昨年Load(state.storeId, state.y, state.m);
 }
 
 function renderGridBox() {
