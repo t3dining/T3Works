@@ -12420,8 +12420,9 @@ function renderShift() {
   el.shiftOpenBtn.textContent = phase === SHIFT_BUILT ? '募集をやり直す' : 'シフト募集を始める';
   // 確定は、募集をはじめてからでないと押せません
   el.shiftBuildBtn.disabled = phase !== SHIFT_OPEN;
+  // ★「確定済み」は漢字（2026-09-25、ko-dai さんの指示）
   el.shiftBuildBtn.textContent = phase === SHIFT_BUILT
-    ? 'このシフトは確定ずみです'
+    ? 'このシフトは確定済みです'
     : 'シフトを確定する';
 
   el.shiftWishCount.textContent = names.length ? `提出 ${sent} / ${names.length}人` : '名簿が未登録';
