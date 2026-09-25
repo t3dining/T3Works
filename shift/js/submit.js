@@ -1319,7 +1319,8 @@ function builtSheetModel() {
               text: shiftNameText(me.store, slot.id, e),
               parts: shiftNameParts(me.store, slot.id, e),
               full: !!e.f,
-              early: !!e.early,
+              // ★早上がりを使わない店舗では、印を出しません（js/config.js の shiftUsesEarly）
+              early: !!e.early && shiftUsesEarly(me.store),
             })),
         }));
       }),

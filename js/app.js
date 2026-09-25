@@ -13050,7 +13050,9 @@ function shiftCell(rec, wishes, day, dateStr, slot, lane, first) {
     // ★F かどうかは shiftIsFull にまかせます。時刻を入れる店舗（popo）では
     //   入っている時刻から毎回決まるので、時刻を直せば塗りも変わります
     const 通し = shiftIsFull(state.storeId, e);
-    chip.className = 'shift-chip' + (通し ? ' is-full' : '') + (e.early ? ' is-early' : '');
+    // ★早上がりを使わない店舗では、記録に残っていても印を出しません（→ shiftUsesEarly）
+    const 早上がり = !!e.early && shiftUsesEarly(state.storeId);
+    chip.className = 'shift-chip' + (通し ? ' is-full' : '') + (早上がり ? ' is-early' : '');
     chip.textContent = shiftNameText(state.storeId, slot.id, e);
     // ★通しの人は名前のうしろに F。塗りだけだと、ぱっと見て分かりません。
     //   popo は「字は出さなくていい」とのことなので、塗りだけです
@@ -13060,7 +13062,7 @@ function shiftCell(rec, wishes, day, dateStr, slot, lane, first) {
       mark.textContent = 'F';
       chip.appendChild(mark);
     }
-    const note = [通し ? (shiftUsesRange(state.storeId) ? '通し（ランチからディナーまで）' : 'F（ランチからディナーまで通し）') : '', e.early ? '早上がり' : ''].filter(Boolean);
+    const note = [通し ? (shiftUsesRange(state.storeId) ? '通し（ランチからディナーまで）' : 'F（ランチからディナーまで通し）') : '', 早上がり ? '早上がり' : ''].filter(Boolean);
     if (note.length) chip.title = note.join('・');
     chip.addEventListener('click', () => {
       if (shiftDrag.justMoved) return;   // 動かした直後は、開かない
@@ -13679,8 +13681,9 @@ function renderShiftPick() {
   }
 
   /* 早上がり。もう入っている人なら、どの枠でも出します
-     （立ち上げ・ランチ・ディナーでも早めに上がることがあるため） */
-  el.shiftPickEarlyField.classList.toggle('is-hidden', index === null);
+     （立ち上げ・ランチ・ディナーでも早めに上がることがあるため）
+     ★こじゃれ・炭まろ・ちゃこる・おいでんテラスでは出しません（2026-09-25、ko-dai さんの指示 → shiftUsesEarly） */
+  el.shiftPickEarlyField.classList.toggle('is-hidden', index === null || !shiftUsesEarly(state.storeId));
   if (entry) {
     el.shiftPickEarlyOff.classList.toggle('is-on', !entry.early);
     el.shiftPickEarlyOn.classList.toggle('is-on', !!entry.early);
@@ -13845,7 +13848,7 @@ function applyShiftFreeTime() {
 
 /** 「早上がり」を切り替える（Fで入れているが、早めに帰す人） */
 function setShiftEarly(on) {
-  if (!shiftPickAt || shiftPickAt.index === null) return;
+  if (!shiftPickAt || shiftPickAt.index === null || !shiftUsesEarly(state.storeId)) return;
   const { dateStr, slotId, index } = shiftPickAt;
   const now = shiftDayOf(shiftRec(), dateStr);
   const e = { ...now[slotId][index] };
@@ -14397,7 +14400,7 @@ function shiftSheetModel(pageIndex) {
             .map((e) => ({
               text: shiftNameText(state.storeId, slot.id, e),
               parts: shiftNameParts(state.storeId, slot.id, e),
-              full: shiftIsFull(state.storeId, e), early: !!e.early,
+              full: shiftIsFull(state.storeId, e), early: !!e.early && shiftUsesEarly(state.storeId),
             })),
         }));
       }),

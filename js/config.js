@@ -4998,6 +4998,7 @@ function meetingMonthKey(y, m) {
  *          memo: '社員1休み' }
  *        f: true     … F（通し）。ランチの枠にだけ入り、灰色で出ます
  *        early: true … 早上がり（Fで入れているが、早めに帰す人）。橙のふちで出ます
+ *                      ★こじゃれ・炭まろ・ちゃこる・おいでんテラスでは使いません（→ shiftUsesEarly）
  *        patty       … その日の「パティ」の枠（'lunch' か 'dinner'）。
  *                      その枠全部が桃色のふちで囲まれます
  *
@@ -7095,6 +7096,16 @@ function shiftSubmitUrl(code) {
  *   取り消しは `n: 0` にします（消えたことも同期で届くように。削除はしません）。
  */
 const SHIFT_HELP_STORES = ['kojare', 'sumimaro', 'chacoru', 'oiden'];
+
+/**
+ * 「早上がり」を使わない店舗（2026-09-25、ko-dai さんの指示：こじゃれ・炭まろ・ちゃこる・おいでんテラスではボタンも出さない）
+ * ★店舗は名指しです（ヘルプ要請と同じ決め方。枠の形では決めません）。載っていない店舗は、今までどおり使います
+ * ★記録の `early` は消しません。この店舗では、あっても印（橙のふち）を出さず、押す所も出しません
+ */
+const SHIFT_NO_EARLY_STORES = ['kojare', 'sumimaro', 'chacoru', 'oiden'];
+function shiftUsesEarly(storeId) {
+  return !SHIFT_NO_EARLY_STORES.includes(storeId);
+}
 const HELP_REQ_STORE = '_helpreq';
 const HELP_REQ_KINDS = [
   { id: 'help', name: 'ヘルプ要請' },
