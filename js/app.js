@@ -672,7 +672,7 @@ const ASK_静かな間 = [3000, 6000, 12000];
  *   30秒にしてあります。24時間の測りが出たら、本部と一緒に見直します。
  * ★写真の読み取り（Vision 2〜4秒＋送る分）も 30秒で足ります。足りなくても、印で聞き直せます（journal送る）。
  */
-const ASK_上限 = { 日報: 30000, 読む: 30000, 残す: 30000, 聞く: 15000 };
+const ASK_上限 = { 日報: 30000, 読む: 30000, 残す: 30000, 聞く: 15000, 日ごと: 90000 };
 
 /** 「届いたか」を聞き直す間（ms）。合わせて30秒ほど。サーバーが「まだ動いている」と言うあいだ、これで待ちます */
 const ASK_聞き直す間 = [2000, 4000, 6000, 8000, 10000];
@@ -2584,6 +2584,7 @@ const gridAuto = {};
 const 日ごとの読み直し = 6 * 60 * 60 * 1000;
 const 日ごとAuto = {};
 const 日ごと読んでいる = {};   // ★読んでいるあいだは、昨年の売上を読みにいきません（journal昨年Auto）
+const 日ごとの失敗 = {};     // ★読めなかったわけ（'店舗/年-月'）。画面に出します（黙って失敗しない。2026-09-26）
 
 function journal日ごとAuto() {
   const key = `${state.storeId}/${state.y}-${state.m}`;
@@ -2608,20 +2609,34 @@ async function journal日ごとLoad() {
   const test = nippouTestFor(store);
   const folder = test ? '' : NippouFolders.get(store);
   if (!test && !folder) return;
+  const key = `${store}/${y}-${m}`;
   日ごと読んでいる[store] = true;
   let 読めた = false;
   try {
-    const res = await Sync.ask('nippouWrite', {
+    await Promise.resolve();
+    if (state.storeId === store) render();          // ★「日報の日ごとの数を読んでいます…」
+    /* ★30ページを開く重い読みです（2026-09-26 に見直し。炭まろ・ちゃこるで23日より前の売上が累計から抜けていました）。
+         前は8秒で同じ頼みをもう1本重ねて送り（hedge）、30秒で打ち切っていました。重い読みを2本同時に走らせると
+         GAS が倍の仕事をして、どちらも遅れます。重ねずに90秒まで待ちます。
+         届かなかった（渡す口の失敗）ときだけ静かに送り直し、時間切れは送り直しません（同じ重さでまた切れるため） */
+    const res = await askAgain('nippouWrite', {
       mode: '日ごと', file: test, folder, day: ymd(y, m, 1), values: {},
-    }, { ms: ASK_上限.日報, hedge: true });
+    }, { ms: ASK_上限.日ごと, 時間切れは送らない: true });
     // ★古い GAS は「日ごと」を知らず、'見る' として返します（days が入っていません）
-    if (!res || !res.ok || !res.days) return;
+    if (!res || !res.ok || !res.days) {
+      日ごとの失敗[key] = (res && !res.ok && res.error) || '日報に書く.gs が古く、日ごとの数を返しません';
+      console.warn('日報の日ごとの数を読めませんでした', store, 日ごとの失敗[key]);
+      return;
+    }
     // ★読んでいるあいだに別の店舗・別の月へ移っていても、読んだときの店舗と月に入れます
     NippouDays.save(store, y, m, res.days);
+    delete 日ごとの失敗[key];
     読めた = true;
     render();
   } catch (e) {
-    /* ★黙って進みます。累計はアプリに入れた数だけで出ます（次に開いたときに、また読みます） */
+    /* ★止めません。累計はアプリに入れた数だけで出ます。わけは画面に出します（次に開いたときに、また読みます） */
+    日ごとの失敗[key] = String((e && e.message) || e);
+    console.warn('日報の日ごとの数を読めませんでした', store, e);
   } finally {
     delete 日ごと読んでいる[store];
     // ★読めなかったときも描き直します。待っていた昨年の読み（journal昨年Auto）が、ここから始まります
@@ -2930,14 +2945,33 @@ function journal率の1日(storeId, dateStr, いまの日) {
     const 何か = [自分.原価, 自分.税込, 自分.税抜].some((x) => x !== null) || 社員でない数;
     return (何か || !日報) ? 自分 : 日報;
   }
-  if (日報) return 日報;
+  if (日報 && (日報.税込 !== null || 日報.税抜 !== null)) return 日報;
   const items = (Store.getDay(storeId, dateStr) || {}).items || {};
   const 手 = (items[CASH_HAND] && items[CASH_HAND].value) || {};
   const 記 = (items[CASH_ITEM] && items[CASH_ITEM].value) || null;
-  return {
+  const アプリ = {
     ...journal率の入力(手),
     ...journal率の売上(記 && 記.j, null, 記 && 記.h),
   };
+  if (!日報) return アプリ;
+  /* ★日報のページはあるのに、売上（当日総合計・純売上）が読めない日（2026-09-26、炭まろ・ちゃこる）。
+       GAS は原価や人件費だけ入っている日も返すので、前は日報をそのまま使い、**その日の売上が丸ごと抜けていました**
+       （アプリの記録に売上があっても見ませんでした）。売上だけアプリの記録で埋めます。仕入・人件費は日報のまま */
+  return { ...日報, 税込: アプリ.税込, 税抜: アプリ.税抜 };
+}
+
+/**
+ * その月の1日から、開いている日の**前の日**までで、売上の分からない日（定休日を除く）
+ * ★累計から抜けている日を、画面に出すためのものです（黙って抜けないように。2026-09-26）
+ * ★開いている日は数えません（夕方に開くと、まだ入れていないのでいつも出てしまうため）
+ */
+function journal売上の無い日(storeId, y, m, d) {
+  const 無い = [];
+  for (let i = 1; i < d; i++) {
+    const 分 = journal率の1日(storeId, ymd(y, m, i), false);
+    if (分.税込 === null && 分.税抜 === null && !Closed.isClosed(storeId, y, m, i)) 無い.push(i);
+  }
+  return 無い;
 }
 
 /**
@@ -3031,6 +3065,52 @@ function journal率の文(v) {
  * ★入れ物は index.html ではなく、ここで作って差し込みます（css/style.css と index.html は本部のものです）。
  *   見た目は、いまある型（cash-grid__sec・cash-minus__head・cash-msg）を借ります。
  */
+/**
+ * 日報の日ごとの数が**困っているときだけ**出す札（売上の表の下）
+ *   出すとき … 売上の分からない日がある／読めなかった／読んでいる
+ *   普段     … 何も出しません（★ko-dai さんの指示・2026-09-23「説明の文は出しません」）
+ *
+ * ★2026-09-26、炭まろ・ちゃこるで「23日より前の売上が累計に入っていない」と ko-dai さんから。
+ *   日ごとの読みは失敗しても黙って進む作りで、**読めていないことが画面から分かりませんでした**。
+ *   累計から抜けている日・いつ読んだか・読めなかったわけを出し、その場で読み直せるようにします（黙って失敗しない）。
+ */
+function journal日ごとの札(store, y, m, d) {
+  const key = `${store}/${y}-${m}`;
+  const 無い = journal売上の無い日(store, y, m, d);
+  const 読んでいる = !!日ごと読んでいる[store];
+  const 失敗 = 日ごとの失敗[key];
+  if (!無い.length && !読んでいる && !失敗) return '';
+  const 覚え = NippouDays.get(store, y, m);
+  const 読める = !!(Sync.enabled && Sync.enabled() && Sync.pin() && (nippouTestFor(store) || NippouFolders.get(store)));
+  const 行 = [];
+  if (無い.length) {
+    // 続いている日はまとめます（1・2・3・5 → 1〜3・5）
+    const 組 = [];
+    無い.forEach((n) => {
+      const 前 = 組[組.length - 1];
+      if (前 && 前[1] === n - 1) 前[1] = n; else 組.push([n, n]);
+    });
+    const 文 = 組.map(([a, b]) => (a === b ? `${a}` : `${a}〜${b}`)).join('・');
+    行.push(`<b style="color:var(--ng)">売上の分からない日：${文}日</b>（累計に入っていません。定休日は除きます）`);
+  }
+  if (読んでいる) {
+    行.push('日報の日ごとの数を読んでいます…（1分ほどかかることがあります）');
+  } else if (失敗) {
+    行.push(`<b style="color:var(--ng)">日報の日ごとの数を読めませんでした</b>（${journalEsc(失敗)}）`);
+  } else if (覚え && 覚え.at) {
+    const t = new Date(覚え.at);
+    行.push(`日報の日ごとの数は ${t.getMonth() + 1}/${t.getDate()} ${t.getHours()}:${pad2(t.getMinutes())} に読んだものです`);
+  } else {
+    行.push(読める ? '日報の日ごとの数は、まだ読んでいません'
+      : '日報の日ごとの数は読んでいません（合言葉と、マネージの日報フォルダが要ります）');
+  }
+  const ボタン = (読める && !読んでいる)
+    ? '<br><button type="button" class="btn" data-ritsu="reload" '
+      + 'style="margin-top:6px;padding:6px 10px;font-size:12.5px;min-height:0">日報から読み直す</button>'
+    : '';
+  return `<div style="margin-top:8px;font-size:12px;color:var(--text-sub);line-height:1.6">${行.join('<br>')}${ボタン}</div>`;
+}
+
 function renderRitsuBox() {
   const 置き場 = el.cashGrid || el.cashMinusGo || el.cashMinusNote || el.cashMinus;
   if (!置き場) return;
@@ -3039,6 +3119,13 @@ function renderRitsuBox() {
     box.id = 'cashRitsu';
     box.className = 'cash-grid__sec';
     box.style.containerType = 'inline-size';   // ★売上の字の大きさを、この入れ物の幅から決めます（下の cqw）
+    // ★「日報から読み直す」（日ごとの数）。中身は描くたびに作り直すので、押したのは入れ物で受けます
+    box.addEventListener('click', (e) => {
+      const b = e.target && e.target.closest ? e.target.closest('[data-ritsu="reload"]') : null;
+      if (!b || 日ごと読んでいる[state.storeId]) return;
+      delete 日ごとAuto[`${state.storeId}/${state.y}-${state.m}`];
+      journal日ごとLoad();
+    });
     el.cashRitsu = box;
   }
   // ★欄が作り直されると、こちらが前の入れ物の下に取り残されます。毎回つなぎ直します
@@ -3115,6 +3202,7 @@ function renderRitsuBox() {
       + `<td style="${枠};text-align:right;${売上の字}">${円(月分)}</td></tr>`);
   });
   中.push('</table>');
+  中.push(journal日ごとの札(state.storeId, state.y, state.m, state.d));
 
   /* ★説明の文は出しません（ko-dai さんの指示・2026-09-23）。
        ★代わりに、**数が出せないときは「—」**のままにします。0% と書くと、
