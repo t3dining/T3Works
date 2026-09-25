@@ -3,6 +3,95 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- ★起動の見張り（2026-09-25、本部）。ここだけは js/ に出しません。
+     見張る相手（js/ の中）が届かないときに働くものなので、見張る相手と同じ所に置くと一緒に倒れます。 -->
+<script>
+(function () {
+  /* ★アプリが最初の描画まで行けたかを見ます。
+       2026-09-25、ko-dai さん「オーナーからマインを開こうとすると、この画面になることが最近多い」。
+       画面の「店舗名」「タップで業務を選ぶ」「2026年」「1 日（金）」は、どれも**この index.html に書いてある文字そのもの**でした。
+       ★つまり JavaScript が1行も描いていません。しかも赤い帯（js/config.js の先頭）は出ていません。
+     ★帯が拾うのは「動いて転んだ」ものだけです。次の2つは**転ばない**ので、帯は黙ります。
+       ① js/ のファイルが届かなかった（config.js なら、帯そのものがありません）
+       ② 端末の保存（IndexedDB）を開くとき、成功も失敗も返さずに止まった
+          （js/app.js の init は、最初の描画の前に Store.boot() を待ちます。返ってこなければ永久に待ちます。
+            「失敗したら今までの場所で動く」備えはありますが、「止まった」は失敗ではないので届きません）
+     ★どちらだったかを帯に出します。次に起きたとき、それで直す先が決まります。
+     ★js/ の中身を1つも当てにしません。帯の色と字も、ここに書きます（css/style.css も届かないことがあるため）。 */
+  if (typeof window === 'undefined' || !window.addEventListener) return;
+  var 届かない = [];
+  window.addEventListener('error', function (e) {
+    var t = e && e.target;
+    if (!t || !t.tagName) return;
+    if (t.tagName === 'SCRIPT' || (t.tagName === 'LINK' && /stylesheet/.test(t.rel || ''))) {
+      var 名 = String(t.src || t.href || '').split('/').pop().split('?')[0];
+      try { 名 = decodeURIComponent(名); } catch (e2) { /* 読めない名前は、そのまま出します */ }
+      届かない.push(名);
+    }
+  }, true);
+
+  /* 帯を出すか（検算はここだけを取り出して試します）
+     ★「印を知らない古い js/app.js」が相手のときは、出しません（2026-09-25）。
+       index.html だけ新しくなり js/app.js が古いまま、ということは起きえます
+       （公開で js/app.js だけ置いていく・控えの行き違い）。そのとき古い app.js は、
+       ちゃんと描けているのに印を立てません。★ここで黙らないと、**全部の端末に帯が出ます。**
+     ★見分け方：新しい app.js は、init に入った**最初の1行**で印を立てます（await の前）。
+       だから「init はあるのに印が無い」＝ init を持つ古い app.js です。
+       ★ファイルが届かなかったときは、それより先に言います（そちらは本物の止まりです）。 */
+  function 起動の帯を出すか(files, 状態, initある) {
+    if (状態 === true) return false;
+    if (files.length) return true;
+    if (状態 === undefined && initある) return false;
+    return true;
+  }
+
+  /* 帯に出すわけ（3つに分けます。検算はここだけを取り出して試します） */
+  function 起動のわけ(files, 状態) {
+    if (files.length) return '届かなかったファイル：' + files.join('・');
+    if (状態 === 'storage') return '端末の保存が開けませんでした';
+    return '最初の描画まで進みませんでした';
+  }
+
+  function 出す() {
+    if (!起動の帯を出すか(届かない, window.T3_START, typeof window.init === 'function')) return;
+    // ★先に出ている赤い帯の方が詳しいので、そちらを残します
+    if (document.getElementById('appError') || document.getElementById('appStartStuck')) return;
+    var 親 = document.body || document.documentElement;
+    if (!親) return;
+    var 帯 = document.createElement('div');
+    帯.id = 'appStartStuck';
+    帯.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:9500;'
+      + 'background:#c0392b;color:#fff;font-size:14px;font-weight:700;line-height:1.5;text-align:center;'
+      + 'padding:12px 16px calc(12px + env(safe-area-inset-bottom));';
+    var 文 = document.createElement('div');
+    文.textContent = '⚠ アプリの読み込みが途中で止まりました（' + 起動のわけ(届かない, window.T3_START) + '）';
+    var ボタン = document.createElement('button');
+    ボタン.type = 'button';
+    ボタン.textContent = 'もう一度読み込む';
+    ボタン.style.cssText = 'margin-top:8px;padding:8px 18px;border:0;border-radius:8px;'
+      + 'background:#fff;color:#c0392b;font-size:15px;font-weight:700;';
+    ボタン.addEventListener('click', function () { location.reload(); });
+    var 下 = document.createElement('div');
+    下.style.cssText = 'margin-top:6px;font-size:12px;font-weight:400;';
+    下.textContent = '直らないときは、この画面を見せてください。';
+    帯.appendChild(文);
+    帯.appendChild(ボタン);
+    帯.appendChild(下);
+    親.appendChild(帯);
+    // ★あとから起動が終わったら、帯を消します（保存が遅れて開いただけのとき）
+    var 見直し = setInterval(function () {
+      if (window.T3_START !== true) return;
+      clearInterval(見直し);
+      if (帯.parentNode) 帯.parentNode.removeChild(帯);
+    }, 1000);
+  }
+
+  /* ★数え始めは「ファイルが全部そろったとき（load）」からです。
+       はじめから数えると、電波の遅い初回に、まだ届いている途中のものを「止まった」と言ってしまいます。
+       load のあとに残っている待ちは、端末の保存を開く所だけです（ふつうは1秒かかりません）。 */
+  window.addEventListener('load', function () { setTimeout(出す, 6000); });
+})();
+</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="T3 Works">
@@ -14,7 +103,7 @@
 <link rel="icon" type="image/png" sizes="64x64" href="img/works-icon-64.png?v=0f9cbed2">
 <title>T3 Works｜T3Dining株式会社</title>
 <link rel="stylesheet" href="css/style.css?v=1c41d5c8">
-<meta name="app-version" content="248ce3fe">
+<meta name="app-version" content="df44c186">
 </head>
 <body>
 
