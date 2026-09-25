@@ -2382,6 +2382,7 @@ function renderNippouBox(done) {
        「30秒経っても返事をしません」で届きませんでした（ko-dai さんの画面） */
   journal社員Auto();     // ★社員の月額を、裏で聞きます（読むだけ・その店舗の分だけ）
   journal日ごとAuto();   // ★日報の日ごとの数を、裏で読み直します（読むだけ。月額を聞いているあいだは待ちます）
+  journal昨年Auto();     // ★昨年の同じ月の売上を、裏で読みます（読むだけ。上の2つが終わるまで待ちます）
   /* ★率は**見るだけのもの**です。ここで落ちると、この下の「どこに書くか」の札や
        日報からの取り込みまで動かなくなり、**閉店の作業が止まります。**
        だから、落ちても画面は進めます（コンソールには残します）。
@@ -2392,6 +2393,13 @@ function renderNippouBox(done) {
   } catch (e) {
     if (el.cashRitsu) el.cashRitsu.innerHTML = '';
     console.error('原価率・人件費率を出せませんでした', e);
+  }
+  // ★◯月目標・昨対の円グラフ。率と同じく見るだけのものなので、落ちても画面は進めます
+  try {
+    renderGoalBox();
+  } catch (e) {
+    if (el.cashGoal) el.cashGoal.innerHTML = '';
+    console.error('◯月目標・昨対を出せませんでした', e);
   }
   // ★写真を読んでいない日でも出します。「いまどこに書く設定か」を
   //   確かめたいだけの日に、何も出ていないと分かりません
@@ -2575,6 +2583,7 @@ const gridAuto = {};
  * ---------------------------------------------------------- */
 const 日ごとの読み直し = 6 * 60 * 60 * 1000;
 const 日ごとAuto = {};
+const 日ごと読んでいる = {};   // ★読んでいるあいだは、昨年の売上を読みにいきません（journal昨年Auto）
 
 function journal日ごとAuto() {
   const key = `${state.storeId}/${state.y}-${state.m}`;
@@ -2599,6 +2608,8 @@ async function journal日ごとLoad() {
   const test = nippouTestFor(store);
   const folder = test ? '' : NippouFolders.get(store);
   if (!test && !folder) return;
+  日ごと読んでいる[store] = true;
+  let 読めた = false;
   try {
     const res = await Sync.ask('nippouWrite', {
       mode: '日ごと', file: test, folder, day: ymd(y, m, 1), values: {},
@@ -2607,9 +2618,14 @@ async function journal日ごとLoad() {
     if (!res || !res.ok || !res.days) return;
     // ★読んでいるあいだに別の店舗・別の月へ移っていても、読んだときの店舗と月に入れます
     NippouDays.save(store, y, m, res.days);
+    読めた = true;
     render();
   } catch (e) {
     /* ★黙って進みます。累計はアプリに入れた数だけで出ます（次に開いたときに、また読みます） */
+  } finally {
+    delete 日ごと読んでいる[store];
+    // ★読めなかったときも描き直します。待っていた昨年の読み（journal昨年Auto）が、ここから始まります
+    if (!読めた && state.storeId === store) render();
   }
 }
 
@@ -3105,6 +3121,331 @@ function renderRitsuBox() {
          「入っていない」と「本当に0」が見分けられなくなります。 */
 
   el.cashRitsu.innerHTML = 中.join('');
+}
+
+/* ------------------------------------------------------------
+ *  売上の進み具合 … ◯月目標・昨対（ko-dai さん・2026-09-26）
+ *
+ *  率の表の下に、円グラフを2つ並べます（会議資料の年間目標と同じ形。style.css の goal-card を借ります）。
+ *    ◯月目標 … その月の目標売上に対して、累計がどこまで来たか
+ *    昨対     … 昨年の同じ月の売上（1か月分）に対して、累計がどこまで来たか
+ *  ★比べるのは**税抜**です（ko-dai さんの決め・2026-09-26。会議資料の年間目標と同じ）。
+ *  ★累計は率の表と同じ数です（journal率まとめ の 月.税抜。その月の1日から、開いている日まで）。
+ *  ★輪の外の短い線は「目安」＝ 開いている日 ÷ その月の日数（その日の売上がまだなら前の日まで）。遅れ・進みを言葉でも出します。
+ *
+ *  ★目標は毎月変わるので、**この画面で入れます**（ko-dai さんの決め・2026-09-26）。
+ *    入れ先は記録の _salesgoal/<店舗>-<年>-<月> の goal です。他の端末にも届きます。
+ *    店舗ごとに入れ先を分けてあるので、別の店舗の目標を上書きしません。
+ *    ★**金額をこのファイルに書かないこと**（GitHub Pages で誰でも読めます）。
+ *  ★昨年の売上は自動です。会議資料の「日報から取り込む」と同じ口（GAS の nippou。gas/コード.gs）で、
+ *    昨年の同じ月の日報の「まとめ」のページを読みます（★読むだけ・GAS は直していません）。
+ *    読むマスも組み立ても会議資料と同じもの（nippouAsk・nippouPick・nippouCheck。js/config.js）を呼びます。
+ *    ★読んだ数は**端末ごと**に覚えます（共有の記録には入れません）。昨年の数は変わらないので、
+ *      読めたら30日は読み直しません。読めなかった（日報が無い・形が合わない）ときは6時間で読み直します。
+ * ---------------------------------------------------------- */
+const SALES_GOAL_STORE = '_salesgoal';
+
+/** 画面に出す文の < > & " を打ち消します（読めなかったわけ・日報の名前は、よそから来た文です） */
+function journalEsc(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+/** その店舗・その月の目標の入れ先（'kojare-2026-09' の形。★店舗ごとに分けます） */
+function journal目標の入れ先(storeId, y, m) {
+  return `${storeId}-${y}-${pad2(m)}`;
+}
+
+/** その月の目標（税抜・円）。入っていなければ null */
+function journal目標(storeId, y, m) {
+  const rec = Store.getDay(SALES_GOAL_STORE, journal目標の入れ先(storeId, y, m));
+  const v = rec && rec.items && rec.items.goal ? rec.items.goal.value : null;
+  const n = Number(v);
+  return v !== null && v !== '' && Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+
+/**
+ * 打った目標を数にします。読めなければ { なぜ }
+ *   全角・コンマ・うしろの「円」も読みます。「万」も読みます（数字のキーボードでは打てませんが、貼ると入ります）
+ *   ★空は「目標を消す」です（{ 円: null }）
+ *   ★1万円より小さい数は入れません（「万」を付け忘れた数を、そのまま目標にしないため）
+ */
+function journal目標を読む(文) {
+  const t = toHalfWidthNumber(文).replace(/円$/, '');
+  if (t === '') return { 円: null };
+  const hit = /^(\d+(?:\.\d+)?)(万)?$/.exec(t);
+  if (!hit) return { なぜ: '数字で入れてください' };
+  const 円 = Math.round(Number(hit[1]) * (hit[2] ? 10000 : 1));
+  if (!(円 >= 10000)) return { なぜ: '1万円より小さい目標は入れられません（円で入れてください）' };
+  return { 円 };
+}
+
+/* ---- 昨年の同じ月の売上（端末ごとに覚えます。キーはこの年の年月です） ---- */
+const JournalLastYear = {
+  _key(storeId, y, m) { return `t3works.journalLastYear.${storeId}.${y}${pad2(m)}`; },
+  get(storeId, y, m) {
+    try { return JSON.parse(localStorage.getItem(this._key(storeId, y, m)) || 'null'); }
+    catch (e) { return null; }
+  },
+  /** { 税抜: 数 | null, なぜ: 読めなかったわけ, 名: 読んだ日報の名前 } */
+  save(storeId, y, m, o) {
+    try {
+      localStorage.setItem(this._key(storeId, y, m), JSON.stringify({ ...o, at: new Date().toISOString() }));
+    } catch (e) { /* 入らなくても、読み直せば済みます */ }
+  },
+};
+
+const 昨年の読み直し = 30 * 24 * 60 * 60 * 1000;
+const 昨年Auto = {};
+const 昨年聞いている = {};
+const 昨年の失敗 = {};   // ★届かなかった（通信の失敗）とき。覚えには残さず、この画面の中だけで出します
+
+function journal昨年Auto() {
+  const store = state.storeId;
+  const key = `${store}/${state.y}-${state.m}`;
+  if (昨年Auto[key]) return;                              // この画面では1回だけ
+  /* ★重い読みと重ねません。月額（社員）→ 日ごとの数 → 昨年、の順です。
+       同時に走らせると、月額が「受け取れませんでした」で届かなかったことがあります（2026-09-25） */
+  if (社員聞いている[store] || 日ごと読んでいる[store]) return;
+  if (!Sync.enabled || !Sync.enabled() || !Sync.pin()) return;
+  if (!NippouFolders.get(store)) return;
+  const 覚え = JournalLastYear.get(store, state.y, state.m);
+  if (覚え && 覚え.at) {
+    const 経った = Date.now() - new Date(覚え.at).getTime();
+    if (経った < (覚え.税抜 ? 昨年の読み直し : 日ごとの読み直し)) return;
+  }
+  昨年Auto[key] = true;
+  journal昨年Load(store, state.y, state.m);
+}
+
+async function journal昨年Load(store, y, m) {
+  const key = `${store}/${y}-${m}`;
+  昨年聞いている[store] = true;
+  delete 昨年の失敗[key];
+  try {
+    // ★描いている途中から呼ばれます。描き終わってから「読んでいます…」に描き直します
+    await Promise.resolve();
+    if (state.storeId === store) render();
+    /* ★読むだけなので、届かなかったときは静かに送り直します（askAgain）。
+         日報を2つ（今年と昨年）開くので少し重く、重ねて送る（hedge）はしません */
+    const res = await askAgain('nippou', {
+      y, m, stores: [{ id: store, folder: NippouFolders.idOf(store), cells: nippouAsk(store, y, m) }],
+    }, { ms: ASK_上限.読む });
+    if (!res || !res.ok) {
+      昨年の失敗[key] = (res && res.error) || '返事がありません';
+      console.warn('昨年の売上を読めませんでした', store, 昨年の失敗[key]);
+      return;
+    }
+    const 昨 = ((res.stores || {})[store] || {}).last;
+    if (!昨 || 昨.error) {
+      JournalLastYear.save(store, y, m, { 税抜: null, なぜ: (昨 && 昨.error) || '昨年の日報が読めません' });
+      return;
+    }
+    // ★会議資料と同じ組み立てと検算です。日報としてありえない数なら、入れずに知らせます
+    const o = nippouPick(store, nippouYm(y - 1, m), 昨);
+    const 変 = nippouCheck(o);
+    if (変) {
+      JournalLastYear.save(store, y, m, { 税抜: null, なぜ: 変, 名: 昨.name || '' });
+      return;
+    }
+    JournalLastYear.save(store, y, m, { 税抜: o.ex, 名: 昨.name || '' });
+  } catch (e) {
+    昨年の失敗[key] = String((e && e.message) || e);
+    console.warn('昨年の売上を読めませんでした', store, e);
+  } finally {
+    delete 昨年聞いている[store];
+    if (state.storeId === store) render();
+  }
+}
+
+const 目標を直す中 = {};   // 目標の欄を開いている店舗・月（'kojare/2026-9'）
+const 目標のまちがい = {}; // 読めなかった目標のわけ（欄の下に出します）
+
+/**
+ * 円グラフ1枚分（会議資料の goalCard と同じ形。★あちらは会議の持ち物なので、呼ばずに同じ作りで書きます）
+ *   今 … 累計（税抜）／ 相手 … 目標 か 昨年の売上 ／ 目安 … 開いている日 ÷ 日数
+ */
+function journal進みカード({ 名, 色, 今, 相手, 相手の名, こえた, 目安, 下 }) {
+  const 比 = 相手 && 今 !== null ? 今 / 相手 : 0;
+  const R = 42;
+  const C = 2 * Math.PI * R;
+  const 輪 = Math.min(比, 1);                        // 輪は100%で止め、数は本当の値を出します
+  const a = (目安 * 2 * Math.PI) - Math.PI / 2;      // 目安の線の角度（12時から時計回り）
+  const 差 = (比 - 目安) * 100;
+  const 遅れ = 差 < 0;
+  const 差の文 = Math.abs(差) < 0.05 ? '±0%' : `${遅れ ? '−' : '+'}${Math.abs(差).toFixed(1)}%`;
+  const 円 = (n) => (n === null || n === undefined ? '—' : yenMarkup(n));
+  return `
+    <section class="goal-card" style="--goal-color:${色}">
+      <svg class="goal-ring" viewBox="0 0 100 100" role="img" aria-label="${名} ${(比 * 100).toFixed(1)}%">
+        <circle class="goal-ring__bg" cx="50" cy="50" r="${R}"></circle>
+        <circle class="goal-ring__fill" cx="50" cy="50" r="${R}"
+                stroke-dasharray="${(C * 輪).toFixed(1)} ${C.toFixed(1)}"
+                transform="rotate(-90 50 50)"></circle>
+        <line class="goal-ring__pace"
+              x1="${(50 + (R - 9) * Math.cos(a)).toFixed(1)}" y1="${(50 + (R - 9) * Math.sin(a)).toFixed(1)}"
+              x2="${(50 + (R + 9) * Math.cos(a)).toFixed(1)}" y2="${(50 + (R + 9) * Math.sin(a)).toFixed(1)}"></line>
+        <text class="goal-ring__pct" x="50" y="54">${今 === null ? '—' : (比 * 100).toFixed(1) + '%'}</text>
+      </svg>
+      <p class="goal-card__name">${名}</p>
+      <dl class="goal-card__rows">
+        <div class="goal-row"><dt>累計</dt><dd>${円(今)}</dd></div>
+        <div class="goal-row"><dt>${相手の名}</dt><dd>${円(相手)}</dd></div>
+        <div class="goal-row goal-row--left"><dt>残り</dt><dd>${今 !== null && 今 >= 相手
+          ? `<span class="goal-done">${こえた}</span>`
+          : 円(今 === null ? 相手 : 相手 - 今)}</dd></div>
+      </dl>
+      <p class="goal-card__pace">
+        <span class="goal-gap ${遅れ ? 'is-late' : 'is-ahead'}">${差の文}</span>
+        <span class="goal-card__paceLabel">目安 ${Math.round(目安 * 100)}%</span>
+      </p>
+      ${下 || ''}
+    </section>`;
+}
+
+/** 数が無いときのカード（目標が未入力・昨年を読んでいる・読めない） */
+function journal進みの空き({ 名, 色, 文, 下 }) {
+  return `
+    <section class="goal-card" style="--goal-color:${色}">
+      <p class="goal-card__name">${名}</p>
+      <p style="margin:10px 0 0;font-size:12.5px;color:var(--text-sub);line-height:1.5">${文}</p>
+      ${下 || ''}
+    </section>`;
+}
+
+function renderGoalBox() {
+  if (!el.cashRitsu) return;
+  if (!el.cashGoal) {
+    const box = document.createElement('div');
+    box.id = 'cashGoal';
+    box.className = 'cash-grid__sec';
+    box.addEventListener('click', journal目標の押した);
+    box.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || imeEnter(e)) return;
+      if (e.target && e.target.dataset && 'goalInput' in e.target.dataset) { e.preventDefault(); journal目標を決める(); }
+    });
+    el.cashGoal = box;
+  }
+  if (el.cashGoal.previousElementSibling !== el.cashRitsu) {
+    el.cashRitsu.insertAdjacentElement('afterend', el.cashGoal);
+  }
+  /* ★目標を打っている最中は作り直しません（キーボードが閉じます）。
+       同期が終わるたびに render() が呼ばれるので、打っているあいだにも何度も通ります */
+  const 焦点 = document.activeElement;
+  if (焦点 && el.cashGoal.contains(焦点) && 焦点.tagName === 'INPUT') return;
+
+  const store = state.storeId;
+  const { y, m, d } = state;
+  const key = `${store}/${y}-${m}`;
+  const 日数 = new Date(y, m, 0).getDate();
+  const { 今日, 月 } = journal率まとめ(store, y, m, d);
+  const 今 = 月.税抜;
+  /* ★目安は「累計に入っている日まで」で数えます。その日の売上をまだ入れていない（夕方に開いた）ときは、
+       累計は前の日までなので、目安も前の日までにします。今日までで数えると、いつも1日分遅れて見えます */
+  const 目安の日 = (今日.税抜 === null && 今日.税込 === null) ? d - 1 : d;
+  const 目安 = Math.min(Math.max(目安の日 / 日数, 0), 1);
+
+  const 目標 = journal目標(store, y, m);
+  const 目標の名 = `${m}月目標`;
+  const 小さいボタン = 'margin-top:10px;padding:6px 10px;font-size:12.5px;min-height:0';
+  const 欄の形 = 'width:100%;box-sizing:border-box;margin-top:10px;padding:8px 10px;font-size:16px;'
+    + 'text-align:right;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text)';
+  let 目標カード;
+  if (目標を直す中[key] || 目標 === null) {
+    const まちがい = 目標のまちがい[key]
+      ? `<p style="margin:6px 0 0;font-size:12px;color:var(--ng);line-height:1.5">${journalEsc(目標のまちがい[key])}</p>` : '';
+    const 下 = `
+      <input type="text" inputmode="decimal" autocomplete="off" data-goal-input
+             aria-label="${目標の名}（税抜）" placeholder="金額（円）" style="${欄の形}"
+             value="${目標 === null ? '' : 目標}">
+      ${まちがい}
+      <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap">
+        <button type="button" class="btn" data-goal="save" style="${小さいボタン}">決める</button>
+        ${目標 === null ? '' : `<button type="button" class="btn" data-goal="cancel" style="${小さいボタン}">やめる</button>`}
+      </div>`;
+    目標カード = 目標 === null
+      ? journal進みの空き({ 名: 目標の名, 色: 'var(--money)', 文: 'この月の目標売上（税抜）を入れてください', 下 })
+      : journal進みの空き({ 名: 目標の名, 色: 'var(--money)', 文: '目標売上（税抜）を直します。空にすると消えます', 下 });
+  } else {
+    目標カード = journal進みカード({
+      名: 目標の名, 色: 'var(--money)', 今, 相手: 目標, 相手の名: '目標', こえた: '目標をこえました', 目安,
+      下: `<button type="button" class="btn" data-goal="edit" style="${小さいボタン}">目標を直す</button>`,
+    });
+  }
+
+  const 昨 = JournalLastYear.get(store, y, m);
+  const 読み直す = `<button type="button" class="btn" data-goal="reload" style="${小さいボタン}">もう一度読む</button>`;
+  let 昨対カード;
+  if (昨 && 昨.税抜) {
+    昨対カード = journal進みカード({
+      名: '昨対', 色: 'var(--accent)', 今, 相手: 昨.税抜, 相手の名: `${y - 1}年${m}月`, こえた: '昨年をこえました', 目安,
+    });
+  } else if (昨年聞いている[store]) {
+    昨対カード = journal進みの空き({ 名: '昨対', 色: 'var(--accent)', 文: `${y - 1}年${m}月の日報を読んでいます…` });
+  } else if (昨年の失敗[key]) {
+    昨対カード = journal進みの空き({
+      名: '昨対', 色: 'var(--accent)', 文: `${y - 1}年${m}月の売上を読めませんでした（${journalEsc(昨年の失敗[key])}）`, 下: 読み直す,
+    });
+  } else if (昨 && 昨.なぜ) {
+    昨対カード = journal進みの空き({
+      名: '昨対', 色: 'var(--accent)', 文: `${y - 1}年${m}月の売上がありません（${journalEsc(昨.なぜ)}）`, 下: 読み直す,
+    });
+  } else {
+    // ★合言葉が無い・日報フォルダが未登録のとき。黙って消さずに、読めていないことを出します
+    昨対カード = journal進みの空き({
+      名: '昨対', 色: 'var(--accent)',
+      文: `${y - 1}年${m}月の売上をまだ読めていません（合言葉と、マネージの日報フォルダが要ります）`,
+    });
+  }
+
+  el.cashGoal.innerHTML = '<p class="cash-minus__head" style="margin:18px 0 8px;font-weight:700">売上の進み具合（税抜）</p>'
+    + `<div class="meeting-goals">${目標カード}${昨対カード}</div>`;
+}
+
+function journal目標の押した(e) {
+  const b = e.target && e.target.closest ? e.target.closest('[data-goal]') : null;
+  if (!b) return;
+  const key = `${state.storeId}/${state.y}-${state.m}`;
+  const 何 = b.dataset.goal;
+  if (何 === 'edit') {
+    目標を直す中[key] = true;
+    delete 目標のまちがい[key];
+    renderGoalBox();
+    const i = el.cashGoal.querySelector('[data-goal-input]');
+    if (i) { i.focus(); i.select(); }
+  } else if (何 === 'cancel') {
+    delete 目標を直す中[key];
+    delete 目標のまちがい[key];
+    /* ★欄に焦点が残っていると、renderGoalBox は「打っている最中」と見て描き直しません。
+         押しても焦点が欄に残る端末があるので、先に外します */
+    const i = el.cashGoal.querySelector('[data-goal-input]');
+    if (i) i.blur();
+    renderGoalBox();
+  } else if (何 === 'save') {
+    journal目標を決める();
+  } else if (何 === 'reload') {
+    delete 昨年Auto[key];
+    journal昨年Load(state.storeId, state.y, state.m);
+  }
+}
+
+function journal目標を決める() {
+  const i = el.cashGoal && el.cashGoal.querySelector('[data-goal-input]');
+  if (!i) return;
+  const key = `${state.storeId}/${state.y}-${state.m}`;
+  const 読み = journal目標を読む(i.value);
+  if (読み.なぜ) {
+    目標のまちがい[key] = 読み.なぜ;
+    i.blur();
+    renderGoalBox();
+    return;
+  }
+  // ★記録です（同期で他の端末にも届きます）。空なら null を入れて「未入力」に戻します
+  Store.setItem(SALES_GOAL_STORE, journal目標の入れ先(state.storeId, state.y, state.m), 'goal', { value: 読み.円 });
+  delete 目標を直す中[key];
+  delete 目標のまちがい[key];
+  i.blur();
+  renderGoalBox();
 }
 
 function renderGridBox() {
