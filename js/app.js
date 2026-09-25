@@ -3022,6 +3022,7 @@ function renderRitsuBox() {
     const box = document.createElement('div');
     box.id = 'cashRitsu';
     box.className = 'cash-grid__sec';
+    box.style.containerType = 'inline-size';   // ★売上の字の大きさを、この入れ物の幅から決めます（下の cqw）
     el.cashRitsu = box;
   }
   // ★欄が作り直されると、こちらが前の入れ物の下に取り残されます。毎回つなぎ直します
@@ -3052,30 +3053,51 @@ function renderRitsuBox() {
   ];
 
   // ★css/style.css は本部のものなので、表の見た目はここで付けます
-  const 枠 = 'border:1px solid var(--line);padding:6px 8px';
+  /* ★縦の線は、3つの表でそろえます（ko-dai さんの指示・2026-09-26）。
+       列の幅を中身の長さにまかせると、表ごとに幅が変わって線がずれます（売上の表が一番ずれていました）。
+       ★二重線は、線を重ねる形（border-collapse:collapse）だと、縦の線が二重線のすき間で途切れます。
+       線を重ねない形にして、どのマスも右と下の線だけを持ちます（上と左は表の線） */
+  const 列 = '<colgroup><col style="width:31%"><col style="width:34.5%"><col style="width:34.5%"></colgroup>';
+  const 表の形 = 'width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;'
+    + 'border-top:1px solid var(--line);border-left:1px solid var(--line)';
+  const 枠 = 'border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px 8px;white-space:nowrap';
   const 見出しの枠 = `${枠};text-align:center;font-weight:400;font-size:12.5px;color:var(--text-sub)`;
+  const 見出しの行 = `<tr><th style="${見出しの枠}">項目</th><th style="${見出しの枠}">当日</th>`
+    + `<th style="${見出しの枠}">累計</th></tr>`;
   const 中 = [];
   中.push('<p class="cash-minus__head" style="margin:14px 0 8px;font-weight:700">'
     + '原価率・人件費率</p>');
   表たち.forEach((t, n) => {
     中.push(`<p style="margin:${n ? 14 : 0}px 0 6px;font-size:13.5px;font-weight:700">${t.名}</p>`);
-    中.push('<table style="width:100%;border-collapse:collapse;font-size:15px">');
-    中.push(`<tr><th style="${見出しの枠}">項目</th><th style="${見出しの枠}">当日</th>`
-      + `<th style="${見出しの枠}">累計</th></tr>`);
+    中.push(`<table style="${表の形};font-size:15px">${列}`);
+    中.push(見出しの行);
     t.行.forEach(([名, 日, 月分], i) => {
-      // ★F/L比率の上は二重線（紙の表と同じ）
-      const 上 = i === t.行.length - 1 ? ';border-top:3px double var(--line)' : '';
-      中.push(`<tr><td style="${枠}${上};text-align:center;font-size:13.5px">${名}</td>`
-        + `<td style="${枠}${上};text-align:right">${journal率の文(日)}</td>`
-        + `<td style="${枠}${上};text-align:right;font-weight:700">${journal率の文(月分)}</td></tr>`);
+      // ★F/L比率の上は二重線（紙の表と同じ）。上の行の下の線を二重にします
+      const 下 = i === t.行.length - 2 ? ';border-bottom:3px double var(--line)' : '';
+      中.push(`<tr><td style="${枠}${下};text-align:center;font-size:13.5px">${名}</td>`
+        + `<td style="${枠}${下};text-align:right">${journal率の文(日)}</td>`
+        + `<td style="${枠}${下};text-align:right;font-weight:700">${journal率の文(月分)}</td></tr>`);
     });
     中.push('</table>');
   });
-  // ★税抜の総売上（ko-dai さんの指示・2026-09-23）。率ではなく金額なので、表の外に置きます
-  中.push('<table style="width:100%;border-collapse:collapse;font-size:15px;margin-top:14px">');
-  中.push(`<tr><td style="${枠};text-align:center;font-size:13.5px">税抜売上</td>`
-    + `<td style="${枠};text-align:right">${円(今日.税抜)}</td>`
-    + `<td style="${枠};text-align:right;font-weight:700">${円(月.税抜)}</td></tr>`);
+  /* ★売上（税抜は ko-dai さんの指示・2026-09-23。税込を上に足して目立たせたのは 2026-09-26）。
+       率ではなく金額なので、表の外に置きます。見出しと「当日・累計」の行を付けて、どちらの数か分かるようにします。
+       ★金額は長いので、字の大きさは「列の幅 ÷ 一番長い金額の字数」で決めます（列の幅は率の表とそろえたので、広げられません）。
+         字1つの幅は、字の大きさの 0.62 倍と見ます（太字の数字とコンマ・¥ を測った値に少し余りを足しました）。
+         列の中の幅は、表の幅の 34.5% から左右の余白 12px を引いたもの。cqw は入れ物（el.cashRitsu）の幅の1%です。
+         cqw の分からない古い端末では、前に書いた 15px になります（7桁までは375幅で入ります） */
+  const 長さ = Math.max(...[今日.税込, 月.税込, 今日.税抜, 月.税抜].map((n) => 円(n).length));
+  const 売上の字 = `font-size:15px;font-size:min(17px,calc((34.5cqw - 12px) / ${(長さ * 0.62).toFixed(2)}));`
+    + 'font-weight:700;font-variant-numeric:tabular-nums;padding-left:6px;padding-right:6px';
+  中.push('<p class="cash-minus__head" style="margin:18px 0 6px;font-weight:700">売上</p>');
+  // ★色は、お金まわりの緑（--money）をうすく敷きます。color-mix の分からない端末では色が付かないだけです
+  中.push(`<table style="${表の形};background:var(--surface-2);background:color-mix(in srgb,var(--money) 8%,var(--surface))">${列}`);
+  中.push(見出しの行);
+  [['税込売上', 今日.税込, 月.税込], ['税抜売上', 今日.税抜, 月.税抜]].forEach(([名, 日, 月分]) => {
+    中.push(`<tr><td style="${枠};text-align:center;font-size:13.5px;font-weight:700">${名}</td>`
+      + `<td style="${枠};text-align:right;${売上の字}">${円(日)}</td>`
+      + `<td style="${枠};text-align:right;${売上の字}">${円(月分)}</td></tr>`);
+  });
   中.push('</table>');
 
   /* ★説明の文は出しません（ko-dai さんの指示・2026-09-23）。
