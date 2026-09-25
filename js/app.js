@@ -2667,6 +2667,15 @@ const JournalStaff = {
       }));
     } catch (e) { /* 入らなくても、聞き直せば済みます */ }
   },
+  /** 聞けなかったとき。★覚えている月額は消さずに、理由だけ残します（欄に出すため。2026-09-25） */
+  ng(storeId, なぜ) {
+    try {
+      const 前 = this.get(storeId) || {};
+      localStorage.setItem(this._key(storeId), JSON.stringify({
+        ...前, 聞けない: String(なぜ || '返事がありませんでした'), 聞けないat: new Date().toISOString(),
+      }));
+    } catch (e) { /* 入らなくても進みます */ }
+  },
 };
 
 /** ⑤人件費の「社員」の行か（★GAS の nippou社員の行か_ と同じ決まり。試験/社員 が見くらべます） */
@@ -2720,6 +2729,11 @@ function journal社員を入れる(w) {
      （いまは 試験/社員 の H で、本物の handle_ を通しています）。
    ★だから、日報フォルダが登録されていない店では聞けません（日報に書かない店なので、社員の欄もありません） */
 const 社員Auto = {};
+/* ★いま聞いている店舗（欄に「月額を聞いています…」と出すため）。
+     ★2026-09-25、バグる・popo・おいでんテラスで欄が「日報が計算」のまま変わらず、
+       **まだ返事を待っているのか、断られたのかが画面から分かりません**でした（理由はコンソールだけ）。
+       聞いている・聞けなかった、を欄に出します */
+const 社員聞いている = {};
 
 function journal社員Auto() {
   const store = state.storeId;
@@ -2740,20 +2754,31 @@ async function journal社員Load(store) {
   const test = nippouTestFor(store);
   const folder = test ? '' : NippouFolders.get(store);
   if (!test && !folder) return;
+  社員聞いている[store] = true;
   try {
+    /* ★ここは描いている途中（renderNippouBox）から呼ばれます。その場で render すると
+         描いている途中にもう一度描くので、**描き終わってから**描き直します */
+    await Promise.resolve();
+    if (state.storeId === store) render();          // 欄に「月額を聞いています…」
     const res = await Sync.ask('nippouWrite', {
       mode: '社員', file: test, folder, store, storeName: 店 ? 店.name : '',
     }, { ms: ASK_上限.日報, hedge: true });
     /* ★断られた・古い GAS（返事に 社員 が無い）ときは、覚えている月額を消しません。
-         ★ただし**黙りません。**コンソールに理由を残します（最初の公開は、ここで黙っていて気づけませんでした） */
+         ★ただし**黙りません。**理由を覚えて、欄に「月額を聞けません」と出します（理由は欄の title）。
+           最初の公開はここで黙っていて、ko-dai さんの画面からは何も分かりませんでした */
     if (!res || !res.ok || !('社員' in res)) {
-      console.warn('社員の月額を聞けませんでした', (res && (res.error || gasNakami(res))) || '');
+      const なぜ = (res && (res.error || gasNakami(res))) || '返事がありませんでした';
+      console.warn('社員の月額を聞けませんでした', なぜ);
+      JournalStaff.ng(store, なぜ);
       return;
     }
     JournalStaff.save(store, res.社員 && res.社員.月額, res.なぜ);
-    render();
   } catch (e) {
     console.warn('社員の月額を聞けませんでした', e);
+    JournalStaff.ng(store, String((e && e.message) || e));
+  } finally {
+    delete 社員聞いている[store];
+    if (state.storeId === store) render();
   }
 }
 
@@ -3057,7 +3082,9 @@ function renderGridBox() {
   /* ★社員の金額の欄の形（月額あり＝アプリが出す／未登録／まだ聞いていない）。変わったら欄を作り直します */
   const 社員の覚え = JournalStaff.get(state.storeId);
   const 社員の印 = journal社員の月額(state.storeId) !== null ? 'あり'
-    : (社員の覚え && 社員の覚え.月額 === null ? '未登録' : '');
+    : 社員聞いている[state.storeId] ? '聞いている'
+    : (社員の覚え && 社員の覚え.月額 === null) ? '未登録'
+    : (社員の覚え && 社員の覚え.聞けない) ? '聞けない' : '';
 
   /* ★作り直すのは、並びが変わったときだけです。
      打つたびに作り直すと、**打っている最中の欄が消えて作られ、
@@ -3167,6 +3194,12 @@ function renderGridBox() {
             // 月額を聞いたら「未登録」だったとき（GAS のスクリプト プロパティ JOURNAL_STAFF）
             i.placeholder = '月額が未登録';
             i.title = (社員の覚え && 社員の覚え.なぜ) || '';
+          } else if (社員の印 === '聞いている') {
+            i.placeholder = '月額を聞いています…';
+          } else if (社員の印 === '聞けない') {
+            // 断られた・届かなかったとき（理由は欄の title。次に開いたとき、また聞きます）
+            i.placeholder = '月額を聞けません';
+            i.title = 社員の覚え.聞けない;
           }
         }
         i.addEventListener('input', () => {
@@ -12263,7 +12296,8 @@ function shiftGuideHtml(kind) {
     提出の手順.push(`出られる日に<b>「${名('open')}」「F」「${名('lunch')}」「${名('dinner')}」</b>のどれかを押します（F は${名('lunch')}から${名('dinner')}まで通し）`);
     提出の手順.push(`「◯◯ は何時から？」と出たら、入れる時刻を押します。${名('open')}を押した人には「${名('open')}のあとは？」（${名('lunch')}だけか F か）も出ます`);
   }
-  提出の手順.push('日ごとの<b>連絡</b>（例：20時まで）も書けます。最後に一番下の<b>「出す」</b>');
+  // ★提出ページのボタンは「提出する」です（shift/index.html の #send。2026-09-25 まで「出す」と書きまちがえていた）
+  提出の手順.push('日ごとの<b>連絡</b>（例：20時まで）も書けます。最後に一番下の<b>「提出する」</b>');
   提出の手順.push('締め切りまでは、何度でも出し直せます');
   out.push(shiftGuideOl(提出の手順));
   const 日のカード = (() => {
@@ -12289,7 +12323,7 @@ function shiftGuideHtml(kind) {
     '<div style="max-width:360px;margin:0 auto;">'
       + '<div style="font-size:22px;font-weight:800;margin:0 0 8px;">Aさん <span style="font-size:12px;font-weight:400;color:var(--text-sub);">さんの シフト提出</span></div>'
       + 日のカード
-      + `<div><button type="button" tabindex="-1" class="btn btn--primary" style="width:100%;">出す</button></div></div>`,
+      + `<div><button type="button" tabindex="-1" class="btn btn--primary" style="width:100%;">提出する</button></div></div>`,
     'アルバイトの提出ページの見本です（アルバイトのスマホに出ます）'));
 
   /* ---- 6 取り込む ---- */
