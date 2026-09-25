@@ -2692,13 +2692,21 @@ function journal社員を入れる(w) {
   cashEdit.jinken[行.name] = { ...持ち, g: cashText(額) };
 }
 
-/* ★月額を聞きに行きます（★読むだけ）。日報は開かないので、日報フォルダが無い店でも聞けます */
+/* ★月額を聞きに行きます（★読むだけ。日報は開きません）。
+   ★★**日報フォルダを添えないと、GAS の入口が断ります**（gas/コード.gs の handle_。
+     「登録された日報フォルダか」を見てから nippouWrite_ に渡すため）。
+     2026-09-25 の最初の公開ではこれを添えておらず、**どの端末でも月額が分からないまま**でした。
+     しかも断られたのを黙って飲みこんでいたので、ko-dai さんの画面で「総合計」と「アルバイトのみ」が
+     同じ数になっていて、はじめて分かりました。試験が入口（handle_）を通していなかったためです
+     （いまは 試験/社員 の H で、本物の handle_ を通しています）。
+   ★だから、日報フォルダが登録されていない店では聞けません（日報に書かない店なので、社員の欄もありません） */
 const 社員Auto = {};
 
 function journal社員Auto() {
   const store = state.storeId;
   if (社員Auto[store]) return;                       // この画面では1回だけ
   if (!Sync.enabled || !Sync.enabled() || !Sync.pin()) return;
+  if (!nippouTestFor(store) && !NippouFolders.get(store)) return;
   const 覚え = JournalStaff.get(store);
   // ★未登録と返ってきたときは、時間にかかわらず聞き直します（登録したらすぐ出るように）
   if (覚え && 覚え.月額 && 覚え.at
@@ -2709,16 +2717,24 @@ function journal社員Auto() {
 
 async function journal社員Load(store) {
   const 店 = STORES.find((x) => x.id === store);
+  // ★日ごとの読み（journal日ごとLoad）と同じ添え方です。入口はこれで書き先を確かめます
+  const test = nippouTestFor(store);
+  const folder = test ? '' : NippouFolders.get(store);
+  if (!test && !folder) return;
   try {
     const res = await Sync.ask('nippouWrite', {
-      mode: '社員', store, storeName: 店 ? 店.name : '',
+      mode: '社員', file: test, folder, store, storeName: 店 ? 店.name : '',
     }, { ms: ASK_上限.日報, hedge: true });
-    // ★古い GAS は「社員」を知りません（返事に 社員 がありません）。そのときは何もしません
-    if (!res || !res.ok || !('社員' in res)) return;
+    /* ★断られた・古い GAS（返事に 社員 が無い）ときは、覚えている月額を消しません。
+         ★ただし**黙りません。**コンソールに理由を残します（最初の公開は、ここで黙っていて気づけませんでした） */
+    if (!res || !res.ok || !('社員' in res)) {
+      console.warn('社員の月額を聞けませんでした', (res && (res.error || gasNakami(res))) || '');
+      return;
+    }
     JournalStaff.save(store, res.社員 && res.社員.月額, res.なぜ);
     render();
   } catch (e) {
-    /* ★黙って進みます（次に開いたときに、また聞きます） */
+    console.warn('社員の月額を聞けませんでした', e);
   }
 }
 
