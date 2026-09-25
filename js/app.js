@@ -2377,8 +2377,11 @@ function renderNippouBox(done) {
 
   renderNippouMinusNote();
   renderGridBox();
-  journal日ごとAuto();   // ★日報の日ごとの数を、裏で読み直します（読むだけ）
+  /* ★月額（軽い）を先に聞き、終わってから日報の日ごとの数（重い。30ページ）を読みます（2026-09-25）。
+       同時に走らせると、バグる・popo・おいでんテラスで月額の方が「受け取れませんでした」
+       「30秒経っても返事をしません」で届きませんでした（ko-dai さんの画面） */
   journal社員Auto();     // ★社員の月額を、裏で聞きます（読むだけ・その店舗の分だけ）
+  journal日ごとAuto();   // ★日報の日ごとの数を、裏で読み直します（読むだけ。月額を聞いているあいだは待ちます）
   /* ★率は**見るだけのもの**です。ここで落ちると、この下の「どこに書くか」の札や
        日報からの取り込みまで動かなくなり、**閉店の作業が止まります。**
        だから、落ちても画面は進めます（コンソールには残します）。
@@ -2576,6 +2579,8 @@ const 日ごとAuto = {};
 function journal日ごとAuto() {
   const key = `${state.storeId}/${state.y}-${state.m}`;
   if (日ごとAuto[key]) return;                    // この画面では1回だけ
+  // ★月額を聞いているあいだは始めません。聞き終わると描き直されるので、そのときに始まります
+  if (社員聞いている[state.storeId]) return;
   if (!Sync.enabled || !Sync.enabled() || !Sync.pin()) return;
   const test = nippouTestFor(state.storeId);
   if (!test && !NippouFolders.get(state.storeId)) return;
@@ -2760,9 +2765,11 @@ async function journal社員Load(store) {
          描いている途中にもう一度描くので、**描き終わってから**描き直します */
     await Promise.resolve();
     if (state.storeId === store) render();          // 欄に「月額を聞いています…」
-    const res = await Sync.ask('nippouWrite', {
+    /* ★届かなかったとき（Google の渡す口の失敗・時間切れ）は、静かに送り直します（askAgain。3回まで）。
+         月額を聞くのは読むだけで、何度聞いても同じ答えです。時間は短く（15秒）して、早めに送り直します */
+    const res = await askAgain('nippouWrite', {
       mode: '社員', file: test, folder, store, storeName: 店 ? 店.name : '',
-    }, { ms: ASK_上限.日報, hedge: true });
+    }, { ms: ASK_上限.聞く, hedge: true });
     /* ★断られた・古い GAS（返事に 社員 が無い）ときは、覚えている月額を消しません。
          ★ただし**黙りません。**理由を覚えて、欄に「月額を聞けません」と出します（理由は欄の title）。
            最初の公開はここで黙っていて、ko-dai さんの画面からは何も分かりませんでした */
