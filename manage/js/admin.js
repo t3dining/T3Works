@@ -2840,6 +2840,8 @@ function renderMonthlyTargets() {
     wrap.append(label, input);
     欄たち.appendChild(wrap);
   });
+  // ★ジャーナルのマネージの欄は、ここから続けて描きます（renderAll の1行を増やさないため）
+  renderNippouGridReload();
 }
 
 function 月別目標の月を変える(向き) {
@@ -2872,6 +2874,77 @@ function saveMonthlyTargets() {
   出た.textContent = 直す.length ? `保存しました（${直す.length}店舗）` : '変わったところはありません';
   出た.classList.remove('is-hidden');
   setTimeout(() => 出た.classList.add('is-hidden'), 2500);
+}
+
+/* -------- 日報の仕入先の読み直し（ジャーナルの持ち物・ko-dai さん・2026-09-27） --------
+ *
+ *  「日報から読み直すのボタンをマネージからのみ触れるようにして、現場で押されないようにしてください」
+ *  ★ワークス・マインのジャーナルの画面から「日報から読み直す（仕入先が増えたとき）」を外し、ここに置きました。
+ *  ★押しても、ここで日報を読むわけではありません。仕入先・人件費の並びは**店の端末ごと**に覚えているので、
+ *    「読み直してほしい」という印を記録に置きます（同期で店の端末に届きます）。
+ *    店の端末は、次にジャーナルを開いたときに日報から静かに読み直します（js/app.js の cashGridAuto）。
+ *  ★印の置き場と読み方は js/config.js の journal読み直しの頼み（ワークスと同じものを呼びます）。
+ *  ★描くのは renderMonthlyTargets の終わりから（renderAll の1行を増やさないため。同じジャーナルの欄です）。
+ *    欄は1回だけ作って使い回します（renderAll は同期のたびに呼ばれます）。
+ */
+function renderNippouGridReload() {
+  let sec = document.getElementById('nippouGridReload');
+  if (!sec) {
+    const 前 = document.getElementById('monthTargets');
+    if (!前) return;
+    sec = document.createElement('section');
+    sec.className = 'admin-block';
+    sec.id = 'nippouGridReload';
+    sec.innerHTML = `
+      <div class="admin-block__head">
+        <h2 class="admin-block__title">日報の仕入先の読み直し</h2>
+      </div>
+      <p class="admin-note">
+        日報に<b>仕入先や人件費の行を足したとき</b>に押してください。
+        その店の端末が、<b>次にジャーナルを開いたとき</b>、日報から仕入先・人件費の並びを読み直します。<br>
+        ワークス・マインの画面には、読み直すボタンはありません（現場で押されないように）。
+      </p>
+      <div data-gr="rows"></div>`;
+    sec.addEventListener('click', (e) => {
+      const b = e.target && e.target.closest ? e.target.closest('button[data-gr-store]') : null;
+      if (!b) return;
+      // ★印は頼んだ時刻の文字です。店の端末は「前に応えた印と違うか」だけを見ます（時刻としては比べません）
+      Store.setItem(NIPPOU_GRID_RELOAD_STORE, b.dataset.grStore, 'reload', { value: new Date().toISOString() });
+      renderNippouGridReload();
+      const 出た = sec.querySelector(`[data-gr-saved="${b.dataset.grStore}"]`);
+      if (出た) { 出た.classList.remove('is-hidden'); setTimeout(() => 出た.classList.add('is-hidden'), 2500); }
+    });
+    前.insertAdjacentElement('afterend', sec);
+  }
+  const 行たち = sec.querySelector('[data-gr="rows"]');
+  行たち.innerHTML = '';
+  STORES.filter((s) => JOURNAL_STORES.indexOf(s.id) >= 0).forEach((s) => {
+    const 印 = journal読み直しの頼み(s.id);
+    const t = 印 ? new Date(印) : null;
+    const いつ = t && !Number.isNaN(t.getTime())
+      ? `前に頼んだのは ${t.getMonth() + 1}/${t.getDate()} ${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')}`
+      : 'まだ頼んでいません';
+    const row = document.createElement('div');
+    row.className = 'admin-actions';
+    const 名 = document.createElement('b');
+    名.textContent = s.name;
+    名.style.minWidth = '7em';
+    const 時 = document.createElement('span');
+    時.className = 'admin-note';
+    時.style.margin = '0';
+    時.textContent = いつ;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn';
+    b.dataset.grStore = s.id;
+    b.textContent = '読み直してもらう';
+    const 済 = document.createElement('span');
+    済.className = 'admin-saved is-hidden';
+    済.dataset.grSaved = s.id;
+    済.textContent = '頼みました';
+    row.append(名, b, 時, 済);
+    行たち.appendChild(row);
+  });
 }
 
 /* -------- 日報フォルダ --------

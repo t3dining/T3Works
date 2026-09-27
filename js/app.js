@@ -2439,8 +2439,12 @@ function renderNippouBox(done) {
  */
 function renderNippouGate() {
   const 書ける = journal書ける(state.storeId);
+  // ★そのうえで、支払いの合計が税込売上と合わなければ書かせません（2026-09-27）
+  const 合 = 書ける ? journal支払の合計(state.storeId) : null;
+  const 合わない = !!合 && !合.ok;
   // 5つとも使えるとき（または、手で直して埋まったとき）だけ、日報へ書けます
-  el.cashToNippou.classList.toggle('is-hidden', !書ける);
+  el.cashToNippou.classList.toggle('is-hidden', !書ける || 合わない);
+  journal合計の札(合わない ? 合 : null);
   // ★テスト用の書き先が入っているときは、ひと目で分かるようにします。
   //   本番に書いたつもりでテストに入っていた、が一番こわいためです
   const test = nippouTestFor(state.storeId);
@@ -2453,9 +2457,10 @@ function renderNippouGate() {
   const bad = checks.filter((c) => !c.ok);
   const ok = cashEdit.jok;
   const 手 = journal手あり();
-  el.cashCheckMark.className = 'cash-box__date ' + (ok || 書ける ? 'is-ok' : 'is-bad');
-  el.cashCheckMark.textContent = ok ? `検算 ${checks.length}つOK`
-    : 書ける ? '手で直した数で書けます' : '★日報には入れません';
+  el.cashCheckMark.className = 'cash-box__date ' + ((ok || 書ける) && !合わない ? 'is-ok' : 'is-bad');
+  el.cashCheckMark.textContent = 合わない ? '★合計が合わないので書けません'
+    : ok ? `検算 ${checks.length}つOK`
+      : 書ける ? '手で直した数で書けます' : '★日報には入れません';
 
   const say = [];
   // ★記録の現金売上と、表の現金売上（紙の数）が食いちがうとき（journal現金を記録へ写す の説明）
@@ -2495,6 +2500,13 @@ function renderNippouGate() {
  * ---------------------------------------------------------- */
 
 /** 読んだ並びの覚え書き（店舗と年月ごと。端末の中だけ） */
+/** この端末が、マネージの「読み直してほしい」のどの印に応えたか（店舗ごと。js/config.js の journal読み直しの頼み） */
+const GridSeen = {
+  _key(storeId) { return `t3works.gridSeen.${storeId}`; },
+  get(storeId) { try { return localStorage.getItem(this._key(storeId)) || ''; } catch (e) { return ''; } },
+  save(storeId, 印) { try { localStorage.setItem(this._key(storeId), 印); } catch (e) { /* 次に開いたとき、また読むだけです */ } },
+};
+
 const GridCache = {
   _key(storeId, y, m) { return `t3works.grid.${storeId}.${y}${String(m).padStart(2, '0')}`; },
   get(storeId, y, m) {
@@ -2533,7 +2545,7 @@ function cashGridNow() {
 }
 
 /** 日報から、仕入先と人件費の並びを読んできます（書きません） */
-async function cashGridLoad(しずかに) {
+async function cashGridLoad(しずかに, 頼みの印) {
   // ★書き始めた画面（店舗・日）の知らせとして出します（途中で別の画面へ移っても、よその欄に出さない）
   const 先 = nippouいまの先();
   const 先の知らせ = (t, k) => setNippouMsg(t, k, 先);
@@ -2563,6 +2575,8 @@ async function cashGridLoad(しずかに) {
     // ★読んでいるあいだに別の日・別の店舗へ移っているかもしれません。
     //   そのときは、読んだときの店舗と月に入れます（いまの画面には混ぜません）
     GridCache.save(store, y, m, res.grid);
+    // ★マネージの「読み直してほしい」に応えたことを覚えます（同じ印では、もう読みません）
+    if (頼みの印) GridSeen.save(store, 頼みの印);
     const w = nippouGridSplit(res.grid);
     言(`日報から読みました（仕入先 ${w.shiire.length}件・人件費 ${w.jinken.length}件）`, 'ok');
     render();
@@ -2657,14 +2671,21 @@ async function journal日ごとLoad() {
 }
 
 function cashGridAuto() {
-  const key = `${state.storeId}/${state.y}-${state.m}`;
+  const store = state.storeId;
+  /* ★マネージで「読み直してほしい」と頼まれていれば、その月分があっても読み直します（2026-09-27）。
+       現場の画面には読み直すボタンがありません（ko-dai さんの指示。現場で押されないように） */
+  const 印 = journal読み直しの頼み(store);
+  const 頼まれた = !!印 && 印 !== GridSeen.get(store);
+  const key = `${store}/${state.y}-${state.m}${頼まれた ? `/${印}` : ''}`;
   if (gridAuto[key]) return;                                  // この画面では1回だけ
-  if (GridCache.get(state.storeId, state.y, state.m)) return; // その月分は、もうある
+  if (!頼まれた && GridCache.get(store, state.y, state.m)) return; // その月分は、もうある
   if (!Sync.enabled || !Sync.enabled() || !Sync.pin()) return;
-  const test = nippouTestFor(state.storeId);
-  if (!test && !NippouFolders.get(state.storeId)) return;
+  const test = nippouTestFor(store);
+  if (!test && !NippouFolders.get(store)) return;
+  // ★頼まれた読み直しは、他の読み（社員の月額・日ごとの数・昨年）が終わってからにします。重ねると届かないことがあります
+  if (頼まれた && (社員聞いている[store] || 日ごと読んでいる[store] || 昨年聞いている[store])) return;
   gridAuto[key] = true;
-  cashGridLoad(true);
+  cashGridLoad(true, 頼まれた ? 印 : '');
 }
 
 /**
@@ -3623,16 +3644,10 @@ function renderGridBox() {
   節('④仕入明細', w.shiire, 'shiire', '当日現金', '掛仕入');
   節('⑤人件費', w.jinken, 'jinken', '人数', '金額');
 
-  // ★仕入先が増えたときのために、読み直せるようにしておきます。
-  //   これが無いと、増えた業者が**いつまでも出てきません**
-  const 再 = document.createElement('button');
-  再.type = 'button';
-  再.className = 'btn btn--sub';
-  再.style.fontSize = '12px';
-  再.style.padding = '6px 12px';
-  再.textContent = '日報から読み直す（仕入先が増えたとき）';
-  再.addEventListener('click', () => cashGridLoad());
-  el.cashGrid.appendChild(再);
+  /* ★「日報から読み直す（仕入先が増えたとき）」は、現場の画面から外しました（ko-dai さんの指示・2026-09-27。
+       現場で押されないように）。仕入先が増えたときは、マネージの「日報の仕入先の読み直し」で頼みます。
+       頼まれた店の端末は、次にジャーナルを開いたとき、日報から静かに読み直します（cashGridAuto）。
+       ★これが無いと、増えた業者が**いつまでも出てきません**（月が替われば、その月分は自動で読みます） */
 
   // ★日報側で直された数を、手でも取り込めるようにします
   const 取 = document.createElement('button');
@@ -3640,7 +3655,6 @@ function renderGridBox() {
   取.className = 'btn btn--sub';
   取.style.fontSize = '12px';
   取.style.padding = '6px 12px';
-  取.style.marginLeft = '8px';
   取.textContent = '日報の数を取り込む';
   取.addEventListener('click', () => cashPullFromNippou(false));
   el.cashGrid.appendChild(取);
@@ -4370,6 +4384,15 @@ async function nippouWritePart(part, btn) {
   };
   if (!決) return;
   if (組.indexOf('journal') >= 0 && !journal書ける(state.storeId)) return;
+  // ★支払いの合計 ＝ 税込売上 でなければ書きません（ko-dai さんの指示・2026-09-27）。ボタンは隠していますが、ここでも止めます
+  if (組.indexOf('journal') >= 0) {
+    const 合 = journal支払の合計(state.storeId);
+    if (!合.ok) {
+      先の知らせ(journal合計の文(合).join('　'), 'warn');
+      renderNippouGate();
+      return;
+    }
+  }
 
   const だめ = [].concat(...組.map((x) => nippouPartBad(x)));
   if (だめ.length) {
@@ -5294,6 +5317,82 @@ function journal手あり() {
  * ★★手で1つも直していないときは、これまでとまったく同じです（jok だけで決まります）。
  *   手で直す仕組みを足したことで、**人が何もしていないのに書ける日が増える**ことはありません。
  */
+/* ------------------------------------------------------------
+ *  日報に書く前の検算：支払い方法の行の合計 ＝ 税込売上（ko-dai さんの指示・2026-09-27）
+ *
+ *  「記録を日報に書き写すとき、読み取った数字と手入力の数字の合計が税込売上の数字と
+ *    一致しなかった場合、日報へ書き込めないようにしてください。目立つように表示させてください」
+ *
+ *  ★足すのは、日報に書く表の「純売上」「当日客数」**以外の行全部**（現金・クレジット・電子マネー・
+ *    売掛金・ポイント・商品券・出前館などのクレジット…）の**紙の数**（読み取った数、手で直したらその数）です。
+ *    どの様式でも、紙ではこれらの合計が総売上（税込）になります（日計レポートは「支払方法の合計 ＝ 売上」、
+ *    精算レポートは「現金＋クレジット＋その他支払＋売掛金 ＝ 総売上」。js/config.js の検算と同じ関係）。
+ *  ★出前館などを差し引いて書く分（NIPPOU_MINUS）は、差し引く**前**の数で足します（差し引いた分は別の行に書くため）。
+ *  ★比べる相手は読み取った総売上（cashEdit.j.gross）。書いたあとの検算（当日総合計 ＝ ジャーナルの売上）と同じ数です。
+ *  ★前は、手で直した数で必要な欄が埋まれば、合計を見ずに書けました（見るのは書いたあとだけ）。
+ * ---------------------------------------------------------- */
+const JOURNAL_合計の外 = ['net', 'guests'];
+
+/**
+ * { ok, 合計, 売上, 差, 読めない }。売上が読めていなければ 売上: null（確かめられないので ok にしません）
+ *   読めない … 読み取れず、手でも入れていない支払いの欄の名前（手で入れる欄＝ポイント・商品券は入れません。空が普通のため）
+ */
+function journal支払の合計(storeId) {
+  const j = cashEdit.j || {};
+  const 売上 = (typeof j.gross === 'number' && Number.isFinite(j.gross)) ? j.gross : null;
+  const 行たち = journal行の数(storeId).filter((x) => JOURNAL_合計の外.indexOf(x.row.key) < 0);
+  const 合計 = 行たち.reduce((a, x) => {
+    const n = typeof x.紙 === 'number' ? x.紙 : cashMinusNum(x.紙);
+    return a + (Number.isFinite(n) ? n : 0);
+  }, 0);
+  const 読めない = 行たち.filter((x) => x.紙 === null && !x.row.手).map((x) => x.row.name);
+  if (売上 === null) return { ok: false, 合計, 売上: null, 差: null, 読めない };
+  return { ok: 合計 === 売上, 合計, 売上, 差: 合計 - 売上, 読めない };
+}
+
+/** 合わないときの文（札とボタンを押したときの知らせの両方で使います） */
+function journal合計の文(合) {
+  if (合.売上 === null) {
+    return ['★日報に書けません：税込売上が読めていないので、合計を確かめられません',
+      '写真を撮り直してください'];
+  }
+  const 円 = (n) => `¥${cashText(Math.abs(n))}`;
+  const 行 = ['★日報に書けません：支払いの合計が税込売上と合いません',
+    `表の合計 ${円(合.合計)} ／ 税込売上 ${円(合.売上)} ／ 差 ${円(合.差)}（${合.差 < 0 ? '足りません' : '多すぎます'}）`];
+  // ★読めなかった支払いの欄（—）があれば、先にそれを出します（2026-09-27、おいでんテラスの紙で、支払いが1つも読めない読み取りがありました）
+  if (合.差 < 0 && 合.読めない && 合.読めない.length) {
+    行.push(`読めなかった欄（${合.読めない.join('・')}）を、紙を見て入れてください`);
+  }
+  // ★紙に出ている「ポイント」「商品券」は、表では種類ごとの手で入れる欄に分けて入れます（入れ忘れが一番多いため）
+  const j = cashEdit.j || {};
+  const 紙の分 = [];
+  if (合.差 < 0 && j.point > 0) 紙の分.push(`ポイント ${円(j.point)}`);
+  const 券 = (j.voucher1 || 0) + (j.voucher2 || 0);
+  if (合.差 < 0 && 券 > 0) 紙の分.push(`商品券 ${円(券)}`);
+  行.push(紙の分.length
+    ? `紙に出ている ${紙の分.join('・')} が、表の手で入れる欄に入っているか見てください`
+    : '紙と見くらべて、読み取った数と手で入れた数を直してください');
+  return 行;
+}
+
+/** 合わないとき、書くボタンの代わりに出す赤い札（null なら消します） */
+function journal合計の札(合) {
+  let b = document.getElementById('cashNippouStop');
+  if (!合) { if (b) b.remove(); return; }
+  if (!b) {
+    b = document.createElement('div');
+    b.id = 'cashNippouStop';
+    b.setAttribute('role', 'alert');
+    b.style.cssText = 'margin:10px 0 0;padding:12px 14px;border:2px solid var(--ng);border-radius:12px;'
+      + 'background:var(--surface);background:color-mix(in srgb,var(--ng) 10%,var(--surface));'
+      + 'color:var(--ng);font-size:14px;line-height:1.6';
+    el.cashToNippou.parentNode.insertBefore(b, el.cashToNippou);
+  }
+  const [頭, ...下] = journal合計の文(合);
+  b.innerHTML = `<div style="font-size:16px;font-weight:800">${journalEsc(頭)}</div>`
+    + 下.map((t) => `<div style="font-weight:700">${journalEsc(t)}</div>`).join('');
+}
+
 function journal書ける(storeId) {
   if (cashEdit.jok) return true;
   if (!journal手あり()) return false;
