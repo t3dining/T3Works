@@ -1614,7 +1614,10 @@ function calcPadFit() {
     const i = calcPadFor;
     if (!i || !i.getBoundingClientRect) return;
     const 下 = i.getBoundingClientRect().bottom;
-    if (下 > 枠.top - 8) window.scrollBy(0, Math.ceil(下 - (枠.top - 12)));
+    if (下 > 枠.top - 8) {
+      window.scrollBy(0, Math.ceil(下 - (枠.top - 12)));
+      calcPad止めを置き直す();   // ★出した位置を、新しい「止める高さ」にします
+    }
   } catch (e) { /* 取れなくても、打つのに困りません */ }
 }
 
@@ -1662,7 +1665,11 @@ function calcPadInsert(c) {
   if (at === null || at === undefined) { at = t.value.length; to = at; }
   t.value = t.value.slice(0, at) + c + t.value.slice(to);
   const 次 = at + c.length;
-  try { t.setSelectionRange(次, 次); } catch (e) { /* 効かない欄もあります */ }
+  /* ★一番うしろで打っているときは、打つ場所を置き直しません（中身を入れかえると、打つ場所はもう一番うしろです）。
+       iPhone は打つ場所を動かすたびに画面を送るので、1文字ごとに画面が上下する元になります（2026-09-27） */
+  if (次 !== t.value.length) {
+    try { t.setSelectionRange(次, 次); } catch (e) { /* 効かない欄もあります */ }
+  }
   if (t !== i) calcPad写す();
   else i.dispatchEvent(new Event('input', { bubbles: true }));
 }
@@ -1679,7 +1686,10 @@ function calcPadBack() {
   if (at === to) {
     if (at === 0) return;
     t.value = t.value.slice(0, at - 1) + t.value.slice(to);
-    try { t.setSelectionRange(at - 1, at - 1); } catch (e) { /* 同上 */ }
+    // ★一番うしろを消したときは置き直しません（上の calcPadInsert と同じ理由）
+    if (at - 1 !== t.value.length) {
+      try { t.setSelectionRange(at - 1, at - 1); } catch (e) { /* 同上 */ }
+    }
   } else {
     t.value = t.value.slice(0, at) + t.value.slice(to);
     try { t.setSelectionRange(at, at); } catch (e) { /* 同上 */ }
@@ -1770,6 +1780,7 @@ function calcPadShow(input) {
   const pad = calcPadMake();
   pad.style.display = 'grid';
   calcPadEcho();            // ★どの欄に何が入っているかを、すぐ出します
+  calcPad止めを始める();     // ★打っているあいだ、画面を動かしません（2026-09-27）
   setTimeout(() => {
     try {
       const 高さ = pad.getBoundingClientRect().height;
@@ -1781,6 +1792,7 @@ function calcPadShow(input) {
         //   すぐ動く形なら、どこでも確実に寄ってくれます。
         //   余白を足した直後なので、送り先はできています
         input.scrollIntoView({ block: 'center' });
+        calcPad止めを置き直す();   // ★出した位置を、新しい「止める高さ」にします
       }
     } catch (e) { /* 位置が取れなくても、打つのに困りません */ }
   }, 30);
@@ -1791,6 +1803,72 @@ function calcPadHide() {
   if (calcPad) calcPad.style.display = 'none';
   document.body.style.paddingBottom = '';
 }
+
+/* ------------------------------------------------------------
+ *  打っているあいだ、画面を動かしません（ko-dai さんの指示・2026-09-27）
+ *
+ *  「仕入れなどの金額を打っていると小刻みに画面が上下に動くので、
+ *    自分でスクロールしない限りその場で止まるようにしてください」
+ *
+ *  ★テンキーが開いているあいだ、**打っている欄の画面上の高さ**を覚え、ずれたら次の描画の前に戻します。
+ *    ずれる元は2つあると見ています（実機の iPhone では確かめられていません。確認用のブラウザでは動きませんでした）：
+ *      ① iPhone は打つ場所（カーソル）を動かすと、その欄が見える所まで**自分で**画面を送る
+ *      ② 同期のあとの描き直しなどで、欄より**上**の中身の高さが変わる（Safari には、見ている所を保つ働きがありません）
+ *    どちらでも「欄の高さ」を見ていれば戻せます（画面の送り位置だけを覚えても、②は戻せません）。
+ *  ★**人が指で画面を動かしているあいだと、離したあとの慣性のあいだは戻しません。**止まった所を新しい位置として覚えます。
+ *    テンキーの中を押すのは「動かす」に入れません（押すたびに位置を覚え直すと、①を戻せなくなります）。
+ *  ★アプリ自身の送り（隠れた欄を出す calcPadShow・calcPadFit）のあとは、そこを新しい位置にします（calcPad止めを置き直す）。
+ *    置き直さないと、欄を出したとたんに元の（隠れた）位置へ戻してしまいます。
+ * ---------------------------------------------------------- */
+let calcPad止め = null;             // { 欄, 上 }（打っている欄と、その画面上の高さ）
+let calcPad指が触っている = false;   // テンキーの外に指を置いている
+let calcPad人の続き = 0;             // 最後に人が画面を動かした時刻（慣性で流れているあいだも更新）
+let calcPad見張り中 = false;
+
+function calcPad止めを置き直す() { calcPad止め = null; }
+
+/** 人が画面を動かしているか（指を置いている／離して 0.3 秒以内／慣性で流れている） */
+function calcPad人が動かしているか() {
+  return calcPad指が触っている || (Date.now() - calcPad人の続き < 300);
+}
+
+function calcPad止めの見張り() {
+  const 欄 = calcPadFor;
+  if (!calcPad || calcPad.style.display === 'none' || !欄 || !calcPadAlive(欄)) {
+    calcPad止め = null;
+    calcPad見張り中 = false;
+    return;
+  }
+  const 上 = 欄.getBoundingClientRect().top;
+  if (!calcPad止め || calcPad止め.欄 !== 欄 || calcPad人が動かしているか()) {
+    calcPad止め = { 欄, 上 };               // ★新しい欄・人が動かしたあとは、今の高さを覚えます
+  } else if (Math.abs(上 - calcPad止め.上) >= 1) {
+    window.scrollBy(0, 上 - calcPad止め.上);  // ★ずれた分だけ戻します（欄が画面の同じ高さに来る）
+  }
+  requestAnimationFrame(calcPad止めの見張り);
+}
+
+function calcPad止めを始める() {
+  if (calcPad見張り中) return;
+  calcPad見張り中 = true;
+  requestAnimationFrame(calcPad止めの見張り);
+}
+
+// ★人が画面を動かしたかを見ます（テンキーの中を押したのは入れません）。見るだけで、何も止めません（passive）
+document.addEventListener('touchstart', (e) => {
+  if (calcPad && calcPad.contains(e.target)) return;
+  calcPad指が触っている = true;
+  calcPad人の続き = Date.now();
+}, { passive: true, capture: true });
+['touchend', 'touchcancel'].forEach((名) => document.addEventListener(名, () => {
+  if (!calcPad指が触っている) return;
+  calcPad指が触っている = false;
+  calcPad人の続き = Date.now();
+}, { passive: true, capture: true }));
+// ★指を離したあとも慣性で流れているあいだは「人が動かしている」の続きです（戻した分の scroll は入りません）
+window.addEventListener('scroll', () => {
+  if (calcPad人が動かしているか()) calcPad人の続き = Date.now();
+}, { passive: true });
 
 /**
  * テンキー以外のところを触ったら、閉じます
