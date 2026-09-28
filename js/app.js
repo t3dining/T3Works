@@ -12147,7 +12147,24 @@ function shiftReqSweep(storeId) {
   shiftReqList(storeId).filter((x) => shiftReqOld(x.rec)).forEach((x) => shiftReqDeny(x.key, x.rec, false));
 }
 
-/** 申請で選んだ持ち場の名前（無い・知らないものは ''） */
+/**
+ * 申請の一覧に出す名前
+ *
+ * ★承認ずみなら、その番号の人の**この店の名簿の名前**を出します（2026-09-28、ko-dai さんの指示
+ *   「承認するときに名前を変えた場合、ここの部分も変更した名前になるように」）。
+ *   承認のときに直した名前も、あとで「名前を直す」で直した名前も、そのまま出ます。
+ * ★申請の行の名前（n）は書き換えません。出すときに名簿から引くだけです（行はサーバーとも持ち合っているため）。
+ * ★名簿にその番号の人がいなければ（名簿から消した・よその端末でまだ届いていない）、申請された名前のままです。
+ */
+function shiftReqName(storeId, rec) {
+  if (rec && rec.st === 'ok' && rec.c) {
+    const who = ShiftStaff.people(storeId).find((p) => String(p.c || '') === String(rec.c));
+    if (who && who.n) return who.n;
+  }
+  return String((rec && rec.n) || '');
+}
+
+/** 申請で選んだ持ち場の名前（ない・知らないものは ''） */
 function shiftReqLane(rec) {
   return (SHIFT_LANES.find((l) => l.id === (rec && rec.p)) || {}).name || '';
 }
@@ -12164,6 +12181,7 @@ function shiftReqWhen(rec) {
  * ★名前は店長が直してから足せます（2026-09-24、ko-dai さんの指示。ひらがなを漢字に、名前だけをフルネームに など）。
  *   直した名前で名簿に入り、その人の端末にも直した名前で出ます。あとから直して番号が変わる、を防ぐためです。
  *   申請の行の名前（n）は、申請されたときのままにしておきます（行は店長の画面にしか出ません）。
+ *   ★一覧に出す名前は、承認ずみなら名簿の名前です（→ shiftReqName。2026-09-28）
  * ★★同じ申請を、よその店がもう承認していれば、**その番号で**この店の名簿に入れます（番号は1人に1つ）。
  *   まだなら、申請id から番号を作ります（→ shiftCodeFrom。2つの店がすれ違って承認しても同じ番号になる）。
  * ★呼ぶ前に shiftReqFresh で取り直してください（名簿の上書きを防ぐ）。ここでは、行をもう一度読み直してから決めます。
@@ -12248,8 +12266,8 @@ function shiftReqApprove(storeId, key, rec, 直した名前) {
 }
 
 /** 断る（承認を取り消すときも同じ）。行を「消えた」にします */
-function shiftReqDeny(key, rec, 聞く) {
-  if (聞く && !window.confirm(`「${rec.n}」さんの申請を断ります。よろしいですか？`
+function shiftReqDeny(key, rec, 聞く, 出す名前) {
+  if (聞く && !window.confirm(`「${出す名前 || rec.n}」さんの申請を断ります。よろしいですか？`
     + (rec.st === 'ok' ? '\n\n★もう承認ずみです。名簿に足した名前は残るので、要らなければ名簿から消してください。' : ''))) return;
   Store.adapter.set(key, { 消えた: true, 消した時: new Date().toISOString() });
   Sync.enqueue({ t: 'shiftDeny', k: key }, true);
@@ -12292,7 +12310,7 @@ function shiftReqBox(storeId) {
     const line = document.createElement('div');
     line.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--line);';
     const name = document.createElement('b');
-    name.textContent = x.rec.n;
+    name.textContent = shiftReqName(storeId, x.rec);
     line.appendChild(name);
     const when = document.createElement('span');
     when.style.cssText = 'font-size:12px;color:var(--text-sub);';
@@ -12374,7 +12392,7 @@ function shiftReqBox(storeId) {
       no.type = 'button';
       no.className = 'btn btn--small';
       no.textContent = x.rec.st === 'ok' ? '取り消す' : '断る';
-      no.addEventListener('click', () => shiftReqDeny(x.key, x.rec, true));
+      no.addEventListener('click', () => shiftReqDeny(x.key, x.rec, true, shiftReqName(storeId, x.rec)));
       line.appendChild(no);
     }
     wrap.appendChild(line);
