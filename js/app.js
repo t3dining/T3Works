@@ -12884,7 +12884,7 @@ function shiftGuideHtml(kind) {
   out.push(shiftGuideOl([
     '提出ページを開き、<b>「番号をまだ持っていない」</b>を押します',
     '<b>お店</b>（入っているお店を全部）を選び、<b>名前</b>と<b>持ち場</b>を入れて<b>「申請する」</b>',
-    'お店の人に<b>「申請しました」</b>と伝えてもらいます',
+    // ★申請したことを店長に伝えてもらう手順は、なくしました（2026-09-28、ko-dai さんの指示）
   ]));
   out.push(shiftGuideShot(
     '<div class="card" style="margin:0;max-width:360px;">'
