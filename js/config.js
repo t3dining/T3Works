@@ -6291,7 +6291,7 @@ function shiftLinkedStores(code) {
 /**
  * その人が入る店舗を決め直す
  *
- * ★入れる店舗には**同じ番号**で足し（名前はいま押している店の名前）、外す店舗からは消します。
+ * ★入れる店舗には**同じ番号**で足し（名前は渡された名前。「他店舗にも所属」では、足す店ごとに聞いた名前）、外す店舗からは消します。
  * ★★**名前は店ごとです**（2026-09-24、ko-dai さんの指示「店舗間で変更が連動せず」）。
  *   もう入っている店の名前は**書き換えません**。前は「名前だけそろえます」で、よその店の名前を上書きしていました。
  * ★もとの店舗は必ず残します（そこから押しているので、外せてしまうと
@@ -6354,8 +6354,14 @@ function shiftLinkNameClash(storeId, name, code) {
 /**
  * 「他店舗にも所属」で1店舗を足す／外す（ワークス・マイン・マネージで同じもの）
  *
- * ★足す先に同じ名前の別の番号の人がいたら、ここで聞きます。
+ * ★★足すときは、**その店の名簿に入れる名前を聞きます**（2026-09-28、ko-dai さんの指示
+ *   「他店舗にも所属を押したときや、複数店舗で申請をしても、表示する名前は店舗ごとに決めれるように」）。
+ *   はじめは、いま押している店の名前が入っています。そのまま「OK」なら今までどおりです。
+ *   前は押した店の名前で入り、向こうの店で「名前を直す」を押さないと変えられませんでした。
+ * ★足す先に同じ名前の別の番号の人がいたら、ここで聞きます（聞いた名前で見ます）。
  *   同じ人なら1人にまとめ、別の人なら足しません（名前を変えてからもう一度）。
+ * ★名前の決まりは「名前を直す」（shiftRename）と同じです：空はだめ・20文字まで・「テスト」を足したり外したりしない。
+ * ★外すときは聞きません。
  * ★返り値：変えたら true、やめたら false
  */
 function shiftToggleLinked(fromStore, person, storeId) {
@@ -6363,23 +6369,40 @@ function shiftToggleLinked(fromStore, person, storeId) {
   const 外す = いま.has(storeId);
   const next = new Set(いま);
   let まとめる = [];
+  let 名前 = person.n;
   if (外す) {
     next.delete(storeId);
   } else {
-    const clash = shiftLinkNameClash(storeId, person.n, person.c);
+    const 店 = getStore(storeId) || {};
+    const 答え = window.prompt(`${店.name || storeId}の名簿に入れる名前を決めてください（名前は店ごとです）。\n`
+      + `そのままでよければ「OK」を押してください。`, person.n);
+    if (答え === null || 答え === undefined) return false;   // やめた
+    名前 = String(答え).replace(/\s+/g, ' ').trim();
+    if (!名前) {
+      window.alert('名前を入れてください');
+      return false;
+    }
+    if (Array.from(名前).length > 20) {
+      window.alert('名前は20文字までにしてください');
+      return false;
+    }
+    if (isShiftTester(名前) !== isShiftTester(person.n)) {
+      window.alert('名前に「テスト」を足したり外したりはできません（見本の人かどうかが変わるため）');
+      return false;
+    }
+    const clash = shiftLinkNameClash(storeId, 名前, person.c);
     if (clash) {
-      const 店 = getStore(storeId) || {};
-      const ok = window.confirm(`${店.name || storeId}の名簿に、同じ名前の「${person.n}」さんがもういます。\n\n`
+      const ok = window.confirm(`${店.name || storeId}の名簿に、同じ名前の「${名前}」さんがもういます。\n\n`
         + `同じ人なら「OK」を押してください。1人にまとめます。\n`
         + `★${店.name || storeId}で配っていた番号は使えなくなり、この人の番号に変わります。\n\n`
-        + `別の人なら「キャンセル」を押して、どちらかの名前を変えてから`
-        + `（例：${person.n}（${店.short || ''}））選び直してください。`);
+        + `別の人なら「キャンセル」を押して、名前を変えてから`
+        + `（例：${名前}（${店.short || ''}））選び直してください。`);
       if (!ok) return false;
       まとめる = [storeId];
     }
     next.add(storeId);
   }
-  shiftSetLinked(fromStore, person.n, person.c, [...next], まとめる);
+  shiftSetLinked(fromStore, 名前, person.c, [...next], まとめる);
   return true;
 }
 

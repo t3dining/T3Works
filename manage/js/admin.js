@@ -1903,7 +1903,8 @@ function shiftRenameBox(storeId, person) {
 /**
  * その人が入る店舗を選ぶところ
  *
- * ★選ぶと、その店舗の名簿にも**同じ番号**で入ります（名前はこの店の名前。向こうで「名前を直す」で直せます）。
+ * ★選ぶと、その店舗の名簿にも**同じ番号**で入ります。**その店での名前を聞きます**（はじめはこの店の名前。
+ *   2026-09-28、ko-dai さんの指示で、店ごとに決められるようにしました → shiftToggleLinked。js/config.js）。
  *   なので**向こうの店舗から見ても、このボタンが押された状態**になり、
  *   同じ人を二重に登録する手間が消えます。
  */
@@ -1914,7 +1915,7 @@ function shiftLinkPicker(storeId, person) {
   const cap = document.createElement('p');
   cap.className = 'admin-note';
   cap.textContent = `${person.n} さんが入っている店舗を選んでください`
-    + '（選ぶと、向こうの名簿にも同じ番号で入ります。名前は店ごとに「名前を直す」で直せます）';
+    + '（選ぶと、向こうの名簿にも同じ番号で入ります。その店での名前を聞くので、名前は店ごとに決められます）';
   wrap.appendChild(cap);
 
   const いま = new Set(shiftLinkedStores(person.c));
