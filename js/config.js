@@ -4448,6 +4448,51 @@ function journal読み直しの頼み(storeId) {
 const JOURNAL_大将LINEの店 = ['baguru'];
 
 /* ------------------------------------------------------------
+ *  レジ金の過不足（ジャーナル。ko-dai さんの指示・2026-10-01）
+ *
+ *  「レジ金の過不足が出たときに入力する欄」。「ジャーナルの5つを日報に書く」の上に「◯◯円 多い／不足」。
+ *  ★**アプリに残すだけ**で、日報には書きません（ko-dai さんの決め・2026-10-01）。
+ *  ★その月の一覧と1週間の一覧にも出します（同じく ko-dai さんの決め）。
+ *  ★置き場はその日の記録（<店舗>/<日付>）の項目 __cashKabusoku。値は { 円, 向き: '多い' | '不足' }、過不足がなければ null。
+ *    現金売上の記録（__cash）・書きかけ（__cashHand）とは分けます。「記録する」で固まらず、いつでも直せます。
+ * ---------------------------------------------------------- */
+const CASH_KABUSOKU = '__cashKabusoku';
+const JOURNAL_過不足の向き = ['多い', '不足'];
+
+/** その日の過不足（{ 円, 向き }）。なければ null */
+function journal過不足(storeId, dateStr) {
+  const rec = Store.getDay(storeId, dateStr);
+  const v = rec && rec.items && rec.items[CASH_KABUSOKU] ? rec.items[CASH_KABUSOKU].value : null;
+  if (!v || typeof v !== 'object') return null;
+  const 円 = Number(v.円);
+  if (!Number.isFinite(円) || 円 <= 0 || JOURNAL_過不足の向き.indexOf(v.向き) < 0) return null;
+  return { 円: Math.round(円), 向き: v.向き };
+}
+
+/**
+ * 打った欄と、選んだ向きから、残す値を決めます
+ *   返り … { 値: { 円, 向き } | null } か、残せなければ { なぜ }
+ *   ★空・0円は「過不足なし」（null）。★向きを選んでいなければ残しません（まちがった向きで残すくらいなら残さない）
+ *   ★計算式（=1000+200）も読みます（他の欄と同じテンキーで打つため）。マイナスは入れず「不足」を選んでもらいます
+ */
+function journal過不足を読む(打った, 向き) {
+  const 文 = String(打った === null || 打った === undefined ? '' : 打った).trim();
+  if (文 === '') return { 値: null };
+  const n = cashMinusNum(toHalfWidthNumber(文));
+  if (n === null) return { なぜ: '数字で入れてください' };
+  if (n < 0) return { なぜ: 'マイナスではなく、「不足」を選んでください' };
+  const 円 = Math.round(n);
+  if (円 === 0) return { 値: null };
+  if (JOURNAL_過不足の向き.indexOf(向き) < 0) return { なぜ: '「多い」か「不足」かを選んでください' };
+  return { 値: { 円, 向き } };
+}
+
+/** 一覧などに出す文（'◯,◯◯◯円多い'）。なければ '' */
+function journal過不足の文(v) {
+  return v ? `${v.円.toLocaleString('ja-JP')}円${v.向き}` : '';
+}
+
+/* ------------------------------------------------------------
  *  4-5) アルバイトの教育（教育マニュアル）
  *
  *  店舗ごとに、教える項目を大きなくくり（大カテゴリー）に分けて並べます。
@@ -5066,7 +5111,11 @@ const MEETING_STORE = '_meeting';
  *   置いたままだと、外した瞬間に会議資料の画面が例外で落ちます。
  */
 const MEETING_FIELDS = ['inc', 'ex', 'guests', 'cost', 'labor', 'katch', 'katchPeople',
-  'gas', 'water', 'power', 'gasUse', 'waterUse', 'powerUse'];
+  'gas', 'water', 'power', 'gasUse', 'waterUse', 'powerUse',
+  // ★電気使用量の「下」（2026-10-01）。スプレッドシートは電気使用量だけ1店舗に上下2つ入ります。
+  //   **必ず一番うしろに足すこと。**`js/meeting-data.js` は並びの番号で数字を持っているので、
+  //   途中に入れると、それより後ろの項目が全部1つずつずれます
+  'powerUse2'];
 
 /** 取り込んだ議事メモを、その月分は記録として書き写しずみ、という印 */
 const MEETING_SEED_KEY = 'seeded';
@@ -7437,18 +7486,26 @@ const NIPPOU_FIELDS = ['inc', 'ex', 'guests', 'cost', 'labor'];
  *
  *   key  … 金額の入れ先
  *   use  … 使用量の入れ先
+ *   use2 … 使用量の2つめ（上下に2つ入れる項目だけ）。入れる画面では同じ枠の下に、
+ *          会議の表では「（上）」「（下）」の2行に分かれ、シートへは店舗の**下の行**に書きます
  *   unit … 使用量の単位。★検針票と違っていたら、ここだけ直してください
  *          （入れる画面にも、会議の表にも同じものが出ます）
+ *
+ * ★電気だけ use2 があります（2026-10-01、ko-dai さんの指示）。
+ *   スプレッドシート「2026_売上比率_会議」は、電気使用量だけ1店舗に**上下2つ**の数が入ります
+ *   （他の項目は、下の行が「率」です）。他の項目にも要るようになったら、
+ *   ここに use2 を足せば、入れる画面・会議の表・シートへ書く所が付いてきます
+ *   （シートへ書く所は `gas/会議資料に書く.gs` の COLS にも1行ずつ足してください）
  */
 const MEETING_UTIL_ROWS = [
   { key: 'gas',   name: 'ガス', use: 'gasUse',   unit: '㎥' },
   { key: 'water', name: '水道', use: 'waterUse', unit: '㎥' },
-  { key: 'power', name: '電気', use: 'powerUse', unit: 'kWh' },
+  { key: 'power', name: '電気', use: 'powerUse', use2: 'powerUse2', unit: 'kWh' },
 ];
 
-/** 手で入れる項目（金額と使用量の両方） */
+/** 手で入れる項目（金額と使用量の両方。use2 がある項目は、その2つめも） */
 const MEETING_UTIL_FIELDS = MEETING_UTIL_ROWS
-  .reduce((a, r) => a.concat([r.key, r.use]), []);
+  .reduce((a, r) => a.concat([r.key, r.use], r.use2 ? [r.use2] : []), []);
 
 /** 年と月を YYYYMM の数にします */
 function nippouYm(y, m) {

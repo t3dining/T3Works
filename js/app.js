@@ -2338,10 +2338,141 @@ function renderCash() {
   }
 
   renderNippouBox(done);
+  renderKabusoku();          // ★レジ金の過不足（「ジャーナルの5つを日報に書く」の上。アプリに残すだけ）
   renderTaishoLine();        // ★大将へのLINEをコピー（バグるだけ。「記録する」と「この月の現金売上」の間）
   renderCashList();
   renderCashWeek();
   日報の待ちを出す();        // ★預けた日報の書き込みが途中なら、知らせます（J2）
+}
+
+/* ------------------------------------------------------------
+ *  レジ金の過不足（ko-dai さんの指示・2026-10-01）
+ *
+ *  「レジ金の過不足が出たときに入力する欄を作成してください。5つを日報に書くボタンの上に
+ *    〇〇円多い/不足（多いか不足かボタンで選択する）」
+ *  ★**アプリに残すだけ**です。日報には書きません（ko-dai さんの決め）。その月と1週間の一覧にも出します。
+ *  ★置き場・読み方は js/config.js（CASH_KABUSOKU・journal過不足・journal過不足を読む）。
+ *  ★欄は日報の箱（cashNippouBox）の中、「ジャーナルの5つを日報に書く」の上に1回だけ作って差し込みます
+ *    （index.html は本部のファイル）。合計が合わないときの赤い札（#cashNippouStop）よりも上です。
+ *  ★「記録する」で固めません。過不足はあとから分かることもあるので、いつでも直せます。
+ *  ★打っているあいだは、少し待ってから残します（打った**そのとき**の店舗・日・中身を控えます。cashHandSave と同じ考え）。
+ *    向きを選んでいないなど、残せないときは残さずに赤い字でわけを出します（前に残した数はそのまま）。
+ * ---------------------------------------------------------- */
+const 過不足の編集 = { key: '', 文: '', 向き: '', 元: null };
+let 過不足のタイマー = null;
+
+/** 打っている中身を、その日の記録に残します（残せなければ何もしません） */
+function journal過不足を残す(storeId, dateStr, 文, 向き) {
+  const 読み = journal過不足を読む(文, 向き);
+  if (読み.なぜ) return false;
+  const 今 = journal過不足(storeId, dateStr);
+  if (JSON.stringify(今) === JSON.stringify(読み.値)) return true;   // 同じなら書きません（同期を増やさない）
+  Store.setItem(storeId, dateStr, CASH_KABUSOKU, { value: 読み.値 });
+  return true;
+}
+
+function 過不足を残す(now) {
+  // ★打ったそのときの店舗・日・中身を控えます（待つあいだに別の日を開いても、よその日に入れない）
+  const storeId = state.storeId;
+  const dateStr = ymd(state.y, state.m, state.d);
+  const 文 = 過不足の編集.文;
+  const 向き = 過不足の編集.向き;
+  const put = () => {
+    過不足のタイマー = null;
+    if (journal過不足を残す(storeId, dateStr, 文, 向き) && `${storeId}/${dateStr}` === 過不足の編集.key) {
+      過不足の編集.元 = journal過不足(storeId, dateStr);
+    }
+    if (state.storeId === storeId && ymd(state.y, state.m, state.d) === dateStr) {
+      renderKabusoku();
+      renderCashList();
+      renderCashWeek();
+    }
+  };
+  if (過不足のタイマー) clearTimeout(過不足のタイマー);
+  if (now) put();
+  else 過不足のタイマー = setTimeout(put, 700);
+}
+
+function renderKabusoku() {
+  if (!el.cashToNippou || !el.cashToNippou.parentNode) return;
+  if (!el.cashKabusoku) {
+    const box = document.createElement('div');
+    box.id = 'cashKabusoku';
+    box.style.cssText = 'margin:14px 0 12px;padding-top:12px;border-top:1px solid var(--line-2)';
+    box.innerHTML = `
+      <label for="cashKabusokuYen" style="display:block;margin:0 0 8px;font-size:13.5px;font-weight:700">レジ金の過不足</label>
+      <div style="display:flex;align-items:center;gap:6px">
+        <input type="text" inputmode="numeric" autocomplete="off" id="cashKabusokuYen" class="cash-line__input"
+               style="flex:1 1 auto;width:auto;min-width:0;font-size:18px" placeholder="0">
+        <span class="cash-line__unit">円</span>
+        ${JOURNAL_過不足の向き.map((向き) => `<button type="button" class="btn" data-kabusoku="${向き}" aria-pressed="false"
+               style="min-height:44px;padding:8px 14px;font-weight:800">${向き}</button>`).join('')}
+      </div>
+      <p data-kabusoku-note style="margin:7px 0 0;font-size:12px;line-height:1.5;color:var(--text-sub)"></p>`;
+    const input = box.querySelector('input');
+    input.addEventListener('input', () => {
+      過不足の編集.文 = input.value;
+      過不足を残す(false);
+      renderKabusoku();
+    });
+    // 欄から離れたら、待たずにその場で残します
+    input.addEventListener('blur', () => { 過不足の編集.文 = input.value; 過不足を残す(true); });
+    calcPadBind(input);       // ★自前のテンキーを出します（すぐ上の出前館などの欄と同じ）
+    box.addEventListener('click', (e) => {
+      const b = e.target && e.target.closest ? e.target.closest('[data-kabusoku]') : null;
+      if (!b) return;
+      過不足の編集.文 = input.value;
+      過不足の編集.向き = b.dataset.kabusoku;
+      過不足を残す(true);
+    });
+    el.cashKabusoku = box;
+  }
+  // ★「ジャーナルの5つを日報に書く」の上。赤い札（合計が合わない）があれば、その上に置きます
+  const 次 = document.getElementById('cashNippouStop') || el.cashToNippou;
+  if (el.cashKabusoku.nextElementSibling !== 次 && 次.parentNode) 次.parentNode.insertBefore(el.cashKabusoku, 次);
+
+  const storeId = state.storeId;
+  const dateStr = ymd(state.y, state.m, state.d);
+  const key = `${storeId}/${dateStr}`;
+  const 今 = journal過不足(storeId, dateStr);
+  const input = el.cashKabusoku.querySelector('input');
+  const 打っている = (typeof cashTyping === 'function' && cashTyping(input)) || document.activeElement === input;
+  /* ★日を移ったとき・よその端末で直されたとき（打っていなければ）は、残っている中身を出し直します */
+  if (過不足の編集.key !== key
+      || (!打っている && JSON.stringify(今) !== JSON.stringify(過不足の編集.元))) {
+    過不足の編集.key = key;
+    過不足の編集.文 = 今 ? String(今.円) : '';
+    過不足の編集.向き = 今 ? 今.向き : '';
+    過不足の編集.元 = 今;
+    input.value = 過不足の編集.文;
+  }
+  el.cashKabusoku.querySelectorAll('[data-kabusoku]').forEach((b) => {
+    const on = b.dataset.kabusoku === 過不足の編集.向き;
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.style.background = on ? 'var(--store, var(--accent))' : '';
+    b.style.borderColor = on ? 'var(--store, var(--accent))' : '';
+    b.style.color = on ? '#fff' : '';
+  });
+  const 読み = journal過不足を読む(過不足の編集.文, 過不足の編集.向き);
+  const 注 = el.cashKabusoku.querySelector('[data-kabusoku-note]');
+  if (読み.なぜ) {
+    注.style.color = 'var(--ng)';
+    注.textContent = `★${読み.なぜ}（まだ残していません${今 ? `。いま残っているのは「${journal過不足の文(今)}」` : ''}）`;
+  } else if (今) {
+    注.style.color = 'var(--text-sub)';
+    注.textContent = `「${journal過不足の文(今)}」として残しています（日報には書きません）`;
+  } else {
+    注.style.color = 'var(--text-sub)';
+    注.textContent = '過不足が出た日だけ入れてください（アプリに残すだけで、日報には書きません）';
+  }
+}
+
+/** 一覧の金額の下に出す「◯◯円多い／不足」（なければ ''） */
+function journal過不足の印(v) {
+  if (!v) return '';
+  const 色 = v.向き === '不足' ? 'is-ng' : '';
+  const 多い色 = v.向き === '多い' ? ';color:color-mix(in srgb, var(--accent) 85%, var(--text));font-weight:700' : '';
+  return `<span class="cash-item__mark ${色}" style="display:block;font-size:11.5px;line-height:1.3${多い色}">${journal過不足の文(v)}</span>`;
 }
 
 /* ------------------------------------------------------------
@@ -6824,7 +6955,7 @@ function renderCashWeek() {
       + `<span class="cash-day__dow">${DOW[dow]}</span>`
       + `<span class="cash-day__yen">${
         cash ? `${cashText(cash.sales)}円` : shut ? '定休日' : dateStr > todayStr ? '' : 'まだ'
-      }</span>`
+      }${journal過不足の印(journal過不足(state.storeId, dateStr))}</span>`
       + (cash && cash.photo ? '<span class="cash-day__photo">📷</span>' : '<span class="cash-day__photo"></span>');
     row.addEventListener('click', () => {
       state.y = y; state.m = m; state.d = d;
@@ -6884,7 +7015,7 @@ function renderCashList() {
     row.className = 'cash-item';
     row.innerHTML =
       `<span class="cash-item__date">${state.m}/${d}（${DOW[new Date(state.y, state.m - 1, d).getDay()]}）</span>`
-      + `<span class="cash-item__yen">${cashText(cash.sales)}円</span>`
+      + `<span class="cash-item__yen">${cashText(cash.sales)}円${journal過不足の印(journal過不足(state.storeId, dateStr))}</span>`
       + (cash.photo ? '<span class="cash-item__photo">📷</span>' : '<span class="cash-item__photo"></span>');
     row.addEventListener('click', () => {
       state.d = d;
@@ -8955,12 +9086,16 @@ const MEETING_MODES = {
   // 光熱費も、もとのシートと同じように金額と率の両方を出します。
   // ★その下に使用量を1行ずつ足しています。金額だけだと、値上がりで増えたのか
   //   使いすぎで増えたのかが分かりません。使用量が並んでいれば見分けられます
+  // ★使用量を上下2つ持つ項目（いまは電気だけ）は、シートと同じく「（上）」「（下）」の2行にします
   util: MEETING_UTIL_ROWS.reduce((rows, u) => rows.concat([
     { label: u.name, mainKind: 'yen', subKind: 'pct', goodWhen: 'down', big: true,
       main: (v) => v[u.key], sub: (v) => (v.ex ? v[u.key] / v.ex : null) },
-    { label: `${u.name} 使用量`, mainKind: 'num', unit: u.unit, goodWhen: 'down',
+    { label: `${u.name} 使用量${u.use2 ? '（上）' : ''}`, mainKind: 'num', unit: u.unit, goodWhen: 'down',
       main: (v) => v[u.use] },
-  ]), []).concat([
+  ], u.use2 ? [
+    { label: `${u.name} 使用量（下）`, mainKind: 'num', unit: u.unit, goodWhen: 'down',
+      main: (v) => v[u.use2] },
+  ] : []), []).concat([
     { label: '光熱費 合計', mainKind: 'yen', subKind: 'pct', goodWhen: 'down', big: true,
       main: (v) => (v.gas + v.water + v.power) || null,
       sub: (v) => (v.ex ? (v.gas + v.water + v.power) / v.ex : null) },
@@ -9703,18 +9838,30 @@ function fillUtilForm() {
     tr.appendChild(name);
 
     // ガス・水道・電気それぞれに「金額」と「使用量」の2つを並べます
+    /* ★使用量を上下2つ持つ項目（いまは電気だけ）は、同じ枠の中に入れる欄を上下に2つ置きます。
+         スプレッドシートの並びと同じです。入れる欄は幅いっぱい（`.util-input` の width: 100%）なので、
+         同じ枠に入れると自然に上下に並びます。見出しの列（`index.html`）は増やしません */
+    const 欄を作る = (sid, f, hint, 使用量か) => {
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.inputMode = 'numeric';
+      input.className = 'util-input' + (使用量か ? ' util-input--use' : '');
+      input.dataset.store = sid;
+      input.dataset.field = f;
+      input.value = vals[sid][f] || '';
+      input.placeholder = hint;
+      return input;
+    };
     MEETING_UTIL_ROWS.forEach((u) => {
       [{ f: u.key, hint: '円' }, { f: u.use, hint: u.unit }].forEach((box) => {
         const td = document.createElement('td');
-        const input = document.createElement('input');
-        input.type = 'number';
-        input.inputMode = 'numeric';
-        input.className = 'util-input' + (box.f === u.use ? ' util-input--use' : '');
-        input.dataset.store = s.id;
-        input.dataset.field = box.f;
-        input.value = vals[s.id][box.f] || '';
-        input.placeholder = box.hint;
-        td.appendChild(input);
+        const 使用量か = box.f === u.use;
+        td.appendChild(欄を作る(s.id, box.f, u.use2 && 使用量か ? `上 ${u.unit}` : box.hint, 使用量か));
+        if (u.use2 && 使用量か) {
+          const 下 = 欄を作る(s.id, u.use2, `下 ${u.unit}`, true);
+          下.style.marginTop = '6px';   // 上の欄とくっつかないように
+          td.appendChild(下);
+        }
         tr.appendChild(td);
       });
     });
