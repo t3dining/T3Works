@@ -2338,9 +2338,125 @@ function renderCash() {
   }
 
   renderNippouBox(done);
+  renderTaishoLine();        // ★大将へのLINEをコピー（バグるだけ。「記録する」と「この月の現金売上」の間）
   renderCashList();
   renderCashWeek();
   日報の待ちを出す();        // ★預けた日報の書き込みが途中なら、知らせます（J2）
+}
+
+/* ------------------------------------------------------------
+ *  大将へのLINEをコピー（ko-dai さんの指示・2026-10-01）
+ *
+ *  「バグるのみ、その日の現金売上を記録するボタンと、その月の現金売上の一覧の間に、
+ *    大将へのLINEをコピーというボタンを作成してください」
+ *    お疲れ様です！
+ *    バグる終わりました！
+ *    〇〇.◯万円でした！
+ *  ★金額は**その日の税抜売上**を、千の位まで出します（ko-dai さんの例：6けたの ◯◯◯,◯◯◯円 → ◯◯.◯万円）。
+ *    **四捨五入ではなく切り捨て**です（ko-dai さんの例は、百の位が5以上で、四捨五入すると小数1けためが1つ上がり、例と合いません）。
+ *    小数は1けたで、ちょうどでも「13.0」と出します。
+ *  ★税抜売上は、率の下の売上の表の「当日」と同じ数です（journal率の1日。打ちかけ・手で直した数も入ります）。
+ *    まだ分からない日は、ボタンを押せないようにして、わけを出します（0万円と写さない）。
+ *  ★出す店舗は js/config.js の JOURNAL_大将LINEの店。index.html は本部のファイルなので、ここで作って差し込みます。
+ *  ★写す文は**押したときに**作り直します（表示のあとで数が直っていても、写すのは押したときの数）。
+ * ---------------------------------------------------------- */
+/** 税抜売上 → 「◯◯.◯」（千の位まで・切り捨て）。分からなければ null */
+function journal大将の万円(税抜) {
+  // ★数でなければ（null・空の文字など）分からないとします。Number('') は 0 なので、0万円と写してしまいます
+  if (typeof 税抜 !== 'number' || !Number.isFinite(税抜) || 税抜 < 0) return null;
+  const 千 = Math.floor(税抜 / 1000);     // ★割り算の小数のずれを避けるため、千円の数で切ってから組み立てます
+  return `${Math.floor(千 / 10)}.${千 % 10}`;
+}
+
+/** 写す文。分からなければ null */
+function journal大将の文(storeId, 税抜) {
+  const 万 = journal大将の万円(税抜);
+  if (万 === null) return null;
+  const 名 = (STORES.find((s) => s.id === storeId) || {}).name || storeId;
+  return `お疲れ様です！\n${名}終わりました！\n${万}万円でした！`;
+}
+
+/** 開いている日の税抜売上（売上の表の「当日」と同じ数） */
+function journal大将の税抜() {
+  return journal率の1日(state.storeId, ymd(state.y, state.m, state.d), true).税抜;
+}
+
+/** 写します（新しいやり方 → 古いやり方 → 文を出して長押しで、の3段。js/share.js の 写す() と同じ順） */
+async function journal大将を写す(文) {
+  try {
+    await navigator.clipboard.writeText(文);
+    return true;
+  } catch (e) { /* 下の古いやり方を試します */ }
+  const ta = document.createElement('textarea');
+  ta.value = 文;
+  ta.setAttribute('readonly', '');
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;font-size:16px';
+  document.body.appendChild(ta);
+  ta.select();
+  let 写せた = false;
+  try { 写せた = document.execCommand('copy'); } catch (e) { 写せた = false; }
+  ta.remove();
+  return 写せた;
+}
+
+function renderTaishoLine() {
+  const 記録の箱 = el.cashSave && el.cashSave.closest ? el.cashSave.closest('.cash-box') : null;
+  if (!記録の箱) return;
+  if (!el.cashTaisho) {
+    const box = document.createElement('div');
+    box.id = 'cashTaisho';
+    box.className = 'cash-box';
+    box.innerHTML = `
+      <button type="button" class="btn" data-taisho="copy"
+              style="width:100%;min-height:48px;font-size:16px;font-weight:800;background:#06c755;border-color:#06c755;color:#fff">大将へのLINEをコピー</button>
+      <p data-taisho="note" style="margin:8px 0 0;font-size:12.5px;color:var(--text-sub);line-height:1.5"></p>
+      <textarea data-taisho="text" readonly rows="4" class="field__input"
+                style="display:none;margin-top:8px;font-size:16px;line-height:1.6"></textarea>`;
+    box.addEventListener('click', journal大将の押した);
+    el.cashTaisho = box;
+  }
+  // ★「記録する」の箱のすぐあと（＝「この月の現金売上」の前）に置きます
+  if (el.cashTaisho.previousElementSibling !== 記録の箱) 記録の箱.insertAdjacentElement('afterend', el.cashTaisho);
+  const 出す = JOURNAL_大将LINEの店.indexOf(state.storeId) >= 0;
+  el.cashTaisho.style.display = 出す ? '' : 'none';
+  if (!出す) return;
+  const 税抜 = journal大将の税抜();
+  const 万 = journal大将の万円(税抜);
+  const b = el.cashTaisho.querySelector('[data-taisho="copy"]');
+  const 注 = el.cashTaisho.querySelector('[data-taisho="note"]');
+  const 文の欄 = el.cashTaisho.querySelector('[data-taisho="text"]');
+  // ★日を移ったら、前の日の「ここから写してください」の文を下ろします
+  if (文の欄.dataset.key !== (cashEdit.key || '')) {
+    文の欄.style.display = 'none';
+    文の欄.dataset.key = cashEdit.key || '';
+    b.textContent = '大将へのLINEをコピー';
+  }
+  b.disabled = 万 === null;
+  b.style.opacity = 万 === null ? '0.45' : '';
+  注.textContent = 万 === null
+    ? 'この日の税抜売上がまだ分かりません（ジャーナルを撮ると出ます）'
+    : `この日の税抜売上 ${Number(税抜).toLocaleString('ja-JP')}円 → 「${万}万円でした！」`;
+}
+
+async function journal大将の押した(e) {
+  const b = e.target && e.target.closest ? e.target.closest('[data-taisho="copy"]') : null;
+  if (!b || b.disabled) return;
+  const 文 = journal大将の文(state.storeId, journal大将の税抜());
+  if (!文) { renderTaishoLine(); return; }
+  const 写せた = await journal大将を写す(文);
+  const 文の欄 = el.cashTaisho.querySelector('[data-taisho="text"]');
+  if (写せた) {
+    文の欄.style.display = 'none';
+    b.textContent = 'コピーしました';
+    setTimeout(() => { b.textContent = '大将へのLINEをコピー'; }, 1800);
+    return;
+  }
+  // ★写せない端末では、文を出して選んだままにします（長押しで写せるように）。すぐには戻しません
+  文の欄.value = 文;
+  文の欄.style.display = 'block';
+  文の欄.focus();
+  文の欄.select();
+  b.textContent = '下の文を長押しでコピーしてください';
 }
 
 /* ------------------------------------------------------------
