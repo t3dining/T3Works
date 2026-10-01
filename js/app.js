@@ -9253,7 +9253,16 @@ function meetingHeldText(y, m, base) {
   return h.y === base ? `${h.m}月` : `${h.y}年${h.m}月`;
 }
 
-/** 先月の会議で決まったこと。見出しの行だけを並べます */
+/**
+ * 先月の会議で決まったこと
+ *
+ * ★2026-10-01 まで、ここは**1行目（見出し）だけ**を出していました（`split('\n')[0]`）。
+ *   長く書いた議題や、改行して何行かに分けた議題が、**翌月になると途中で切れて**見えました。
+ *   ko-dai さんの指示で、**書いたとおり全部**を、改行もそのまま出すようにしました。
+ *
+ * ★改行は `<br>` を1つずつ挟みます。中身は `textContent` で入れて、
+ *   書いた文字を HTML として読ませません（いままでと同じ守り方です）。
+ */
 function renderMeetingLast() {
   const d = new Date(state.y, state.m - 2, 1);
   const y = d.getFullYear(), m = d.getMonth() + 1;
@@ -9271,7 +9280,11 @@ function renderMeetingLast() {
     li.className = 'meeting-last__item';
     li.innerHTML = '<span class="meeting-last__no"></span><span class="meeting-last__text"></span>';
     li.querySelector('.meeting-last__no').textContent = i + 1;
-    li.querySelector('.meeting-last__text').textContent = (note.text || '').split('\n')[0];
+    const 文 = li.querySelector('.meeting-last__text');
+    (note.text || '').split('\n').forEach((行, k) => {
+      if (k) 文.appendChild(document.createElement('br'));
+      文.appendChild(document.createTextNode(行));
+    });
     el.meetingLastList.appendChild(li);
   });
 }
@@ -9838,6 +9851,12 @@ function meetingNoteRow(note, i) {
   const box = document.createElement('textarea');
   box.className = 'meeting-note__text';
   box.rows = 1;
+  /* ★中央にそろえます（2026-10-01、ko-dai さんの指示）。
+       見た目の決まりは本来 `css/style.css`（本部の持ちもの）に書くものですが、
+       この枠はここで作っていて、高さもここ（`growNoteBox`）で決めています。
+       同じやり方で揃え方だけ決めれば、共通のファイルに触らずに済み、
+       よその画面にも響きません。本部が CSS へ移すときは、この1行を消してください */
+  box.style.textAlign = 'center';
   box.value = note ? note.text : '';
   box.dataset.id = note ? note.id : '';
   box.dataset.seq = note ? note.seq : '';
