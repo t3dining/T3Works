@@ -2090,7 +2090,10 @@ function cashWroteSave(dateStr, values, extra) {
   const 次 = cashWrote足す(cashWroteOf(state.storeId, dateStr), values, extra);
   const 手 = cashHandOf(state.storeId, dateStr);
   Store.setItem(state.storeId, dateStr, CASH_HAND, {
-    value: { ...手, m: cashEdit.m || {}, shiire: cashEdit.shiire || {}, jinken: cashEdit.jinken || {}, j手: cashEdit.手 || {}, wrote: 次 },
+    value: {
+      ...手, m: cashEdit.m || {}, shiire: cashEdit.shiire || {}, jinken: cashEdit.jinken || {}, j手: cashEdit.手 || {}, wrote: 次,
+      wroteAt: new Date().toISOString(),   // ★日報に書けた時刻（journal書いた記録。日報に書く道からだけ呼ばれます）
+    },
   });
 }
 
@@ -3355,9 +3358,38 @@ function journal日報に書いていない日(storeId, y, m, d) {
   for (let i = 1; i < d; i++) {
     const dateStr = ymd(y, m, i);
     const 日報 = journal日報の日(storeId, dateStr);
-    if (日報 && !journal日報に売上がある(日報) && journal記録の売上(storeId, dateStr)) 日々.push(i);
+    if (日報 && !journal日報に売上がある(日報) && journal記録の売上(storeId, dateStr)
+        && !journal書いた記録(storeId, dateStr).読み直し前) 日々.push(i);
   }
   return 日々;
+}
+
+/**
+ * その日にアプリが日報へ書いた記録（書きかけの wrote と wroteAt）
+ *   五つ     … 「ジャーナルの5つ」の行を書いた記録がある
+ *   他だけ   … 仕入・人件費など、5つ以外だけを書いた記録がある
+ *   読み直し前 … ★5つを書いたのが、アプリが日報の日ごとの数を読んだ**あと**（2026-10-01、ko-dai さんのバグる 10/1）。
+ *                アプリは日ごとの数を6時間覚えているので、書いた直後は「書く前の 0」のままです。
+ *                日報にはちゃんと書いてあるので、「書かれていない」とは出しません
+ * ★書いた時刻は wroteAt。2026-10-01 より前に書いた日にはないので、その日の記録の更新時刻で代わりにします
+ *   （更新時刻は仕入の打ち直しなどでも動くので、少し「読み直し前」に寄ります。赤く出すより安全な向きです）
+ */
+function journal書いた記録(store, dateStr) {
+  const 手 = cashHandOf(store, dateStr);
+  const wrote = 手.wrote || {};
+  const 五つの名 = cash日報の行(store).map((r) => r.name);
+  const 名たち = Object.keys(wrote);
+  const 五つ = 名たち.some((n) => 五つの名.indexOf(n) >= 0);
+  const 他だけ = !五つ && 名たち.length > 0;
+  const hit = /^(\d{4})-(\d{2})-/.exec(String(dateStr));
+  const 覚え = hit ? NippouDays.get(store, Number(hit[1]), Number(hit[2])) : null;
+  const 読んだ = 覚え && 覚え.at ? 覚え.at : '';
+  let 読み直し前 = false;
+  if (五つ && 読んだ) {
+    const 書いた = Date.parse(手.wroteAt || (Store.getDay(store, dateStr) || {}).updatedAt || '');
+    読み直し前 = Number.isFinite(書いた) && 書いた > Date.parse(読んだ);
+  }
+  return { 五つ, 他だけ, 読み直し前, 読んだ };
 }
 
 /**
@@ -3627,13 +3659,12 @@ function journal記録の編(store, dateStr) {
  * ★どの端末で開いても分かります（押した端末にしか残らない「書けませんでした」の知らせと違い、記録から出します）
  */
 function journal書いていないわけ(store, dateStr, いまの日) {
-  const wrote = cashHandOf(store, dateStr).wrote || {};
-  const 五つ = cash日報の行(store).map((r) => r.name);
-  const 書いた名 = Object.keys(wrote);
-  if (書いた名.some((n) => 五つ.indexOf(n) >= 0)) {
+  const 記 = journal書いた記録(store, dateStr);
+  if (記.五つ) {
+    // ★読み直す前の写しのせいなら、ここには来ません（journal内わけの1日 が先に分けます）。読んだあとに書いた記録があるのに日報が 0 の日です
     return 'アプリから日報に書いた記録があります（書いたあとに日報から消えたか、別のファイルに書いた見込み）';
   }
-  const 他の記録 = 書いた名.length ? '（仕入・人件費などは書いた記録があります）' : '';
+  const 他の記録 = 記.他だけ ? '（仕入・人件費などは書いた記録があります）' : '';
   const 合 = journal支払の合計(store, いまの日 ? cashEdit : journal記録の編(store, dateStr));
   if (合.売上 === null) {
     return `アプリから日報に書いた記録はありません${他の記録}。税込売上が読めていないので、この日は日報に書けません`;
@@ -3662,9 +3693,13 @@ function journal内わけの1日(store, y, m, i, d) {
   const 違う = !!(日報の売上 && アプリ && (日報の売上.税込 !== アプリ.税込 || 日報の売上.税抜 !== アプリ.税抜));
   const 足していない = !足した && !!日報の売上;   // ★日報にはあるのに足していない（開いている日にだけ起こりえます）
   // ★日報に売上がまだ書かれていないのに、アプリの数で足した日（日報のまとめには入っていない分）
-  const 書いていない = !!(日報 && !日報の売上 && アプリ && 足した);
+  const 日報に売上なし = !!(日報 && !日報の売上 && アプリ && 足した);
+  // ★ただし、日報の日ごとの数を読んだ**あと**に日報へ書いた日は、日報には書いてあります（読み直す前の写しが 0 なだけ）
+  const 記 = 日報に売上なし ? journal書いた記録(store, dateStr) : null;
+  const 読み直し前 = !!(記 && 記.読み直し前);
+  const 書いていない = 日報に売上なし && !読み直し前;
   const わけ = 書いていない ? journal書いていないわけ(store, dateStr, いまの日) : '';
-  return { i, 使った, 日報: 日報の売上, アプリ, 足した, どこ, 違う, 足していない, 書いていない, わけ };
+  return { i, 使った, 日報: 日報の売上, アプリ, 足した, どこ, 違う, 足していない, 書いていない, わけ, 読み直し前, 読んだ: 記 ? 記.読んだ : '' };
 }
 
 function journal日ごとの内わけ(store, y, m, d) {
@@ -3697,6 +3732,12 @@ function journal日ごとの内わけ(store, y, m, d) {
     if (r.違う) {
       行.push(`<tr><td colspan="4" style="${枠};font-size:11.5px;color:var(--ng)">`
         + `日報 ${円(r.日報.税込)}／${円(r.日報.税抜)}　アプリ ${円(r.アプリ.税込)}／${円(r.アプリ.税抜)}（どちらかが直されています）</td></tr>`);
+    }
+    if (r.読み直し前) {
+      const t = r.読んだ ? new Date(r.読んだ) : null;
+      const いつ = t && !Number.isNaN(t.getTime()) ? `${t.getMonth() + 1}/${t.getDate()} ${t.getHours()}:${pad2(t.getMinutes())}` : '';
+      行.push(`<tr><td colspan="4" style="${枠};font-size:11.5px;color:var(--text-sub)">`
+        + `日報には書いてあります（アプリが覚えている日報の数は${いつ ? ` ${いつ} に読んだもので、` : ''}書く前のものです。「日報から読み直す」で日報の数になります）</td></tr>`);
     }
     if (r.書いていない) {
       行.push(`<tr><td colspan="4" style="${枠};font-size:11.5px;color:var(--ng)">`
@@ -5884,7 +5925,10 @@ function 日報の待ちを出す() {
  */
 function 日報に書いた値を残す(店, dateStr, values, extra) {
   const 手 = cashHandOf(店, dateStr);
-  Store.setItem(店, dateStr, CASH_HAND, { value: { ...手, wrote: cashWrote足す(手.wrote, values, extra) } });
+  // ★wroteAt … 日報に書けた時刻（2026-10-01）。日報の日ごとの数を「書く前に読んだ」のかを見分けるため（journal書いた記録）
+  Store.setItem(店, dateStr, CASH_HAND, {
+    value: { ...手, wrote: cashWrote足す(手.wrote, values, extra), wroteAt: new Date().toISOString() },
+  });
 }
 
 async function nippouSendNow(values, dateStr, test, folder, extra, calc) {
