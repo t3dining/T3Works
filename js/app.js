@@ -16172,7 +16172,20 @@ async function handOut(file, name) {
 /** さっき取りに行った「店舗/日付」。同じ日で何度も取りに行かないための目印 */
 let lastDayPulled = '';
 
+/**
+ * 描き直しても、見ている行を動かしません（2026-10-01、ko-dai さんの指示。js/sync.js の 位置を保って）
+ *
+ * ★同期の他にも、あとから自動で描き直す所があります（ジャーナルの昨年の売上・日ごとの数の読み込み など）。
+ *   どこから呼ばれても、ここを通れば同じ守りが効きます。
+ * ★画面を選んだときの「一番上へ」は、呼んだ側が描き直しのあとで scrollTo(0, 0) します。そちらは変わりません。
+ * ★試験の中など、js/sync.js が無いときは、そのまま描きます。
+ */
 function render() {
+  if (typeof 位置を保って === 'function') 位置を保って(render中身);
+  else render中身();
+}
+
+function render中身() {
   el.appTitle.textContent = APP_NAME;
   el.appCompany.textContent = APP.company;
   renderWho();

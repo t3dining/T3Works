@@ -178,6 +178,87 @@ function 先に届いた返事(送る, 重ねるまで) {
   return 出;
 }
 
+/**
+ * 画面の中身が変わっても、いま見ている行を動かしません（2026-10-01、ko-dai さんの指示）
+ *
+ *   「どのページでもスクロールしていないのに上に動いたりしないように直してください。
+ *     自分でスクロールするとき以外はその場で止まるようにしてください」
+ *
+ * ★原因は、ページの一番上の帯（#syncWarn「まだ送れていない入力が◯件あります」）でした。
+ *   チェックを付けると出て、送り終わると消えます。帯はページの流れの中にあるので、
+ *   出ると下の中身が押し下がり、消えると**上に戻ります**（iPhone の幅では3〜4行分）。
+ *   Chrome には「見ている行を保つ」働き（scroll anchoring）があって動きませんが、
+ *   **Safari にはありません。**現場の iPhone・iPad でだけ起きていたのはそのためです。
+ *   （手元で Chrome のその働きを切って測ると、本文の行が帯の高さだけ下がり、帯が消えると上がりました）
+ * ★そこで、同じ働きをここで持ちます。変える前に「いま見ている行」の画面の上での位置を測り、
+ *   変えたあとに、ずれた分だけ送り直します。
+ *   - 一番上にいるとき（scrollY が 0）は戻しません。帯が見えるように、ふつうに押し下げます
+ *   - 描き直しで行そのものが作り直されたときは、残っている一番近い入れ物（#viewDay など）で測ります
+ *   - 隠れた入れ物では測りません（画面を移ったときは、ずれを戻しません）
+ *   - 入れ子で呼ばれたら、外側の1回だけが測ります（2回戻して行き過ぎないため）
+ * ★わざと一番上に戻すとき（画面を選んだとき）は、描き直しのあとで scrollTo(0, 0) を呼んでいます。そちらは変わりません。
+ * ★ワークス・マイン・マネージ・配達記録の4つが、この1か所を使います（帯の出し入れは、どれも Sync._notify を通ります）。
+ */
+let 位置を保っている = false;
+
+function 位置を保って(変える) {
+  if (位置を保っている || typeof document === 'undefined' || typeof window === 'undefined'
+      || !document.body || !(window.scrollY > 0) || typeof getComputedStyle !== 'function') {
+    変える();
+    return;
+  }
+  位置を保っている = true;
+  let 目印 = [];
+  let 前 = [];
+  try {
+    目印 = 見ている行の目印();
+    前 = 目印.map((e) => e.getBoundingClientRect().top);
+  } catch (e) { 目印 = []; /* 測れなくても、変える方は必ず通します */ }
+  try {
+    変える();
+  } finally {
+    位置を保っている = false;
+    try {
+      for (let i = 0; i < 目印.length; i++) {
+        const e = 目印[i];
+        if (!e.isConnected || !e.getClientRects().length) continue;   // 作り直された・隠れた
+        const ずれ = e.getBoundingClientRect().top - 前[i];
+        if (ずれ) window.scrollBy(0, ずれ);
+        break;
+      }
+    } catch (e) { /* 戻せなくても、画面の中身は正しいままです */ }
+  }
+}
+
+/**
+ * 画面の上から4割の高さにある本文の行と、その入れ物たち（近い順）
+ *
+ * ★画面の上の点を指して探す（elementFromPoint）のはやめました。上に重ねて出す窓（合言葉・電卓の板）が
+ *   開いていると、そちらをつかんでしまい、本文の行が見つからなかったためです（手元で測って分かりました）。
+ *   本文（main）の中を、上から順に「その高さを含む子」へたどります。固定の部品（fixed・sticky）は通りません。
+ */
+function 見ている行の目印() {
+  const 本文 = document.querySelector('main') || document.body;
+  const 高さ = window.innerHeight * 0.4;
+  const 列 = [本文];
+  let n = 本文;
+  for (let 深さ = 0; 深さ < 40; 深さ++) {
+    let 次 = null;
+    for (const c of n.children) {
+      const r = c.getBoundingClientRect();
+      if (r.height > 0 && r.top <= 高さ && r.bottom > 高さ) {
+        const p = getComputedStyle(c).position;
+        if (p !== 'fixed' && p !== 'sticky') 次 = c;
+        break;
+      }
+    }
+    if (!次) break;
+    列.unshift(次);
+    n = 次;
+  }
+  return 列;
+}
+
 const Sync = {
   _outboxKey: APP.storageKey + ':outbox',
   /* ★赤になった記録。**この端末の分だけ**です。
@@ -682,7 +763,8 @@ const Sync = {
       this.lastSyncAt = new Date();
       this.lastError = '';
       this._上限 = 0;
-      if (typeof render === 'function') render();
+      // ★同期のたびの描き直しでも、見ている行を動かしません（位置を保って の説明）
+      if (typeof render === 'function') 位置を保って(render);
     } catch (e) {
       /* ★どちらなのかを分けます。**2026-09-13 まで分けていませんでした。**
            電波が無いときも、サーバーが返事をしないときも、同じ赤・同じ文だったので、
@@ -1168,7 +1250,8 @@ const Sync = {
   },
 
   _notify() {
-    if (typeof this.onChange === 'function') this.onChange();
+    // ★帯の出し入れで、見ている行が動かないように（位置を保って の説明）
+    if (typeof this.onChange === 'function') 位置を保って(() => this.onChange());
   },
 
   /* -------- 起動 -------- */
