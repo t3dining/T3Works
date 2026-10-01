@@ -3310,7 +3310,12 @@ function journal率の1日(storeId, dateStr, いまの日) {
     }
     return 自分;
   }
-  if (日報 && (日報.税込 !== null || 日報.税抜 !== null)) return 日報;
+  /* ★★日報の売上が 0 か空の日は「まだ日報に書いていない日」です（2026-10-01）。
+       日報の日のページは、書く前でも「当日総合計」が 0（空のマスの足し算）になります。前は 0 を「売上0円の日」として
+       そのまま足していたので、日報に書く前の日の売上が**累計から黙って抜け、札も出ませんでした**
+       （ko-dai さんの「日ごとの内わけ」の画面で、日報が「0／—」でアプリの記録に売上のある日が見つかりました）。
+       日報に売上がなければ、アプリの記録に売上があればそちらで埋めます（下）。アプリにもなければ日報のまま（0円の日・定休日） */
+  if (journal日報に売上がある(日報)) return 日報;
   const items = (Store.getDay(storeId, dateStr) || {}).items || {};
   const 手 = (items[CASH_HAND] && items[CASH_HAND].value) || {};
   const 記 = (items[CASH_ITEM] && items[CASH_ITEM].value) || null;
@@ -3319,10 +3324,40 @@ function journal率の1日(storeId, dateStr, いまの日) {
     ...journal率の売上(記 && 記.j, null, 記 && 記.h),
   };
   if (!日報) return アプリ;
-  /* ★日報のページはあるのに、売上（当日総合計・純売上）が読めない日（2026-09-26、炭まろ・ちゃこる）。
+  if (アプリ.税込 === null && アプリ.税抜 === null) return 日報;
+  /* ★日報のページはあるのに、売上（当日総合計・純売上）が読めない・まだ書いていない日（2026-09-26、炭まろ・ちゃこる）。
        GAS は原価や人件費だけ入っている日も返すので、前は日報をそのまま使い、**その日の売上が丸ごと抜けていました**
        （アプリの記録に売上があっても見ませんでした）。売上だけアプリの記録で埋めます。仕入・人件費は日報のまま */
   return { ...日報, 税込: アプリ.税込, 税抜: アプリ.税抜 };
+}
+
+/** 日報のその日に売上が書いてあるか（0 と空は「まだ書いていない」。日報は書く前でも当日総合計が 0 になるため） */
+function journal日報に売上がある(日報) {
+  if (!日報) return false;
+  const ある = (n) => n !== null && n !== undefined && n !== 0;
+  return ある(日報.税込) || ある(日報.税抜);
+}
+
+/** その日のアプリの記録の売上（過ぎた日。なければ null） */
+function journal記録の売上(storeId, dateStr) {
+  const items = (Store.getDay(storeId, dateStr) || {}).items || {};
+  const 記 = (items[CASH_ITEM] && items[CASH_ITEM].value) || null;
+  const 分 = journal率の売上(記 && 記.j, null, 記 && 記.h);
+  return (分.税込 !== null || 分.税抜 !== null) ? 分 : null;
+}
+
+/**
+ * 開いている日の**前の日**までで、日報にまだ売上が書かれていない日（アプリの記録で足している日）
+ * ★日報に書き忘れた・書けなかった日です。日報のまとめ（スプレッドシート）にはその日の売上が入っていません
+ */
+function journal日報に書いていない日(storeId, y, m, d) {
+  const 日々 = [];
+  for (let i = 1; i < d; i++) {
+    const dateStr = ymd(y, m, i);
+    const 日報 = journal日報の日(storeId, dateStr);
+    if (日報 && !journal日報に売上がある(日報) && journal記録の売上(storeId, dateStr)) 日々.push(i);
+  }
+  return 日々;
 }
 
 /**
@@ -3442,9 +3477,10 @@ function journal率の文(v) {
 function journal日ごとの札(store, y, m, d) {
   const key = `${store}/${y}-${m}`;
   const 無い = journal売上の無い日(store, y, m, d);
+  const 書いていない = journal日報に書いていない日(store, y, m, d);
   const 読んでいる = !!日ごと読んでいる[store];
   const 失敗 = 日ごとの失敗[key];
-  if (!無い.length && !読んでいる && !失敗) return '';
+  if (!無い.length && !書いていない.length && !読んでいる && !失敗) return '';
   const 覚え = NippouDays.get(store, y, m);
   const 読める = !!(Sync.enabled && Sync.enabled() && Sync.pin() && (nippouTestFor(store) || NippouFolders.get(store)));
   const 行 = [];
@@ -3457,6 +3493,10 @@ function journal日ごとの札(store, y, m, d) {
     });
     const 文 = 組.map(([a, b]) => (a === b ? `${a}` : `${a}〜${b}`)).join('・');
     行.push(`<b style="color:var(--ng)">売上の分からない日：${文}日</b>（累計に入っていません。定休日は除きます）`);
+  }
+  if (書いていない.length) {
+    // ★日報のまとめ（スプレッドシート）には入っていない日です。累計はアプリの記録で足しています（2026-10-01）
+    行.push(`<b style="color:var(--ng)">日報に売上がまだ書かれていない日：${書いていない.join('・')}日</b>（累計はアプリの記録で足しています。日報のまとめには入っていません）`);
   }
   if (読んでいる) {
     行.push('日報の日ごとの数を読んでいます…（1分ほどかかることがあります）');
@@ -3519,7 +3559,7 @@ async function journal内わけのまとめLoad(store, y, m) {
 }
 
 /** まとめの行（読む・読んでいる・読めない・差） */
-function journal内わけのまとめの文(store, y, m, 税込, 税抜) {
+function journal内わけのまとめの文(store, y, m, 税込, 税抜, 書いていない税込 = 0, 書いていない税抜 = 0) {
   const key = `${store}/${y}-${m}`;
   const ま = 内わけのまとめ[key];
   const 円 = (n) => (n === null || n === undefined ? '—' : Number(n).toLocaleString('ja-JP'));
@@ -3534,7 +3574,20 @@ function journal内わけのまとめの文(store, y, m, 税込, 税抜) {
   if (ま.なぜ) return `日報のまとめを読めませんでした（${journalEsc(ま.なぜ)}）`;
   const 差 = (a, b) => (a === null || b === null ? '' : (a === b ? '<span style="color:var(--ok)">同じ</span>'
     : `<b style="color:var(--ng)">差 ${(b - a > 0 ? '+' : '−') + Math.abs(b - a).toLocaleString('ja-JP')}</b>`));
+  /* ★日報にまだ書いていない日の分は、まとめに入っていません。差のうち、その分を分けて出します（2026-10-01）。
+       残りが 0 なら、日報に書けばまとめと合います。残りがあれば、日報とアプリのどちらかの数が違います（★の日） */
+  let 書いていない文 = '';
+  if (書いていない税込 || 書いていない税抜) {
+    const 残り = (a, b, w) => (a === null ? null : b - a - w);
+    const 残込 = 残り(ま.税込, 税込, 書いていない税込);
+    const 残抜 = 残り(ま.税抜, 税抜, 書いていない税抜);
+    const 合う = 残込 === 0 && 残抜 === 0;
+    書いていない文 = `<br>このうち、日報にまだ書いていない日の分：税込 ${円(書いていない税込)}・税抜 ${円(書いていない税抜)}`
+      + (合う ? '（<span style="color:var(--ok)">それを除けばまとめと同じ</span>）'
+        : `（それを除いた差：税込 ${円(残込)}・税抜 ${円(残抜)}）`);
+  }
   return `日報のまとめ（日報に書いてある日までの累計）：税込 ${円(ま.税込)} ${差(ま.税込, 税込)}・税抜 ${円(ま.税抜)} ${差(ま.税抜, 税抜)}`
+    + 書いていない文
     + '<br><span style="color:var(--text-weak)">差は「この内わけの合計 − まとめ」です。月の終わりの日を開いて見くらべてください</span>';
 }
 
@@ -3557,16 +3610,18 @@ function journal内わけの1日(store, y, m, i, d) {
   const いまの日 = i === d;
   const 使った = journal率の1日(store, dateStr, いまの日);
   const 日報 = journal日報の日(store, dateStr);
-  const 日報の売上 = 日報 && (日報.税込 !== null || 日報.税抜 !== null) ? 日報 : null;
+  const 日報の売上 = journal日報に売上がある(日報) ? 日報 : null;   // ★0 と空は「まだ書いていない」
   const アプリ = journal内わけのアプリ(store, dateStr, いまの日);
   const 足した = 使った.税込 !== null || 使った.税抜 !== null;
   let どこ;
   if (!足した) どこ = Closed.isClosed(store, y, m, i) ? '定休日' : '分からない';
   else if (いまの日) どこ = アプリ ? 'アプリ' : '日報';   // ★アプリに売上がなければ、日報の数を足しています（journal率の1日）
-  else どこ = 日報の売上 ? '日報' : 'アプリの記録';
+  else どこ = (日報の売上 || !アプリ) ? '日報' : 'アプリの記録';
   const 違う = !!(日報の売上 && アプリ && (日報の売上.税込 !== アプリ.税込 || 日報の売上.税抜 !== アプリ.税抜));
   const 足していない = !足した && !!日報の売上;   // ★日報にはあるのに足していない（開いている日にだけ起こりえます）
-  return { i, 使った, 日報: 日報の売上, アプリ, 足した, どこ, 違う, 足していない };
+  // ★日報に売上がまだ書かれていないのに、アプリの数で足した日（日報のまとめには入っていない分）
+  const 書いていない = !!(日報 && !日報の売上 && アプリ && 足した);
+  return { i, 使った, 日報: 日報の売上, アプリ, 足した, どこ, 違う, 足していない, 書いていない };
 }
 
 function journal日ごとの内わけ(store, y, m, d) {
@@ -3580,12 +3635,15 @@ function journal日ごとの内わけ(store, y, m, d) {
   const 数え = {};
   let 税込 = 0;
   let 税抜 = 0;
+  let 書いていない税込 = 0;
+  let 書いていない税抜 = 0;
   let 印の数 = 0;
   for (let i = 1; i <= d; i++) {
     const r = journal内わけの1日(store, y, m, i, d);
     数え[r.どこ] = (数え[r.どこ] || 0) + 1;
     if (r.足した) { 税込 += r.使った.税込 || 0; 税抜 += r.使った.税抜 || 0; }
-    const 印 = r.違う || r.足していない;
+    if (r.書いていない) { 書いていない税込 += r.使った.税込 || 0; 書いていない税抜 += r.使った.税抜 || 0; }
+    const 印 = r.違う || r.足していない || r.書いていない;
     if (印) 印の数 += 1;
     const 曜 = DOW[new Date(y, m - 1, i).getDay()];
     行.push(`<tr${印 ? ' style="background:color-mix(in srgb,var(--ng) 9%,transparent)"' : ''}>`
@@ -3597,6 +3655,10 @@ function journal日ごとの内わけ(store, y, m, d) {
       行.push(`<tr><td colspan="4" style="${枠};font-size:11.5px;color:var(--ng)">`
         + `日報 ${円(r.日報.税込)}／${円(r.日報.税抜)}　アプリ ${円(r.アプリ.税込)}／${円(r.アプリ.税抜)}（どちらかが直されています）</td></tr>`);
     }
+    if (r.書いていない) {
+      行.push(`<tr><td colspan="4" style="${枠};font-size:11.5px;color:var(--ng)">`
+        + '日報に売上がまだ書かれていません（アプリの記録で足しています。日報のまとめには入っていません）</td></tr>');
+    }
     if (r.足していない) {
       行.push(`<tr><td colspan="4" style="${枠};font-size:11.5px;color:var(--ng)">`
         + `日報には ${円(r.日報.税込)}／${円(r.日報.税抜)} があるのに、累計に足していません（アプリに売上の数がないため）</td></tr>`);
@@ -3607,7 +3669,7 @@ function journal日ごとの内わけ(store, y, m, d) {
   return `<div style="margin-top:8px;font-size:12px;line-height:1.5">`
     + `<p style="margin:0 0 4px;color:var(--text-sub)">${m}/1〜${m}/${d} に足した数（${内わけ}）`
     + `${印の数 ? `<br><b style="color:var(--ng)">★の日が ${印の数}日 あります</b>` : ''}`
-    + `<br>${journal内わけのまとめの文(store, y, m, 税込, 税抜)}</p>`
+    + `<br>${journal内わけのまとめの文(store, y, m, 税込, 税抜, 書いていない税込, 書いていない税抜)}</p>`
     + `<table style="width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums">`
     + `<tr style="color:var(--text-sub)"><th style="${枠};text-align:left;font-weight:600">日</th>`
     + `<th style="${枠};text-align:right;font-weight:600">税込</th><th style="${枠};text-align:right;font-weight:600">税抜</th>`
