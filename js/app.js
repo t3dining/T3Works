@@ -7606,9 +7606,8 @@ function renderExpense() {
       const [, m, d] = (g.d || '').split('-');
       const receipt = rowReceipt(e);
       // キャッチは、その1件の人数で名前を作り直します（例：こじゃれキャッチ 3名）
-      const label = g.isCatch
-        ? expenseLabelOf('catch', g.store, g.people)
-        : (e.label || '（項目なし）');
+      // ★消すときの確かめも同じ部品を通します（見た目と確認がずれないように）
+      const label = expenseRowName(e);
       li.innerHTML =
         `<span class="exp-row__date">${m ? `${+m}/${+d}` : '—'}</span>` +
         '<span class="exp-row__label"></span>' +
@@ -7618,13 +7617,18 @@ function renderExpense() {
       li.querySelector('.exp-row__label').textContent = label;
       /* ★何件分かは添えません。1件 ＝ 1行なので、いつも1件です */
 
-      if (g.isCatch) {
-        // キャッチは渡した相手を一覧に出さないので、明細の画面で見て直します
+      /* ★ボタンは、どの行も多くて2つまでにします（2026-10-01）。
+           `.exp-row` は名前だけが縮む作りなので、3つ並べると
+           iPhone の幅で名前が2行に折り返します。
+         ・まだ精算していない … 編集 と ×（キャッチも同じです）
+         ・精算が済んでいる   … 直せないので、キャッチだけ「明細」（見るだけ） */
+      if (g.isCatch && done) {
+        // 精算が済むと直せませんが、渡した相手は見られるようにしておきます
         const open = document.createElement('button');
         open.type = 'button';
         open.className = 'row-edit';
         open.textContent = '明細';
-        open.title = '渡した相手を見る・直す';
+        open.title = '渡した相手を見る';
         open.addEventListener('click', () => openCatchDetail(g));
         li.appendChild(open);
       } else if (!done) {
@@ -7675,9 +7679,26 @@ async function togglePaid(p) {
   renderSyncStatus();
 }
 
+/**
+ * 画面に出ている行の名前（消すときの確かめに使います）
+ *
+ * ★一覧は `expenseLabelOf` で名前を作り直しています（取り込んだ記録は
+ *   表に書いてあった文字がそのまま `label` に入っていて、形が違うためです）。
+ *   **確認の画面と、押した行の見た目は、同じでないと困ります。**
+ */
+function expenseRowName(e) {
+  return e.kind === 'catch'
+    ? expenseLabelOf('catch', e.store, Number(e.people) || 0)
+    : (e.label || '（項目なし）');
+}
+
 async function removeExpense(e) {
+  /* ★キャッチは渡した相手も添えます。同じ日・同じ店舗・同じ人数・同じ金額が
+     2件あると、相手が無いと**どちらを消すのか見分けられません。**
+     戻せない操作なので、ここは見分けが付くようにしておきます */
+  const 相手 = (e.kind === 'catch' && (e.who || '').trim()) ? `　→ ${e.who.trim()}` : '';
   const ok = await askConfirm({
-    item: `${e.label}　${yenText(e.yen)}`,
+    item: `${expenseRowName(e)}${相手}　${yenText(e.yen)}`,
     message: 'この1件を消します。よろしいですか？',
     okLabel: '消す',
     danger: true,
