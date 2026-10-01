@@ -3604,6 +3604,48 @@ function journal内わけのアプリ(store, dateStr, いまの日) {
   return (分.税込 !== null || 分.税抜 !== null) ? 分 : null;
 }
 
+/**
+ * 過ぎた日の中身を、記録から開いている日と同じ形（cashEdit の j・sure・手・m）に組み立てます
+ * ★renderCash がその日を開いたときと同じ決まりです（書きかけがあればそちら。読めた欄は確かとみなす）
+ */
+function journal記録の編(store, dateStr) {
+  const saved = cashOf(store, dateStr);
+  const 書きかけ = cashHandOf(store, dateStr);
+  const j = saved && saved.j ? saved.j : null;
+  return {
+    j: j ? { ...j } : {},
+    sure: j ? Object.keys(j).reduce((o, k) => { o[k] = true; return o; }, {}) : {},
+    手: 書きかけ.j手 !== undefined ? { ...書きかけ.j手 } : { ...((saved && saved.h) || {}) },
+    m: (書きかけ.m && Object.keys(書きかけ.m).length) ? { ...書きかけ.m } : { ...((saved && saved.m) || {}) },
+  };
+}
+
+/**
+ * 日報に売上がまだ書かれていない日の「わけ」（ko-dai さん・2026-10-01「書き忘れかどうか見分ける方法はありますか」）
+ *   ① アプリが日報に書けたときは、その日の記録（書きかけ）に「書いた数」（wrote）を残しています（全部の端末に届きます）
+ *   ② 支払いの合計が税込売上と合わない日は、赤い札が出て「ジャーナルの5つを日報に書く」が押せません
+ * ★どの端末で開いても分かります（押した端末にしか残らない「書けませんでした」の知らせと違い、記録から出します）
+ */
+function journal書いていないわけ(store, dateStr, いまの日) {
+  const wrote = cashHandOf(store, dateStr).wrote || {};
+  const 五つ = cash日報の行(store).map((r) => r.name);
+  const 書いた名 = Object.keys(wrote);
+  if (書いた名.some((n) => 五つ.indexOf(n) >= 0)) {
+    return 'アプリから日報に書いた記録があります（書いたあとに日報から消えたか、別のファイルに書いた見込み）';
+  }
+  const 他の記録 = 書いた名.length ? '（仕入・人件費などは書いた記録があります）' : '';
+  const 合 = journal支払の合計(store, いまの日 ? cashEdit : journal記録の編(store, dateStr));
+  if (合.売上 === null) {
+    return `アプリから日報に書いた記録はありません${他の記録}。税込売上が読めていないので、この日は日報に書けません`;
+  }
+  if (!合.ok) {
+    const 差 = `${合.差 < 0 ? '−' : '+'}${Math.abs(合.差).toLocaleString('ja-JP')}`;
+    return `アプリから日報に書いた記録はありません${他の記録}。支払いの合計が税込売上と合わない（差 ${差}）ので、`
+      + 'この日は赤い札が出て日報に書けません';
+  }
+  return `アプリから日報に書いた記録はありません${他の記録}。支払いの合計は合っていて、押せる状態です（書き忘れの見込み）`;
+}
+
 /** 1日分の行（使った数・どこの数か・★のわけ） */
 function journal内わけの1日(store, y, m, i, d) {
   const dateStr = ymd(y, m, i);
@@ -3621,7 +3663,8 @@ function journal内わけの1日(store, y, m, i, d) {
   const 足していない = !足した && !!日報の売上;   // ★日報にはあるのに足していない（開いている日にだけ起こりえます）
   // ★日報に売上がまだ書かれていないのに、アプリの数で足した日（日報のまとめには入っていない分）
   const 書いていない = !!(日報 && !日報の売上 && アプリ && 足した);
-  return { i, 使った, 日報: 日報の売上, アプリ, 足した, どこ, 違う, 足していない, 書いていない };
+  const わけ = 書いていない ? journal書いていないわけ(store, dateStr, いまの日) : '';
+  return { i, 使った, 日報: 日報の売上, アプリ, 足した, どこ, 違う, 足していない, 書いていない, わけ };
 }
 
 function journal日ごとの内わけ(store, y, m, d) {
@@ -3657,7 +3700,8 @@ function journal日ごとの内わけ(store, y, m, d) {
     }
     if (r.書いていない) {
       行.push(`<tr><td colspan="4" style="${枠};font-size:11.5px;color:var(--ng)">`
-        + '日報に売上がまだ書かれていません（アプリの記録で足しています。日報のまとめには入っていません）</td></tr>');
+        + '日報に売上がまだ書かれていません（アプリの記録で足しています。日報のまとめには入っていません）'
+        + `${r.わけ ? `<br>${r.わけ}` : ''}</td></tr>`);
     }
     if (r.足していない) {
       行.push(`<tr><td colspan="4" style="${枠};font-size:11.5px;color:var(--ng)">`
@@ -5966,12 +6010,13 @@ function cashNippouRowsFor(storeId) {
  *                前は表だけ「引いたあと」で見ていて、式が 0 になる日に
  *                表は「書きません」、実際は式を書く、と食いちがっていました。
  */
-function journal行の数(storeId) {
+function journal行の数(storeId, 編 = cashEdit) {
+  // ★編 … どの日の中身か（普段は開いている日の cashEdit。過ぎた日の「書けたか」を見るときは記録から作ります。journal記録の編）
   const seisan = journalFormatOf(storeId) === 'seisan';
-  const j = cashEdit.j || {};
-  const sure = cashEdit.sure || {};
-  const 手 = cashEdit.手 || {};
-  const m = cashEdit.m || {};
+  const j = 編.j || {};
+  const sure = 編.sure || {};
+  const 手 = 編.手 || {};
+  const m = 編.m || {};
   return cashNippouRowsFor(storeId).map((row) => {
     // ★こじゃれは紙の欄の名前と日報の行の名前がちがいます（cardId → クレジット など）
     const もと = seisan ? row.もと : row.key;
@@ -6023,10 +6068,10 @@ const JOURNAL_合計の外 = ['net', 'guests'];
  * { ok, 合計, 売上, 差, 読めない }。売上が読めていなければ 売上: null（確かめられないので ok にしません）
  *   読めない … 読み取れず、手でも入れていない支払いの欄の名前（手で入れる欄＝ポイント・商品券は入れません。空が普通のため）
  */
-function journal支払の合計(storeId) {
-  const j = cashEdit.j || {};
+function journal支払の合計(storeId, 編 = cashEdit) {
+  const j = 編.j || {};
   const 売上 = (typeof j.gross === 'number' && Number.isFinite(j.gross)) ? j.gross : null;
-  const 行たち = journal行の数(storeId).filter((x) => JOURNAL_合計の外.indexOf(x.row.key) < 0);
+  const 行たち = journal行の数(storeId, 編).filter((x) => JOURNAL_合計の外.indexOf(x.row.key) < 0);
   const 合計 = 行たち.reduce((a, x) => {
     const n = typeof x.紙 === 'number' ? x.紙 : cashMinusNum(x.紙);
     return a + (Number.isFinite(n) ? n : 0);
