@@ -3325,9 +3325,12 @@ function renderRitsuBox() {
 /* ------------------------------------------------------------
  *  売上の進み具合 … ◯月目標・昨対（ko-dai さん・2026-09-26）
  *
- *  率の表の下に、円グラフを2つ並べます（会議資料の年間目標と同じ形。style.css の goal-card を借ります）。
- *    ◯月目標 … その月の目標売上に対して、累計がどこまで来たか
+ *  率の表の下に、枠を2つ並べます（会議資料の年間目標と同じ形。style.css の goal-card を借ります）。
+ *    ◯月目標 … その月の目標売上に対して、累計がどこまで来たか。★最低・予想・目標の3段で、
+ *               円グラフと金額を3つ横に並べます（ko-dai さんの指示・2026-10-01。枠は1つのまま）
  *    昨対     … 昨年の同じ月の売上（1か月分）に対して、累計がどこまで来たか
+ *  ★目標の枠は3つ並べるので広く取ります。幅が足りない（スマホ）ときは、昨対の枠が下に回ります
+ *    （flex の折り返し。style.css は本部のものなので、並べ方はここで書きます）。
  *  ★比べるのは**税抜**です（ko-dai さんの決め・2026-09-26。会議資料の年間目標と同じ）。
  *  ★累計は率の表と同じ数です（journal率まとめ の 月.税抜。その月の1日から、開いている日まで）。
  *  ★輪の外の短い線は「目安」＝ 開いている日 ÷ その月の日数（その日の売上がまだなら前の日まで）。遅れ・進みを言葉でも出します。
@@ -3339,8 +3342,9 @@ function renderRitsuBox() {
  *  ★昨年の売上は自動です。会議資料の「日報から取り込む」と同じ口（GAS の nippou。gas/コード.gs）で、
  *    昨年の同じ月の日報の「まとめ」のページを読みます（★読むだけ・GAS は直していません）。
  *    読むマスも組み立ても会議資料と同じもの（nippouAsk・nippouPick・nippouCheck。js/config.js）を呼びます。
- *    ★読んだ数は**端末ごと**に覚えます（共有の記録には入れません）。昨年の数は変わらないので、
- *      読めたら30日は読み直しません。読めなかった（日報が無い・形が合わない）ときは6時間で読み直します。
+ *    ★読めた数は**記録に置いて、みんなの端末で分けます**（2026-10-01 から。下の「昨年の売上を分ける」）。
+ *      昨年の数は変わらないので、どこかの1台が読めば、他の端末は読みに行きません。
+ *    ★読めなかった（日報がない・形が合わない）ことは**端末ごと**に覚えて、6時間で読み直します。
  * ---------------------------------------------------------- */
 /** 画面に出す文の < > & " を打ち消します（読めなかったわけ・日報の名前は、よそから来た文です） */
 function journalEsc(s) {
@@ -3363,32 +3367,96 @@ const JournalLastYear = {
   },
 };
 
+/* ---- 昨年の売上を分ける（ko-dai さん・2026-10-01「昨対をどの月も常に読み込んだ状態にできますか」） ----
+ *  ★前は読んだ数を**端末ごと**にだけ覚えていたので、パソコンで出ていても、スマホは自分で読むまで出ませんでした。
+ *    しかもスマホは、日ごとの数（重い読み。90秒まで待つ）が終わるまで昨年の読みを待つので、
+ *    その前に画面を閉じると、開くたびに同じ所でやり直しになり、いつまでも出ませんでした（2026-10-01 のスマホの画面）。
+ *  ★読めた数（税抜だけ）を記録 _lastyear/<店舗>-<年>-<月> の ex に置きます。同期で全部の端末に届きます。
+ *    年と月は**開いている月**です（2026年10月の昨対＝2025年10月の数は _lastyear/<店舗>-2026-10）。
+ *  ★置くのは数だけです。読んだ日報のファイルの名前は置きません（ファイルの名前に人の名前が入っていることがあります）。
+ *  ★読めなかったこと（日報がないなど）は置きません。端末ごとに覚えて、6時間で読み直します。
+ *  ★記録はスプレッドシートの写しに入ります（売上の数です。公開物には入りません）。
+ */
+const LAST_YEAR_STORE = '_lastyear';
+
+/** みんなの記録にある、その月の昨年の税抜売上。なければ null */
+function journal昨年の共有(storeId, y, m) {
+  const rec = Store.getDay(LAST_YEAR_STORE, journal目標の入れ先(storeId, y, m));
+  const v = rec && rec.items && rec.items.ex ? rec.items.ex.value : null;
+  const n = Number(v);
+  return v !== null && v !== '' && Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+
+/** 読めた数を記録に置きます（★同じ数がもう置いてあれば書きません。同期とシートの版履歴を増やさないため） */
+function journal昨年を分ける(storeId, y, m, 税抜) {
+  if (!(Number.isFinite(税抜) && 税抜 > 0) || journal昨年の共有(storeId, y, m) === 税抜) return;
+  if (!Sync.enabled || !Sync.enabled() || !Sync.pin()) return;   // ★合言葉のない端末は書きません
+  Store.setItem(LAST_YEAR_STORE, journal目標の入れ先(storeId, y, m), 'ex', { value: 税抜 });
+}
+
+/** その月の昨年の税抜売上（みんなの記録 → この端末の覚え の順に見ます）。なければ null */
+function journal昨年の税抜(storeId, y, m) {
+  const 共有 = journal昨年の共有(storeId, y, m);
+  if (共有 !== null) return 共有;
+  const 覚え = JournalLastYear.get(storeId, y, m);
+  return 覚え && 覚え.税抜 > 0 ? 覚え.税抜 : null;
+}
+
 const 昨年の読み直し = 30 * 24 * 60 * 60 * 1000;
 const 昨年Auto = {};
 const 昨年聞いている = {};
 const 昨年の失敗 = {};   // ★届かなかった（通信の失敗）とき。覚えには残さず、この画面の中だけで出します
 
-function journal昨年Auto() {
-  const store = state.storeId;
-  const key = `${store}/${state.y}-${state.m}`;
-  if (昨年Auto[key]) return;                              // この画面では1回だけ
-  /* ★重い読みと重ねません。月額（社員）→ 日ごとの数 → 昨年、の順です。
-       同時に走らせると、月額が「受け取れませんでした」で届かなかったことがあります（2026-09-25） */
-  if (社員聞いている[store] || 日ごと読んでいる[store]) return;
-  if (!Sync.enabled || !Sync.enabled() || !Sync.pin()) return;
-  if (!NippouFolders.get(store)) return;
-  const 覚え = JournalLastYear.get(store, state.y, state.m);
+/** 昨年を読みに行く月（開いている月と、それが今月なら来月も） */
+function journal昨年の月たち(y, m) {
+  const 月たち = [[y, m]];
+  const 今 = new Date();
+  /* ★来月の分を今月のうちに読んでおきます。月が変わった日の朝から、どの端末にも昨対が出ます
+       （ko-dai さん・2026-10-01「どの月も常に読み込んだ状態に」。日報は月ごとに別のファイルなので、
+       今年の来月のファイルがまだなくても、昨年の分は読めます） */
+  if (y === 今.getFullYear() && m === 今.getMonth() + 1) {
+    const 次 = new Date(y, m, 1);
+    月たち.push([次.getFullYear(), 次.getMonth() + 1]);
+  }
+  return 月たち;
+}
+
+/** その月の昨年を、いま読みに行くか */
+function journal昨年を読むか(store, y, m) {
+  if (昨年Auto[`${store}/${y}-${m}`]) return false;          // この画面では1回だけ
+  if (journal昨年の共有(store, y, m) !== null) return false;   // ★どこかの端末が読みました（昨年の数は変わりません）
+  const 覚え = JournalLastYear.get(store, y, m);
   if (覚え && 覚え.at) {
     const 経った = Date.now() - new Date(覚え.at).getTime();
-    if (経った < (覚え.税抜 ? 昨年の読み直し : 日ごとの読み直し)) return;
+    if (経った < (覚え.税抜 ? 昨年の読み直し : 日ごとの読み直し)) return false;
   }
-  昨年Auto[key] = true;
-  journal昨年Load(store, state.y, state.m);
+  return true;
+}
+
+function journal昨年Auto() {
+  const store = state.storeId;
+  const 月たち = journal昨年の月たち(state.y, state.m);
+  // ★前の版で読んで、この端末だけが覚えている数は、みんなの記録へ移します（読み直さずに済みます）
+  月たち.forEach(([y, m]) => {
+    const 覚え = JournalLastYear.get(store, y, m);
+    if (覚え && 覚え.税抜 > 0) journal昨年を分ける(store, y, m, 覚え.税抜);
+  });
+  const 読む = 月たち.find(([y, m]) => journal昨年を読むか(store, y, m));
+  if (!読む) return;
+  /* ★重い読みと重ねません。月額（社員）→ 日ごとの数 → 昨年、の順です。
+       同時に走らせると、月額が「受け取れませんでした」で届かなかったことがあります（2026-09-25）。
+       1つ読み終わると描き直されるので、来月の分はそこから続けて読みます */
+  if (社員聞いている[store] || 日ごと読んでいる[store] || 昨年聞いている[store]) return;
+  if (!Sync.enabled || !Sync.enabled() || !Sync.pin()) return;
+  if (!NippouFolders.get(store)) return;
+  昨年Auto[`${store}/${読む[0]}-${読む[1]}`] = true;
+  journal昨年Load(store, 読む[0], 読む[1]);
 }
 
 async function journal昨年Load(store, y, m) {
   const key = `${store}/${y}-${m}`;
-  昨年聞いている[store] = true;
+  // ★どの月を読んでいるかを置きます（来月の分を先に読んでいるとき、開いている月を「読んでいます」と出さないため）
+  昨年聞いている[store] = `${y}-${m}`;
   delete 昨年の失敗[key];
   try {
     // ★描いている途中から呼ばれます。描き終わってから「読んでいます…」に描き直します
@@ -3417,6 +3485,7 @@ async function journal昨年Load(store, y, m) {
       return;
     }
     JournalLastYear.save(store, y, m, { 税抜: o.ex, 名: 昨.name || '' });
+    journal昨年を分ける(store, y, m, o.ex);   // ★みんなの端末にも届けます（数だけ。日報の名前は置きません）
   } catch (e) {
     昨年の失敗[key] = String((e && e.message) || e);
     console.warn('昨年の売上を読めませんでした', store, e);
@@ -3426,32 +3495,52 @@ async function journal昨年Load(store, y, m) {
   }
 }
 
+/** 目安との差の文と、遅れているか（比 … 今 ÷ 相手） */
+function journal目安との差(比, 目安) {
+  const 差 = (比 - 目安) * 100;
+  const 遅れ = 差 < 0;
+  return { 遅れ, 文: Math.abs(差) < 0.05 ? '±0%' : `${遅れ ? '−' : '+'}${Math.abs(差).toFixed(1)}%` };
+}
+
 /**
- * 円グラフ1枚分（会議資料の goalCard と同じ形。★あちらは会議の持ち物なので、呼ばずに同じ作りで書きます）
- *   今 … 累計（税抜）／ 相手 … 目標 か 昨年の売上 ／ 目安 … 開いている日 ÷ 日数
+ * 輪1つ（目標の3つと昨対で同じ絵を使います。会議資料の goalCard と同じ形。★あちらは会議の持ち物なので、呼ばずに同じ作りで書きます）
+ *   比 … 今 ÷ 相手 ／ 目安 … 開いている日 ÷ 日数 ／ 数を出さない（今が分からない・相手がない）ときは「—」
+ *   空 … 相手がない（目標が入っていない段）。輪の下地だけを出し、目安の線も引きません
  */
-function journal進みカード({ 名, 色, 今, 相手, 相手の名, こえた, 目安, 下 }) {
-  const 比 = 相手 && 今 !== null ? 今 / 相手 : 0;
+function journal輪({ 名, 比, 目安, 数を出す, 空 }) {
   const R = 42;
   const C = 2 * Math.PI * R;
   const 輪 = Math.min(比, 1);                        // 輪は100%で止め、数は本当の値を出します
   const a = (目安 * 2 * Math.PI) - Math.PI / 2;      // 目安の線の角度（12時から時計回り）
-  const 差 = (比 - 目安) * 100;
-  const 遅れ = 差 < 0;
-  const 差の文 = Math.abs(差) < 0.05 ? '±0%' : `${遅れ ? '−' : '+'}${Math.abs(差).toFixed(1)}%`;
-  const 円 = (n) => (n === null || n === undefined ? '—' : yenMarkup(n));
   return `
-    <section class="goal-card" style="--goal-color:${色}">
-      <svg class="goal-ring" viewBox="0 0 100 100" role="img" aria-label="${名} ${(比 * 100).toFixed(1)}%">
+      <svg class="goal-ring" viewBox="0 0 100 100" role="img" aria-label="${名} ${空 || !数を出す ? '—' : (比 * 100).toFixed(1) + '%'}">
         <circle class="goal-ring__bg" cx="50" cy="50" r="${R}"></circle>
-        <circle class="goal-ring__fill" cx="50" cy="50" r="${R}"
+        ${空 ? '' : `<circle class="goal-ring__fill" cx="50" cy="50" r="${R}"
                 stroke-dasharray="${(C * 輪).toFixed(1)} ${C.toFixed(1)}"
                 transform="rotate(-90 50 50)"></circle>
         <line class="goal-ring__pace"
               x1="${(50 + (R - 9) * Math.cos(a)).toFixed(1)}" y1="${(50 + (R - 9) * Math.sin(a)).toFixed(1)}"
-              x2="${(50 + (R + 9) * Math.cos(a)).toFixed(1)}" y2="${(50 + (R + 9) * Math.sin(a)).toFixed(1)}"></line>
-        <text class="goal-ring__pct" x="50" y="54">${今 === null ? '—' : (比 * 100).toFixed(1) + '%'}</text>
-      </svg>
+              x2="${(50 + (R + 9) * Math.cos(a)).toFixed(1)}" y2="${(50 + (R + 9) * Math.sin(a)).toFixed(1)}"></line>`}
+        <text class="goal-ring__pct" x="50" y="54">${空 || !数を出す ? '—' : (比 * 100).toFixed(1) + '%'}</text>
+      </svg>`;
+}
+
+/* ★枠の幅の取り方（flex の折り返し）。目標は3つ並べるので、昨対の2倍を取ります。
+     2つ合わせて入らない幅（スマホ）では、昨対が目標の下に回り、どちらも横いっぱいになります */
+const JOURNAL_目標の枠 = 'flex:2 1 320px;min-width:0';
+const JOURNAL_昨対の枠 = 'flex:1 1 180px;min-width:0';
+
+/**
+ * 円グラフ1枚の枠（昨対）
+ *   今 … 累計（税抜）／ 相手 … 昨年の売上 ／ 目安 … 開いている日 ÷ 日数
+ */
+function journal進みカード({ 名, 色, 今, 相手, 相手の名, こえた, 目安, 下, 形 }) {
+  const 比 = 相手 && 今 !== null ? 今 / 相手 : 0;
+  const 差 = journal目安との差(比, 目安);
+  const 円 = (n) => (n === null || n === undefined ? '—' : yenMarkup(n));
+  return `
+    <section class="goal-card" style="--goal-color:${色};${形 || ''}">
+      ${journal輪({ 名, 比, 目安, 数を出す: 今 !== null })}
       <p class="goal-card__name">${名}</p>
       <dl class="goal-card__rows">
         <div class="goal-row"><dt>累計</dt><dd>${円(今)}</dd></div>
@@ -3461,21 +3550,72 @@ function journal進みカード({ 名, 色, 今, 相手, 相手の名, こえた
           : 円(今 === null ? 相手 : 相手 - 今)}</dd></div>
       </dl>
       <p class="goal-card__pace">
-        <span class="goal-gap ${遅れ ? 'is-late' : 'is-ahead'}">${差の文}</span>
+        <span class="goal-gap ${差.遅れ ? 'is-late' : 'is-ahead'}">${差.文}</span>
         <span class="goal-card__paceLabel">目安 ${Math.round(目安 * 100)}%</span>
       </p>
       ${下 || ''}
     </section>`;
 }
 
-/** 数が無いときのカード（目標が未入力・昨年を読んでいる・読めない） */
-function journal進みの空き({ 名, 色, 文, 下 }) {
+/**
+ * 目標の枠（★最低・予想・目標の3つを横に並べます。ko-dai さんの指示・2026-10-01）
+ *   目標たち … { low, forecast, goal }（円。入っていない段は null）
+ *   ★列ごとに、輪・段の名前・その段の金額・残り・目安との差。累計と目安は3つで同じなので、下に1回だけ出します
+ *   ★金額は列の幅で字の大きさを決めます（cqw。スマホの1列は100px ほどしかありません）
+ */
+function journal目標の3つ({ 名, 色, 今, 目標たち, 目安 }) {
+  const 円 = (n) => (n === null || n === undefined ? '—' : yenMarkup(n));
+  const 列たち = JOURNAL_目標の段.map(({ id, 名: 段名 }) => {
+    const 相手 = 目標たち[id];
+    const 頭 = `<p class="goal-card__name">${段名}</p>`;
+    if (相手 === null) {
+      return `<div class="goal-col" style="min-width:0;container-type:inline-size">
+        ${journal輪({ 名: 段名, 比: 0, 目安, 数を出す: false, 空: true })}${頭}
+        <p style="margin:4px 0 0;font-size:11.5px;color:var(--text-weak);line-height:1.4">設定されて<wbr>いません</p>
+      </div>`;
+    }
+    const 比 = 今 !== null ? 今 / 相手 : 0;
+    const 差 = journal目安との差(比, 目安);
+    const 残り = 今 !== null && 今 >= 相手
+      ? '<span class="goal-done">こえました</span>'
+      : `残り ${円(今 === null ? 相手 : 相手 - 今)}`;
+    return `<div class="goal-col" style="min-width:0;container-type:inline-size">
+        ${journal輪({ 名: 段名, 比, 目安, 数を出す: 今 !== null })}${頭}
+        <p class="goal-col__yen" style="margin:3px 0 0;font-size:min(16px,13cqw);font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap">${円(相手)}</p>
+        <p class="goal-col__left" style="margin:3px 0 0;font-size:min(13px,10.5cqw);font-weight:800;color:var(--goal-color);font-variant-numeric:tabular-nums;white-space:nowrap">${残り}</p>
+        <p style="margin:7px 0 0"><span class="goal-gap ${差.遅れ ? 'is-late' : 'is-ahead'}">${差.文}</span></p>
+      </div>`;
+  });
   return `
-    <section class="goal-card" style="--goal-color:${色}">
+    <section class="goal-card" style="--goal-color:${色};${JOURNAL_目標の枠}">
+      <p class="goal-card__name" style="font-size:15px;margin-bottom:10px">${名}</p>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;align-items:start">${列たち.join('')}</div>
+      <dl class="goal-card__rows">
+        <div class="goal-row"><dt>累計</dt><dd>${円(今)}</dd></div>
+      </dl>
+      <p class="goal-card__pace">
+        <span class="goal-card__paceLabel">目安 ${Math.round(目安 * 100)}%（輪の外の線）</span>
+      </p>
+    </section>`;
+}
+
+/** 数がないときの枠（目標が未入力・昨年を読んでいる・読めない） */
+function journal進みの空き({ 名, 色, 文, 下, 形 }) {
+  return `
+    <section class="goal-card" style="--goal-color:${色};${形 || ''}">
       <p class="goal-card__name">${名}</p>
       <p style="margin:10px 0 0;font-size:12.5px;color:var(--text-sub);line-height:1.5">${文}</p>
       ${下 || ''}
     </section>`;
+}
+
+/** 昨年をまだ読めていないわけ（★「合言葉と日報フォルダが要ります」と1つにまとめて出すと、
+ *  順番を待っているだけのときも「設定が足りない」に見えます。2026-10-01 のスマホがそうでした） */
+function journal昨年を待つわけ(store) {
+  if (!Sync.enabled || !Sync.enabled() || !Sync.pin()) return '合言葉を入れると読めます';
+  if (!NippouFolders.get(store)) return 'マネージで日報フォルダを登録すると読めます';
+  if (社員聞いている[store] || 日ごと読んでいる[store]) return '日報の日ごとの数を読み終わったら、続けて読みます';
+  return 'もうすぐ読みます';
 }
 
 function renderGoalBox() {
@@ -3502,46 +3642,46 @@ function renderGoalBox() {
   const 目安 = Math.min(Math.max(目安の日 / 日数, 0), 1);
 
   /* ★目標はマネージだけで入れます（ko-dai さんの指示・2026-09-26）。ここは見るだけで、入れる欄を出しません。
-       入っていない月は「目標金額が設定されていません」（ko-dai さんの文）と出します。黙って消しません */
-  const 目標 = journal目標(store, y, m);
+       3段とも入っていない月は「目標金額が設定されていません」（ko-dai さんの文）と出します。黙って消しません */
+  const 目標たち = {};
+  JOURNAL_目標の段.forEach(({ id }) => { 目標たち[id] = journal目標(store, y, m, id); });
   const 目標の名 = `${m}月目標`;
   const 小さいボタン = 'margin-top:10px;padding:6px 10px;font-size:12.5px;min-height:0';
-  const 目標カード = 目標 === null
+  const 目標カード = JOURNAL_目標の段.every(({ id }) => 目標たち[id] === null)
     ? journal進みの空き({
-      名: 目標の名, 色: 'var(--money)',
+      名: 目標の名, 色: 'var(--money)', 形: JOURNAL_目標の枠,
       文: '目標金額が設定されていません<br><span style="font-size:11.5px;color:var(--text-weak)">マネージの「月別の売上目標」で入れます</span>',
     })
-    : journal進みカード({
-      名: 目標の名, 色: 'var(--money)', 今, 相手: 目標, 相手の名: '目標', こえた: '目標をこえました', 目安,
-    });
+    : journal目標の3つ({ 名: 目標の名, 色: 'var(--money)', 今, 目標たち, 目安 });
 
   const 昨 = JournalLastYear.get(store, y, m);
+  const 昨の税抜 = journal昨年の税抜(store, y, m);
+  const 昨の形 = { 名: '昨対', 色: 'var(--accent)', 形: JOURNAL_昨対の枠 };
   const 読み直す = `<button type="button" class="btn" data-goal="reload" style="${小さいボタン}">もう一度読む</button>`;
   let 昨対カード;
-  if (昨 && 昨.税抜) {
+  if (昨の税抜 !== null) {
     昨対カード = journal進みカード({
-      名: '昨対', 色: 'var(--accent)', 今, 相手: 昨.税抜, 相手の名: `${y - 1}年${m}月`, こえた: '昨年をこえました', 目安,
+      ...昨の形, 今, 相手: 昨の税抜, 相手の名: `${y - 1}年${m}月`, こえた: '昨年をこえました', 目安,
     });
-  } else if (昨年聞いている[store]) {
-    昨対カード = journal進みの空き({ 名: '昨対', 色: 'var(--accent)', 文: `${y - 1}年${m}月の日報を読んでいます…` });
+  } else if (昨年聞いている[store] === `${y}-${m}`) {
+    昨対カード = journal進みの空き({ ...昨の形, 文: `${y - 1}年${m}月の日報を読んでいます…` });
   } else if (昨年の失敗[key]) {
     昨対カード = journal進みの空き({
-      名: '昨対', 色: 'var(--accent)', 文: `${y - 1}年${m}月の売上を読めませんでした（${journalEsc(昨年の失敗[key])}）`, 下: 読み直す,
+      ...昨の形, 文: `${y - 1}年${m}月の売上を読めませんでした（${journalEsc(昨年の失敗[key])}）`, 下: 読み直す,
     });
   } else if (昨 && 昨.なぜ) {
     昨対カード = journal進みの空き({
-      名: '昨対', 色: 'var(--accent)', 文: `${y - 1}年${m}月の売上がありません（${journalEsc(昨.なぜ)}）`, 下: 読み直す,
+      ...昨の形, 文: `${y - 1}年${m}月の売上がありません（${journalEsc(昨.なぜ)}）`, 下: 読み直す,
     });
   } else {
-    // ★合言葉が無い・日報フォルダが未登録のとき。黙って消さずに、読めていないことを出します
+    // ★黙って消さずに、読めていないことと、そのわけを出します
     昨対カード = journal進みの空き({
-      名: '昨対', 色: 'var(--accent)',
-      文: `${y - 1}年${m}月の売上をまだ読めていません（合言葉と、マネージの日報フォルダが要ります）`,
+      ...昨の形, 文: `${y - 1}年${m}月の売上をまだ読めていません（${journal昨年を待つわけ(store)}）`,
     });
   }
 
   el.cashGoal.innerHTML = '<p class="cash-minus__head" style="margin:18px 0 8px;font-weight:700">売上の進み具合（税抜）</p>'
-    + `<div class="meeting-goals">${目標カード}${昨対カード}</div>`;
+    + `<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:stretch">${目標カード}${昨対カード}</div>`;
 }
 
 /** 押したとき（★「もう一度読む」だけです。目標はここでは入れません） */

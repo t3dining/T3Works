@@ -2735,6 +2735,9 @@ function saveSalesTargets() {
 /* -------- 月別の売上目標（ジャーナルの持ち物・ko-dai さん・2026-09-26） --------
  *
  *  ワークスのジャーナル（現金売上）の画面の「◯月目標」の円グラフが、その月の税抜累計売上をこの金額で割ります。
+ *  ★目標は**最低・予想・目標の3段**です（ko-dai さんの指示・2026-10-01）。店舗ごとに3つの欄を横に並べます。
+ *  ★欄に打つのは**万円**です（ko-dai さんの指示・2026-10-01「100万円の目標なら100と入力するだけ」）。
+ *    記録には円で入ります。打ちまちがいに気づけるよう、欄の下に円にした数を出します。
  *  ★入れられるのは**マネージだけ**です（ko-dai さんの指示・2026-09-26）。ワークスは見るだけで、
  *    入っていない月は「目標金額が設定されていません」と出ます。
  *  ★置き場（記録 _salesgoal/<店舗>-<年>-<月>）・数にする決まり・書き直す店舗の決め方は js/config.js
@@ -2768,10 +2771,10 @@ function 月別目標の枠() {
       <span class="admin-count" data-mt="count"></span>
     </div>
     <p class="admin-note">
-      店舗ごとの<b>その月の売上目標</b>（<b>税抜</b>）を円で入れてください。
-      ワークスのジャーナル（現金売上）の画面の<b>「◯月目標」の円グラフ</b>が、その月の税抜累計売上をこの金額で割って出します。<br>
-      入れていない月は、ワークスに「目標金額が設定されていません」と出ます。<b>ワークスからは入れられません。</b><br>
-      空にして保存すると、その月の目標は消えます。
+      店舗ごとに、その月の売上の<b>最低・予想・目標</b>（<b>税抜</b>）を<b>万円</b>で入れてください（100万円なら <b>100</b>）。
+      ワークスのジャーナル（現金売上）の画面の<b>「◯月目標」</b>に、3つの円グラフが並びます。<br>
+      3つとも入れていない月は、ワークスに「目標金額が設定されていません」と出ます。<b>ワークスからは入れられません。</b><br>
+      空にして保存すると、その欄の目標は消えます。
     </p>
     <div class="admin-actions" style="margin-bottom:8px">
       <button type="button" class="btn" data-mt="prev">‹ 前の月</button>
@@ -2784,6 +2787,10 @@ function 月別目標の枠() {
       <button type="button" class="btn btn--primary" data-mt="save">目標を保存</button>
       <span class="admin-saved is-hidden" data-mt="saved">保存しました</span>
     </div>`;
+  // ★打つたびに、欄の下の「円にした数」を出し直します
+  sec.addEventListener('input', (e) => {
+    if (e.target && e.target.matches && e.target.matches('input[data-store]')) 月別目標の円を出す(e.target);
+  });
   sec.addEventListener('click', (e) => {
     const b = e.target && e.target.closest ? e.target.closest('button[data-mt]') : null;
     if (!b) return;
@@ -2798,11 +2805,22 @@ function 月別目標の枠() {
 
 const 月別目標の部品 = (名) => 月別目標.枠.querySelector(`[data-mt="${名}"]`);
 
-/** いま欄に打ってある文字（{ 店舗id: 文字 }） */
+/** いま欄に打ってある文字（{ 店舗id: { low, forecast, goal } }。★万円の文字のまま） */
 function 月別目標の打った() {
   const 打った = {};
-  [...月別目標の部品('fields').querySelectorAll('input[data-store]')].forEach((i) => { 打った[i.dataset.store] = i.value; });
+  [...月別目標の部品('fields').querySelectorAll('input[data-store]')].forEach((i) => {
+    (打った[i.dataset.store] = 打った[i.dataset.store] || {})[i.dataset.dan] = i.value;
+  });
   return 打った;
+}
+
+/** 欄の下に出す「円にした数」（打ちまちがいに気づけるように。読めなければ、わけを赤で） */
+function 月別目標の円を出す(input) {
+  const 下 = input.parentElement && input.parentElement.nextElementSibling;
+  if (!下) return;
+  const 読み = journal目標を読む(input.value);
+  下.style.color = 読み.なぜ ? 'var(--ng)' : 'var(--text-weak)';
+  下.textContent = 読み.なぜ ? 読み.なぜ : (読み.円 === null ? '' : `＝ ${読み.円.toLocaleString('ja-JP')}円`);
 }
 
 function renderMonthlyTargets() {
@@ -2814,32 +2832,55 @@ function renderMonthlyTargets() {
   }
   const { y, m } = 月別目標;
   const 店舗 = 月別目標の店舗();
-  const n = 店舗.filter((s) => journal目標(s.id, y, m) !== null).length;
+  const n = 店舗.filter((s) => JOURNAL_目標の段.some((段) => journal目標(s.id, y, m, 段.id) !== null)).length;
   月別目標の部品('ym').textContent = `${y}年${m}月`;
   月別目標の部品('count').textContent = n ? `${y}年${m}月：${n}店舗 入っています` : `${y}年${m}月：まだ登録なし`;
   // ★is-hidden は部品ごとに決めてある印で、admin-note には効きません（出たままになりました）。display で出し入れします
   月別目標の部品('err').style.display = 'none';
 
+  /* ★店舗ごとに1行、最低・予想・目標の3つの欄を横に並べます（表の形。見出しは1回だけ） */
   const 欄たち = 月別目標の部品('fields');
   欄たち.innerHTML = '';
+  欄たち.style.cssText = 'display:grid;grid-template-columns:minmax(4.5em,auto) repeat(3,minmax(0,1fr));gap:6px 8px;align-items:start;margin-bottom:12px';
+  const 見出し = (文) => {
+    const h = document.createElement('span');
+    h.className = 'field__label';
+    h.style.margin = '0';
+    h.textContent = 文;
+    return h;
+  };
+  欄たち.appendChild(見出し(''));
+  JOURNAL_目標の段.forEach((段) => 欄たち.appendChild(見出し(`${段.名}（万円）`)));
   店舗.forEach((s) => {
-    const wrap = document.createElement('label');
-    wrap.className = 'field';
-    const label = document.createElement('span');
-    label.className = 'field__label';
-    label.textContent = s.name;
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.inputMode = 'numeric';
-    input.className = 'field__input';
-    input.dataset.store = s.id;
-    input.autocomplete = 'off';
-    // ★入力例に本当の金額を書かないこと。ここは公開されるファイルです
-    input.placeholder = '税抜の金額（円）';
-    const 今の = journal目標(s.id, y, m);
-    input.value = 今の === null ? '' : String(今の);
-    wrap.append(label, input);
-    欄たち.appendChild(wrap);
+    const 名 = document.createElement('b');
+    名.textContent = s.name;
+    名.style.cssText = 'padding-top:9px;font-size:14px';
+    欄たち.appendChild(名);
+    JOURNAL_目標の段.forEach((段) => {
+      const cell = document.createElement('div');
+      cell.style.minWidth = '0';
+      // ★単位（万円）は見出しに出します。スマホでは1つの欄が70px ほどしかないので、欄の横には置きません
+      const 行 = document.createElement('div');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.inputMode = 'decimal';
+      input.className = 'field__input';
+      input.style.cssText = 'min-width:0;width:100%;text-align:right;padding:8px 9px';
+      input.dataset.store = s.id;
+      input.dataset.dan = 段.id;
+      input.autocomplete = 'off';
+      input.setAttribute('aria-label', `${s.name} ${段.名}（万円）`);
+      // ★入力例に本当の金額を書かないこと。ここは公開されるファイルです
+      input.placeholder = '万円';
+      input.value = journal目標の万円(journal目標(s.id, y, m, 段.id));
+      行.append(input);
+      const 円 = document.createElement('div');
+      円.dataset.mtYen = '';
+      円.style.cssText = 'font-size:11.5px;margin-top:3px;text-align:right;line-height:1.4;font-variant-numeric:tabular-nums';
+      cell.append(行, 円);
+      欄たち.appendChild(cell);
+      月別目標の円を出す(input);
+    });
   });
   // ★ジャーナルのマネージの欄は、ここから続けて描きます（renderAll の1行を増やさないため）
   renderNippouGridReload();
@@ -2862,17 +2903,19 @@ function saveMonthlyTargets() {
   const err = 月別目標の部品('err');
   if (まちがい.length) {
     const 名 = (id) => (STORES.find((s) => s.id === id) || {}).name || id;
-    err.textContent = '保存していません。' + まちがい.map((x) => `${名(x.id)}：${x.なぜ}`).join('／');
+    const 段名 = (段) => (JOURNAL_目標の段.find((x) => x.id === 段) || {}).名 || 段;
+    err.textContent = '保存していません。' + まちがい.map((x) => `${名(x.id)}の${段名(x.段)}：${x.なぜ}`).join('／');
     err.style.display = '';
     return;
   }
-  // ★記録です（同期でワークスにも届きます）。空にした店舗は null で「未入力」に戻します
-  直す.forEach(([id, 円]) => {
-    Store.setItem(SALES_GOAL_STORE, journal目標の入れ先(id, y, m), 'goal', { value: 円 });
+  // ★記録です（同期でワークスにも届きます）。入れるのは円です。空にした欄は null で「未入力」に戻します
+  直す.forEach(([id, 段, 円]) => {
+    Store.setItem(SALES_GOAL_STORE, journal目標の入れ先(id, y, m), 段, { value: 円 });
   });
   renderMonthlyTargets();
   const 出た = 月別目標の部品('saved');
-  出た.textContent = 直す.length ? `保存しました（${直す.length}店舗）` : '変わったところはありません';
+  const 店の数 = new Set(直す.map(([id]) => id)).size;
+  出た.textContent = 直す.length ? `保存しました（${店の数}店舗・${直す.length}か所）` : '変わったところはありません';
   出た.classList.remove('is-hidden');
   setTimeout(() => 出た.classList.add('is-hidden'), 2500);
 }
