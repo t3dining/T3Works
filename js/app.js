@@ -9043,6 +9043,19 @@ function meetingCumByStore(y, m) {
  * F/L はこの2つの率の足し算です（6月のシートと同じ）。
  */
 /**
+ * アルバイトのみの人件費 ＝ 人件費 − 社員（分からなければ null）
+ *
+ * ★日報のまとめ（G32 − G29）・ジャーナル（人件費 − 社員の行）と同じ決め方です。
+ *   交通費は「アルバイトのみ」に入ります（日報の表もそうなっています）。
+ * ★社員の数を読んでいない年月は null（画面は —）。0 と読めた月は「社員が日報に入っていない月」で、
+ *   そのときは人件費がそのままアルバイトのみになります（まちがいではありません）。
+ */
+function meetingLaborPart(v) {
+  if (!v || typeof v.labor !== 'number' || typeof v.laborStaff !== 'number') return null;
+  return v.labor - v.laborStaff;
+}
+
+/**
  * 原価率 ＝ 原価 ÷ **税込**売上
  *
  * ★原価がもともと税込の数字だからです（2026年8月15日に ko-dai が決めました）。
@@ -9070,13 +9083,25 @@ const MEETING_MODES = {
     // big … 金額と率のどちらも大きく出します（会議で一番見る2つ）
     { label: '原価', mainKind: 'yen', subKind: 'pct', goodWhen: 'down', big: true,
       main: (v) => v.cost, sub: (v) => meetingCostRate(v) },
-    { label: '人件費', mainKind: 'yen', subKind: 'pct', goodWhen: 'down', big: true,
+    /* ★人件費と F/L は「総合計」と「アルバイトのみ」の2つ（2026-10-01、ko-dai さんの指示）。
+         日報のまとめ・ジャーナルと同じ分け方です（アルバイトのみ ＝ 人件費 − 社員）。
+         社員の数を読んでいない年月（2025年より前・バグるの8月まで）は「アルバイトのみ」が — です */
+    { label: '人件費（総合計）', mainKind: 'yen', subKind: 'pct', goodWhen: 'down', big: true,
       main: (v) => v.labor, sub: (v) => (v.ex ? v.labor / v.ex : null) },
-    { label: 'F/L', mainKind: 'pct', goodWhen: 'down',
+    { label: '人件費（アルバイトのみ）', mainKind: 'yen', subKind: 'pct', goodWhen: 'down', big: true,
+      main: (v) => meetingLaborPart(v),
+      sub: (v) => { const a = meetingLaborPart(v); return (a === null || !v.ex) ? null : a / v.ex; } },
+    { label: 'F/L（総合計）', mainKind: 'pct', goodWhen: 'down',
       main: (v) => {
         const c = meetingCostRate(v);
         const l = v.ex ? v.labor / v.ex : null;
         return (c === null || l === null) ? null : c + l;
+      } },
+    { label: 'F/L（アルバイトのみ）', mainKind: 'pct', goodWhen: 'down',
+      main: (v) => {
+        const c = meetingCostRate(v);
+        const a = meetingLaborPart(v);
+        return (c === null || a === null || !v.ex) ? null : c + a / v.ex;
       } },
     // キャッチだけは、差の下段を「増減率」ではなく「人数の差」にします。
     // 人数も会議で見る数字なので、金額と同じ大きさで出します（big）
