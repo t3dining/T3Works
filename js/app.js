@@ -3301,7 +3301,14 @@ function journal率の1日(storeId, dateStr, いまの日) {
          いつもアプリの数になり、日報の数が使われなくなります */
     const 社員でない数 = 自分.人件費 !== null && 自分.人件費 !== (自分.社員 || 0);
     const 何か = [自分.原価, 自分.税込, 自分.税抜].some((x) => x !== null) || 社員でない数;
-    return (何か || !日報) ? 自分 : 日報;
+    if (!何か && 日報) return 日報;
+    /* ★★売上だけは、アプリに数がなければ日報の数を使います（2026-10-01）。
+         仕入や人件費だけ打って写真をまだ読んでいない日に、**日報にある売上が累計から丸ごと抜けて**いました
+         （「日ごとの内わけ」を作っていて見つけました。開いている日は札の数にも入らないので、黙って抜けます） */
+    if (日報 && 自分.税込 === null && 自分.税抜 === null && (日報.税込 !== null || 日報.税抜 !== null)) {
+      return { ...自分, 税込: 日報.税込, 税抜: 日報.税抜 };
+    }
+    return 自分;
   }
   if (日報 && (日報.税込 !== null || 日報.税抜 !== null)) return 日報;
   const items = (Store.getDay(storeId, dateStr) || {}).items || {};
@@ -3469,6 +3476,148 @@ function journal日ごとの札(store, y, m, d) {
   return `<div style="margin-top:8px;font-size:12px;color:var(--text-sub);line-height:1.6">${行.join('<br>')}${ボタン}</div>`;
 }
 
+/* ------------------------------------------------------------
+ *  日ごとの内わけ（2026-10-01・ko-dai さん「累計がずれています」のため）
+ *
+ *  2026-10-01、9月30日の累計が日報のまとめと4店舗で合いませんでした（2店舗は合っていました）。
+ *  売上の分からない日の札は出ていなかった＝どの日も数はある。**どの日の、どの数が違うのか**を見つけるためのものです。
+ *  ★累計に足した数を、日ごとに出します（日・税込・税抜・どこの数か）。
+ *      日報         … 日報の日のページの数（日ごとの読み。過ぎた日はこちらが正）
+ *      アプリの記録 … 日報の数がない日に、アプリの記録（ジャーナルの写真）の数で埋めた日
+ *      アプリ       … 開いている日。打っている数を使います（打っている最中に変わらないように）
+ *  ★日報の数とアプリの数が**両方あって違う日**は、両方を出して ★ を付けます（どちらかが直された日です）。
+ *  ★開いている日に、アプリに売上がなく日報にはあるのに、足していない形も ★ で出します。
+ *  ★普段は閉じておきます（押したときだけ。中身は描くたびに作り直すので、開いているかは journal内わけを開いている に覚えます）。
+ *  ★金額はこのファイルに書きません。画面に出すだけです。
+ * ---------------------------------------------------------- */
+let journal内わけを開いている = false;
+/* ★日報のまとめの累計（税込・税抜）。内わけを開いたときだけ読みます（会議資料・昨対と同じ GAS の nippou の now）。
+     ★端末に覚えません（まとめは毎日変わるため）。この画面の中だけです。'店舗/年-月' → { 読んでいる, 税込, 税抜, 名, なぜ } */
+const 内わけのまとめ = {};
+
+async function journal内わけのまとめLoad(store, y, m) {
+  const key = `${store}/${y}-${m}`;
+  内わけのまとめ[key] = { 読んでいる: true };
+  try {
+    const res = await askAgain('nippou', {
+      y, m, stores: [{ id: store, folder: NippouFolders.idOf(store), cells: nippouAsk(store, y, m) }],
+    }, { ms: ASK_上限.読む });
+    if (!res || !res.ok) { 内わけのまとめ[key] = { なぜ: (res && res.error) || '返事がありません' }; return; }
+    const 今 = ((res.stores || {})[store] || {}).now;
+    if (!今 || 今.error) { 内わけのまとめ[key] = { なぜ: (今 && 今.error) || '今月の日報が読めません' }; return; }
+    const o = nippouPick(store, nippouYm(y, m), 今);
+    内わけのまとめ[key] = {
+      税込: typeof o.inc === 'number' ? o.inc : null,
+      税抜: typeof o.ex === 'number' ? o.ex : null,
+      名: 今.name || '',
+    };
+  } catch (e) {
+    内わけのまとめ[key] = { なぜ: String((e && e.message) || e) };
+  } finally {
+    if (state.storeId === store) render();
+  }
+}
+
+/** まとめの行（読む・読んでいる・読めない・差） */
+function journal内わけのまとめの文(store, y, m, 税込, 税抜) {
+  const key = `${store}/${y}-${m}`;
+  const ま = 内わけのまとめ[key];
+  const 円 = (n) => (n === null || n === undefined ? '—' : Number(n).toLocaleString('ja-JP'));
+  const 読める = !!(Sync.enabled && Sync.enabled() && Sync.pin() && NippouFolders.get(store));
+  if (!ま) {
+    if (!読める) return '日報のまとめは読めません（合言葉と、マネージの日報フォルダが要ります）';
+    // ★重い読み（社員の月額・日ごとの数・昨年）と重ねません。終わると描き直されるので、そのときに始まります
+    if (!社員聞いている[store] && !日ごと読んでいる[store] && !昨年聞いている[store]) journal内わけのまとめLoad(store, y, m);
+    return '日報のまとめを読んでいます…';
+  }
+  if (ま.読んでいる) return '日報のまとめを読んでいます…';
+  if (ま.なぜ) return `日報のまとめを読めませんでした（${journalEsc(ま.なぜ)}）`;
+  const 差 = (a, b) => (a === null || b === null ? '' : (a === b ? '<span style="color:var(--ok)">同じ</span>'
+    : `<b style="color:var(--ng)">差 ${(b - a > 0 ? '+' : '−') + Math.abs(b - a).toLocaleString('ja-JP')}</b>`));
+  return `日報のまとめ（日報に書いてある日までの累計）：税込 ${円(ま.税込)} ${差(ま.税込, 税込)}・税抜 ${円(ま.税抜)} ${差(ま.税抜, 税抜)}`
+    + '<br><span style="color:var(--text-weak)">差は「この内わけの合計 − まとめ」です。月の終わりの日を開いて見くらべてください</span>';
+}
+
+/** その日の、アプリ側の売上（開いている日は打っている数、過ぎた日は記録の数）。なければ null */
+function journal内わけのアプリ(store, dateStr, いまの日) {
+  let 分;
+  if (いまの日) {
+    分 = journal率の売上(cashEdit.j, cashEdit.sure, cashEdit.手);
+  } else {
+    const items = (Store.getDay(store, dateStr) || {}).items || {};
+    const 記 = (items[CASH_ITEM] && items[CASH_ITEM].value) || null;
+    分 = journal率の売上(記 && 記.j, null, 記 && 記.h);
+  }
+  return (分.税込 !== null || 分.税抜 !== null) ? 分 : null;
+}
+
+/** 1日分の行（使った数・どこの数か・★のわけ） */
+function journal内わけの1日(store, y, m, i, d) {
+  const dateStr = ymd(y, m, i);
+  const いまの日 = i === d;
+  const 使った = journal率の1日(store, dateStr, いまの日);
+  const 日報 = journal日報の日(store, dateStr);
+  const 日報の売上 = 日報 && (日報.税込 !== null || 日報.税抜 !== null) ? 日報 : null;
+  const アプリ = journal内わけのアプリ(store, dateStr, いまの日);
+  const 足した = 使った.税込 !== null || 使った.税抜 !== null;
+  let どこ;
+  if (!足した) どこ = Closed.isClosed(store, y, m, i) ? '定休日' : '分からない';
+  else if (いまの日) どこ = アプリ ? 'アプリ' : '日報';   // ★アプリに売上がなければ、日報の数を足しています（journal率の1日）
+  else どこ = 日報の売上 ? '日報' : 'アプリの記録';
+  const 違う = !!(日報の売上 && アプリ && (日報の売上.税込 !== アプリ.税込 || 日報の売上.税抜 !== アプリ.税抜));
+  const 足していない = !足した && !!日報の売上;   // ★日報にはあるのに足していない（開いている日にだけ起こりえます）
+  return { i, 使った, 日報: 日報の売上, アプリ, 足した, どこ, 違う, 足していない };
+}
+
+function journal日ごとの内わけ(store, y, m, d) {
+  const ボタン = (文) => `<button type="button" class="linkbtn" data-ritsu="uchiwake" `
+    + `style="display:inline-block;margin:6px 0 0;padding:4px 0;font-size:12.5px">${文}</button>`;
+  // ★率の表の下には説明の文を出しません（ko-dai さんの指示・2026-09-23）。ボタンの名前だけにします
+  if (!journal内わけを開いている) return `<div>${ボタン('日ごとの内わけを見る')}</div>`;
+  const 円 = (n) => (n === null || n === undefined ? '—' : Number(n).toLocaleString('ja-JP'));
+  const 枠 = 'padding:3px 6px;border-bottom:1px solid var(--line-2)';
+  const 行 = [];
+  const 数え = {};
+  let 税込 = 0;
+  let 税抜 = 0;
+  let 印の数 = 0;
+  for (let i = 1; i <= d; i++) {
+    const r = journal内わけの1日(store, y, m, i, d);
+    数え[r.どこ] = (数え[r.どこ] || 0) + 1;
+    if (r.足した) { 税込 += r.使った.税込 || 0; 税抜 += r.使った.税抜 || 0; }
+    const 印 = r.違う || r.足していない;
+    if (印) 印の数 += 1;
+    const 曜 = DOW[new Date(y, m - 1, i).getDay()];
+    行.push(`<tr${印 ? ' style="background:color-mix(in srgb,var(--ng) 9%,transparent)"' : ''}>`
+      + `<td style="${枠};white-space:nowrap">${印 ? '★' : ''}${m}/${i}（${曜}）</td>`
+      + `<td style="${枠};text-align:right">${r.足した ? 円(r.使った.税込) : '—'}</td>`
+      + `<td style="${枠};text-align:right">${r.足した ? 円(r.使った.税抜) : '—'}</td>`
+      + `<td style="${枠};white-space:nowrap;color:var(--text-sub)">${r.どこ}</td></tr>`);
+    if (r.違う) {
+      行.push(`<tr><td colspan="4" style="${枠};font-size:11.5px;color:var(--ng)">`
+        + `日報 ${円(r.日報.税込)}／${円(r.日報.税抜)}　アプリ ${円(r.アプリ.税込)}／${円(r.アプリ.税抜)}（どちらかが直されています）</td></tr>`);
+    }
+    if (r.足していない) {
+      行.push(`<tr><td colspan="4" style="${枠};font-size:11.5px;color:var(--ng)">`
+        + `日報には ${円(r.日報.税込)}／${円(r.日報.税抜)} があるのに、累計に足していません（アプリに売上の数がないため）</td></tr>`);
+    }
+  }
+  const 内わけ = ['日報', 'アプリの記録', 'アプリ', '定休日', '分からない']
+    .filter((k) => 数え[k]).map((k) => `${k} ${数え[k]}日`).join('・');
+  return `<div style="margin-top:8px;font-size:12px;line-height:1.5">`
+    + `<p style="margin:0 0 4px;color:var(--text-sub)">${m}/1〜${m}/${d} に足した数（${内わけ}）`
+    + `${印の数 ? `<br><b style="color:var(--ng)">★の日が ${印の数}日 あります</b>` : ''}`
+    + `<br>${journal内わけのまとめの文(store, y, m, 税込, 税抜)}</p>`
+    + `<table style="width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums">`
+    + `<tr style="color:var(--text-sub)"><th style="${枠};text-align:left;font-weight:600">日</th>`
+    + `<th style="${枠};text-align:right;font-weight:600">税込</th><th style="${枠};text-align:right;font-weight:600">税抜</th>`
+    + `<th style="${枠};text-align:left;font-weight:600">どこの数</th></tr>`
+    + 行.join('')
+    + `<tr style="font-weight:700"><td style="${枠}">合計</td><td style="${枠};text-align:right">${円(税込)}</td>`
+    + `<td style="${枠};text-align:right">${円(税抜)}</td><td style="${枠}"></td></tr>`
+    + `</table>${ボタン('内わけを閉じる')}</div>`;
+}
+
 function renderRitsuBox() {
   const 置き場 = el.cashGrid || el.cashMinusGo || el.cashMinusNote || el.cashMinus;
   if (!置き場) return;
@@ -3479,6 +3628,15 @@ function renderRitsuBox() {
     box.style.containerType = 'inline-size';   // ★売上の字の大きさを、この入れ物の幅から決めます（下の cqw）
     // ★「日報から読み直す」（日ごとの数）。中身は描くたびに作り直すので、押したのは入れ物で受けます
     box.addEventListener('click', (e) => {
+      // ★「日ごとの内わけ」を開く・閉じる（押したときだけ出します）
+      const 内 = e.target && e.target.closest ? e.target.closest('[data-ritsu="uchiwake"]') : null;
+      if (内) {
+        journal内わけを開いている = !journal内わけを開いている;
+        // ★開くたびに、まとめを読み直します（まとめは毎日変わるため）
+        if (journal内わけを開いている) delete 内わけのまとめ[`${state.storeId}/${state.y}-${state.m}`];
+        render();
+        return;
+      }
       const b = e.target && e.target.closest ? e.target.closest('[data-ritsu="reload"]') : null;
       if (!b || 日ごと読んでいる[state.storeId]) return;
       delete 日ごとAuto[`${state.storeId}/${state.y}-${state.m}`];
@@ -3561,6 +3719,7 @@ function renderRitsuBox() {
   });
   中.push('</table>');
   中.push(journal日ごとの札(state.storeId, state.y, state.m, state.d));
+  中.push(journal日ごとの内わけ(state.storeId, state.y, state.m, state.d));
 
   /* ★説明の文は出しません（ko-dai さんの指示・2026-09-23）。
        ★代わりに、**数が出せないときは「—」**のままにします。0% と書くと、
@@ -9051,8 +9210,22 @@ function meetingCumByStore(y, m) {
  *   そのときは人件費がそのままアルバイトのみになります（まちがいではありません）。
  */
 function meetingLaborPart(v) {
-  if (!v || typeof v.labor !== 'number' || typeof v.laborStaff !== 'number') return null;
+  if (!v || typeof v.labor !== 'number') return null;
+  // ★人件費に社員が入っていない年（NIPPOU_社員なしの最後の年 まで）は、人件費がそのままアルバイトのみ
+  if (v.laborPartOnly) return v.labor;
+  if (typeof v.laborStaff !== 'number') return null;
   return v.labor - v.laborStaff;
+}
+
+/**
+ * 総合計の人件費（社員を入れた人件費。分からなければ null）
+ *
+ * ★人件費に社員が入っていない年は、総合計が分からないので null（画面は —）。
+ *   その年の人件費は「アルバイトのみ」の欄に出ます（meetingLaborPart）。
+ */
+function meetingLaborTotal(v) {
+  if (!v || typeof v.labor !== 'number' || v.laborPartOnly) return null;
+  return v.labor;
 }
 
 /**
@@ -9085,17 +9258,20 @@ const MEETING_MODES = {
       main: (v) => v.cost, sub: (v) => meetingCostRate(v) },
     /* ★人件費と F/L は「総合計」と「アルバイトのみ」の2つ（2026-10-01、ko-dai さんの指示）。
          日報のまとめ・ジャーナルと同じ分け方です（アルバイトのみ ＝ 人件費 − 社員）。
-         社員の数を読んでいない年月（2025年より前・バグるの8月まで）は「アルバイトのみ」が — です */
+         ★2025年までは、日報の人件費に社員が入っていません（ko-dai さん）。その年の人件費は
+           「アルバイトのみ」に入り、「総合計」は — です（NIPPOU_社員なしの最後の年）。
+         2026年でも、社員の数を読んでいない月（バグるの8月まで・取り込み直す前）は「アルバイトのみ」が — です */
     { label: '人件費（総合計）', mainKind: 'yen', subKind: 'pct', goodWhen: 'down', big: true,
-      main: (v) => v.labor, sub: (v) => (v.ex ? v.labor / v.ex : null) },
+      main: (v) => meetingLaborTotal(v),
+      sub: (v) => { const t = meetingLaborTotal(v); return (t === null || !v.ex) ? null : t / v.ex; } },
     { label: '人件費（アルバイトのみ）', mainKind: 'yen', subKind: 'pct', goodWhen: 'down', big: true,
       main: (v) => meetingLaborPart(v),
       sub: (v) => { const a = meetingLaborPart(v); return (a === null || !v.ex) ? null : a / v.ex; } },
     { label: 'F/L（総合計）', mainKind: 'pct', goodWhen: 'down',
       main: (v) => {
         const c = meetingCostRate(v);
-        const l = v.ex ? v.labor / v.ex : null;
-        return (c === null || l === null) ? null : c + l;
+        const t = meetingLaborTotal(v);
+        return (c === null || t === null || !v.ex) ? null : c + t / v.ex;
       } },
     { label: 'F/L（アルバイトのみ）', mainKind: 'pct', goodWhen: 'down',
       main: (v) => {
@@ -9330,6 +9506,9 @@ function renderMeeting() {
       if (!v) return;
       const now = meetingRow(v.now);
       const last = meetingRow(v.last);
+      // ★人件費に社員が入っていない年は、その人件費を「アルバイトのみ」として扱います
+      now.laborPartOnly = state.y <= NIPPOU_社員なしの最後の年;
+      last.laborPartOnly = state.y - 1 <= NIPPOU_社員なしの最後の年;
       // キャッチだけは、シートの数字ではなくキャッチ集計の数字を使います
       now.katch = (katch[s.id] || {}).yen || 0;
       now.katchPeople = (katch[s.id] || {}).people || 0;
