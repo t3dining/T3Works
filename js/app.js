@@ -7448,65 +7448,42 @@ function expenseByPerson(rec) {
 }
 
 /* ------------------------------------------------------------
- *  キャッチの明細を1行にまとめる
+ *  一覧に出す行（★1件 ＝ 1行）
  *
- *  キャッチは「1人に渡すごとに1件」入れるので、同じ日の同じ店舗で
- *  何人にも渡すと、明細が同じような行でうまってしまいます。
- *  そこで一覧では
+ *  ★2026-10-01、ko-dai さんの指示で**まとめるのをやめました。**
+ *    前はキャッチだけ「日付 × 立て替えた人 × 店舗」で1行にまとめ、
+ *    合計の人数と金額を出していました（2名100円 と 3名150円 → 5名250円）。
+ *    ★**入れたとおりに見えないと、入れまちがいに気づけません。**
+ *    いまは、どの種類も**入れた1件がそのまま1行**です。
  *
- *      日付 × 立て替えた人 × 店舗
+ *  渡した相手は一覧には出しません。キャッチの行の「明細」を押すと、
+ *  その日・その人・その店舗の分を1件ずつ見て、直したり消したりできます。
  *
- *  を1行にまとめ、合計の人数と金額だけを出します。
- *  渡した相手は一覧には出さず、「明細」を押して開く画面で見ます
- *  （店舗が違えば、同じ日・同じ人でも別の行になります）。
- *
- *  キャッチ以外は、まとめる意味がないので1件が1行のままです。
- *  並びは、そのかたまりの 一番最初の1件があった場所です。
+ *  ★`people` はキャッチ以外は 0 です（人数を持たない種類のため）。
+ *    `isCatch` は「明細」ボタンを出すかどうかに使います。
  * ---------------------------------------------------------- */
-
-/** まとめるときの目じるし（日付・立て替えた人・店舗） */
-function catchGroupKey(e) {
-  return [e.d || '', e.by || '', e.store || ''].join('');
-}
-
-function catchGroups(list) {
-  const map = new Map();
-  const out = [];
-  list.forEach((e) => {
-    if (e.kind !== 'catch') {
-      // キャッチ以外は、そのまま1件で1つのかたまりにします
-      out.push({
-        d: e.d || '', by: e.by || '', store: e.store || '',
-        list: [e], people: 0, yen: Number(e.yen) || 0, isCatch: false,
-      });
-      return;
-    }
-    const key = catchGroupKey(e);
-    let g = map.get(key);
-    if (!g) {
-      g = {
-        d: e.d || '', by: e.by || '', store: e.store || '',
-        list: [], people: 0, yen: 0, isCatch: true,
-      };
-      map.set(key, g);
-      out.push(g);
-    }
-    g.list.push(e);
-    g.people += Number(e.people) || 0;
-    g.yen += Number(e.yen) || 0;
-  });
-  return out;
+function 明細の行(list) {
+  return list.map((e) => ({
+    d: e.d || '',
+    by: e.by || '',
+    store: e.store || '',
+    list: [e],
+    people: e.kind === 'catch' ? (Number(e.people) || 0) : 0,
+    yen: Number(e.yen) || 0,
+    isCatch: e.kind === 'catch',
+  }));
 }
 
 /**
- * まとめた行の領収書のしるし
- *   全部有り → ◯ ／ 全部無し → × ／ まざっている → △
+ * 行の領収書のしるし（1件 ＝ 1行なので ◯ か × だけです）
+ *
+ * ★まとめていたころは「まざっている → △」がありました。
+ *   2026-10-01 にまとめるのをやめたので、△ は出ません。
  */
-function groupReceipt(g) {
-  const yes = g.list.filter((e) => e.receipt).length;
-  if (yes === g.list.length) return { mark: '◯', none: false, title: '領収書あり' };
-  if (yes === 0) return { mark: '×', none: true, title: '領収書なし' };
-  return { mark: '△', none: true, title: `領収書あり ${yes}件／なし ${g.list.length - yes}件` };
+function rowReceipt(e) {
+  return e && e.receipt
+    ? { mark: '◯', none: false, title: '領収書あり' }
+    : { mark: '×', none: true, title: '領収書なし' };
 }
 
 function yenText(n) {
@@ -7598,18 +7575,18 @@ function renderExpense() {
   el.expenseList.innerHTML = '';
   paying.forEach((p) => {
     const done = !!(p.paid && p.paid.done);
-    // キャッチは「日付×店舗」でまとめます（立て替えた人はこのカードの人）
-    const groups = catchGroups(p.list);
+    // ★1件 ＝ 1行です（2026-10-01 からまとめません）
+    const 明細行 = 明細の行(p.list);
     const card = document.createElement('section');
     card.className = 'exp-card' + (done ? ' is-paid' : '');
 
     const head = document.createElement('div');
     head.className = 'exp-card__head';
     // 名前・件数・その人の合計。上の表を見に戻らなくても分かるようにします
-    // 件数は「下に出ている行の数」です（キャッチはまとめた後の数になります）
+    // ★件数は「入れた件数」です（1件 ＝ 1行なので、下に出ている行の数と同じです）
     head.innerHTML =
       '<span class="exp-card__name"></span>' +
-      `<span class="exp-card__count">${groups.length}件</span>` +
+      `<span class="exp-card__count">${明細行.length}件</span>` +
       `<span class="exp-card__total">${yenMarkup(p.total)}</span>`;
     head.querySelector('.exp-card__name').textContent = p.name;
     if (done) {
@@ -7622,13 +7599,13 @@ function renderExpense() {
 
     const list = document.createElement('ul');
     list.className = 'exp-rows';
-    groups.forEach((g) => {
+    明細行.forEach((g) => {
       const e = g.list[0];
       const li = document.createElement('li');
       li.className = 'exp-row';
       const [, m, d] = (g.d || '').split('-');
-      const receipt = groupReceipt(g);
-      // キャッチは合計の人数で名前を作り直します（例：こじゃれキャッチ 63名）
+      const receipt = rowReceipt(e);
+      // キャッチは、その1件の人数で名前を作り直します（例：こじゃれキャッチ 3名）
       const label = g.isCatch
         ? expenseLabelOf('catch', g.store, g.people)
         : (e.label || '（項目なし）');
@@ -7639,10 +7616,7 @@ function renderExpense() {
         ` title="${receipt.title}">${receipt.mark}</span>` +
         `<span class="exp-row__yen">${yenMarkup(g.yen)}</span>`;
       li.querySelector('.exp-row__label').textContent = label;
-      /* ここには何件分かを添えていません。
-         「こじゃれキャッチ 69名」だけで幅がいっぱいで、
-         足すと iPhone の幅で名前ごと折り返してしまうためです。
-         件数は「明細」を押すと、一番下の合計に出ます */
+      /* ★何件分かは添えません。1件 ＝ 1行なので、いつも1件です */
 
       if (g.isCatch) {
         // キャッチは渡した相手を一覧に出さないので、明細の画面で見て直します
@@ -8257,8 +8231,8 @@ function renderCatch() {
   /* ---- 店舗ごとの明細 ---- */
   el.catchList.innerHTML = '';
   rows.filter((r) => r.list.length).forEach((r) => {
-    // 同じ日に同じ人が立て替えた分は1行にまとめます（店舗はこのカードの店舗）
-    const groups = catchGroups(r.list);
+    // ★1件 ＝ 1行です（2026-10-01 からまとめません。店舗はこのカードの店舗）
+    const 明細行 = 明細の行(r.list);
     const card = document.createElement('section');
     card.className = 'exp-card';
     // 左の帯と店舗名の色。一覧画面の店舗カードと同じ色を使います
@@ -8275,7 +8249,7 @@ function renderCatch() {
 
     const list = document.createElement('ul');
     list.className = 'exp-rows';
-    groups.forEach((g) => {
+    明細行.forEach((g) => {
       const li = document.createElement('li');
       li.className = 'exp-row';
       const [, m, d] = (g.d || '').split('-');
@@ -8286,14 +8260,6 @@ function renderCatch() {
       // 人数 → 立て替えた人 の順に出します（渡した相手は「明細」の中）
       const labelEl = li.querySelector('.exp-row__label');
       labelEl.textContent = `${g.people}名${g.by ? '　立替 ' + g.by : ''}`;
-
-      // こちらは名前が短いので、何件分かを添えても折り返しません
-      if (g.list.length > 1) {
-        const n = document.createElement('span');
-        n.className = 'exp-row__n';
-        n.textContent = `${g.list.length}件`;
-        labelEl.appendChild(n);
-      }
 
       const open = document.createElement('button');
       open.type = 'button';
