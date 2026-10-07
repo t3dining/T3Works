@@ -6835,6 +6835,23 @@ function shiftTimeSpan(storeId, slotId, entry) {
 }
 
 /**
+ * 組む画面の名前の札で、**上の段に出す時刻**の見た目（時刻を入れる店舗＝popo だけ）
+ *
+ * ★2026-10-07、ko-dai さん「時間が変な部分で改行されてしまうので、上段に時間、下段に名前になるように」。
+ *   使うのは js/app.js の shiftChipFill（本物の表）と、シフトの使い方の見本の表です。**ここ1か所**で決めます。
+ * ★時刻は折り返しません（`white-space:nowrap`）。札は `word-break: break-all` なので、何もしないと
+ *   「10:30〜17:0／0」と時刻の途中で切れます。
+ * ★字は**札の幅に合わせて小さくします**。`100cqw` は札（`container-type:inline-size`）の中の幅で、
+ *   「10:30〜17:00」は数字の幅をそろえると約7.1文字分なので、7.2 で割ると1行に収まります
+ *   （幅 320・375・390・430・820 の画面で描いて測りました。430 で 10.6px、390 で 9.2px）。
+ *   `cqw` の使えない古い端末では、その行ごと読み飛ばされて 11px になります。
+ */
+function shiftChipTimeStyle() {
+  return 'display:block;white-space:nowrap;word-break:normal;line-height:1.3;'
+    + 'font-variant-numeric:tabular-nums;font-size:11px;font-size:min(12.5px, calc(100cqw / 7.2));';
+}
+
+/**
  * 印刷の1マスで、時刻と名前を分けたもの
  *
  * ★1段8日だと1マスが17.8mmしかありません。時刻と名前を1行に並べると

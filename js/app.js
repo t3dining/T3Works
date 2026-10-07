@@ -13559,7 +13559,11 @@ function shiftGuideGrid(rep, days, opt) {
       const cell = ((d.cells || {})[slot.id] || {})[l.id] || {};
       h += '<td class="shift-cell">';
       (cell.people || []).forEach((e) => {
-        h += `<button type="button" tabindex="-1" class="shift-chip${e.cls ? ` ${e.cls}` : ''}">${e.t ? `${e.t} ` : ''}${e.n}`
+        // ★出勤〜退勤の時刻の店舗（popo）は、本物と同じく上の段に時刻・下の段に名前（→ shiftChipFill）
+        const 二段 = String(e.t || '').indexOf('〜') >= 0;
+        h += `<button type="button" tabindex="-1" class="shift-chip${e.cls ? ` ${e.cls}` : ''}"${二段 ? ' style="container-type:inline-size;"' : ''}>`
+          + (二段 ? `<span class="chip-time" style="${shiftChipTimeStyle()}">${e.t}</span><span class="chip-name" style="display:block;">${e.n}</span>`
+            : `${e.t ? `${e.t} ` : ''}${e.n}`)
           + `${e.f ? '<b class="chip-f">F</b>' : ''}</button>`;
       });
       for (let k = 0; k < (cell.short || 0); k += 1) h += '<button type="button" tabindex="-1" class="shift-short">＋</button>';
@@ -14732,6 +14736,35 @@ function openHelpReqList() {
   m.classList.remove('is-hidden');
 }
 
+/**
+ * 名前の札の中身を入れる。**時刻を入れる店舗（popo）は、上の段に時刻・下の段に名前**
+ *
+ * ★2026-10-07、ko-dai さん「時間が変な部分で改行されてしまうので、上段に時間、下段に名前になるように」。
+ *   「10:30〜17:00」は札の幅より広く、1行に並べると「10:30〜17:0／0 名前」と時刻の途中で切れていました
+ *   （札は `word-break: break-all`。名前が長いときに折り返すためのもの）。
+ * ★時刻は折り返しません。**札の幅に合わせて字を小さくします**（見た目は js/config.js の shiftChipTimeStyle。スマホの4列でも1行に収まります）。
+ * ★枠で選ぶ店舗（こじゃれ・バグるなど）は「17:00 名前」と短いので、今までどおり1行です。
+ * ★見た目は css/style.css（本部のもの）に足さず、ここで持たせます。
+ * ★つまんで動かすときの影（beginShiftDrag）は札を丸ごと写すので、同じ2段で出ます。
+ */
+function shiftChipFill(chip, storeId, slotId, e) {
+  const time = shiftUsesRange(storeId) ? shiftTimeSpan(storeId, slotId, e) : '';
+  if (!time) {
+    chip.textContent = shiftNameText(storeId, slotId, e);
+    return;
+  }
+  chip.style.containerType = 'inline-size';
+  const 上 = document.createElement('span');
+  上.className = 'chip-time';
+  上.style.cssText = shiftChipTimeStyle();
+  上.textContent = time;
+  const 下 = document.createElement('span');
+  下.className = 'chip-name';
+  下.style.cssText = 'display:block;';
+  下.textContent = String((e && e.n) || '') + helpFromLabel(e);
+  chip.append(上, 下);
+}
+
 /** 表の1マス（その日・その枠・その持ち場） */
 function shiftCell(rec, wishes, day, dateStr, slot, lane, first) {
   const td = document.createElement('td');
@@ -14754,7 +14787,7 @@ function shiftCell(rec, wishes, day, dateStr, slot, lane, first) {
     // ★早上がりを使わない店舗では、記録に残っていても印を出しません（→ shiftUsesEarly）
     const 早上がり = !!e.early && shiftUsesEarly(state.storeId);
     chip.className = 'shift-chip' + (通し ? ' is-full' : '') + (早上がり ? ' is-early' : '');
-    chip.textContent = shiftNameText(state.storeId, slot.id, e);
+    shiftChipFill(chip, state.storeId, slot.id, e);
     // ★通しの人は名前のうしろに F。塗りだけだと、ぱっと見て分かりません。
     //   popo は「字は出さなくていい」とのことなので、塗りだけです
     if (通し && shiftShowsFullMark(state.storeId)) {
