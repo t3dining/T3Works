@@ -6835,20 +6835,23 @@ function shiftTimeSpan(storeId, slotId, entry) {
 }
 
 /**
- * 組む画面の名前の札で、**上の段に出す時刻**の見た目（時刻を入れる店舗＝popo だけ）
+ * 組む画面の名前の札で、**上の段に出す時刻**の見た目
  *
- * ★2026-10-07、ko-dai さん「時間が変な部分で改行されてしまうので、上段に時間、下段に名前になるように」。
+ * ★2026-10-07、ko-dai さん「時間が変な部分で改行されてしまうので、上段に時間、下段に名前になるように」（popo）。
+ *   同じ日に「他の店舗も二段に揃えてください」で、**全部の店舗**が上の段に時刻・下の段に名前になりました。
  *   使うのは js/app.js の shiftChipFill（本物の表）と、シフトの使い方の見本の表です。**ここ1か所**で決めます。
  * ★時刻は折り返しません（`white-space:nowrap`）。札は `word-break: break-all` なので、何もしないと
  *   「10:30〜17:0／0」と時刻の途中で切れます。
- * ★字は**札の幅に合わせて小さくします**。`100cqw` は札（`container-type:inline-size`）の中の幅で、
- *   「10:30〜17:00」は数字の幅をそろえると約7.1文字分なので、7.2 で割ると1行に収まります
- *   （幅 320・375・390・430・820 の画面で描いて測りました。430 で 10.6px、390 で 9.2px）。
- *   `cqw` の使えない古い端末では、その行ごと読み飛ばされて 11px になります。
+ * ★`縮める`＝出勤〜退勤の時刻を入れる店舗（popo）。字を**札の幅に合わせて小さくします**。
+ *   `100cqw` は札（`container-type:inline-size`）の中の幅で、「10:30〜17:00」は数字の幅をそろえると
+ *   約7.1文字分なので、7.2 で割ると1行に収まります（幅 320・375・390・430・820 の画面で描いて測りました。
+ *   430 で 10.6px、390 で 9.2px）。`cqw` の使えない古い端末では、その行ごと読み飛ばされて 11px になります。
+ *   ★同じ表の中で大きさがばらつかないよう、popo では退勤のない「11:00」も同じ大きさです。
+ * ★枠で選ぶ店舗（こじゃれ・バグるなど）の「17:00」は短いので、縮めません（名前と同じ大きさ）。
  */
-function shiftChipTimeStyle() {
-  return 'display:block;white-space:nowrap;word-break:normal;line-height:1.3;'
-    + 'font-variant-numeric:tabular-nums;font-size:11px;font-size:min(12.5px, calc(100cqw / 7.2));';
+function shiftChipTimeStyle(縮める) {
+  return 'display:block;white-space:nowrap;word-break:normal;line-height:1.3;font-variant-numeric:tabular-nums;'
+    + (縮める ? 'font-size:11px;font-size:min(12.5px, calc(100cqw / 7.2));' : '');
 }
 
 /**
