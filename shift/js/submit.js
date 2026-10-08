@@ -975,10 +975,12 @@ function demoBuilt() {
     slots.forEach((slot, si) => {
       // 自分を1日おきに入れて、「自分が入っている日」も見えるようにします
       const 入る = (i + si) % 2 === 0;
-      const t = 時刻で入れる ? ['10', '11', '17'][si % 3] : (slot.pick || slot.times[0] || '');
+      // ★4つ目はラストの行（popo）。22時からの見本を入れます
+      const t = 時刻で入れる ? (['10', '11', '17', '22'][si] || '17') : (slot.pick || slot.times[0] || '');
       const one = { n: 入る ? me.name : '見本 花子', t, p: si % 2 ? 'h' : 'k' };
-      if (時刻で入れる) one.e = ['15', '22', '22'][si % 3];
-      day[slot.id].push(one);
+      if (時刻で入れる) one.e = ['15', '22', '22', '27'][si] || '22';
+      // ★記録に残す枠の名前で入れます（ラストの人は dinner の中。本物と同じ形 → js/config.js の「ラスト」の節）
+      day[shiftStoredSlot(slot.id)].push(one);
     });
     out[d] = day;
   });
@@ -1208,7 +1210,8 @@ function renderBuilt() {
       let any = false;
       shiftSlotsOf(me.store).forEach((slot) => {
         // 見本（テスト用）の人は、決まったシフトにも出しません
-        const list = ((day && day[slot.id]) || []).filter((e) => !isShiftTester(e.n));
+        // ★行ごとに取り出します（ラストの行は、記録では dinner の中 → shiftRowList）
+        const list = shiftRowList(me.store, day, slot.id).filter((e) => !isShiftTester(e.n));
         if (!list.length) return;
         any = true;
         const line = document.createElement('p');
@@ -1299,11 +1302,12 @@ function builtSheetModel() {
     });
 
     const rows = shiftSlotsOf(me.store).map((slot) => ({
+      id: slot.id,
       label: slot.name,
       cells: part.flatMap((s) => {
         const day = built[s] || {};
         // 見本（テスト用）の人は出しません。時刻の入っていない人は、その枠の普段の時刻に
-        const list = (day[slot.id] || [])
+        const list = shiftRowList(me.store, day, slot.id)
           .filter((e) => e && !isShiftTester(e.n))
           .map((e) => (e.t === '' || e.t === undefined || e.t === null
             ? { ...e, t: shiftDefaultTime(me.store, slot.id) } : e))
@@ -1414,7 +1418,9 @@ function setRange(dateStr, from, to) {
     return;
   }
   const owari = to && Number(to) > Number(from) ? to : '';
-  const one = { s: shiftSlotByTime(from, me.store), t: from };
+  // ★記録に残す枠の名前で入れます（22時以降＝ラストの行でも、`s` は dinner のまま → js/config.js の「ラスト」の節）。
+  //   お店の画面は、出勤時刻で行を決め直します。前の版のままのお店の端末でも、希望がディナーの行に見えます
+  const one = { s: shiftStoredSlot(shiftSlotByTime(from, me.store)), t: from };
   if (owari) one.e = owari;
   picked[dateStr] = [one];
   renderPeriod();

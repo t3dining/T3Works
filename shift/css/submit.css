@@ -27,6 +27,8 @@
   --full:      #7a4b8f;
   --lunch:     #2d7a58;
   --dinner:    #4a5fa8;
+  /* ラストの行（popo だけ。js/config.js の「ラスト」の節）。組む画面の --shift-last と同じ色 */
+  --last:      #1f7a8c;
   --header-bg: #1c1f26;
   --header-fg: #ffffff;
   --radius:    12px;
@@ -46,6 +48,7 @@
     --full:      #c197d6;
     --lunch:     #62c39a;
     --dinner:    #8fa3e0;
+    --last:      #6cc4d6;
     --header-bg: #0f1114;
     --shadow:    none;
   }
@@ -298,6 +301,7 @@ body {
 .built-line__slot--open   { color: var(--open); }
 .built-line__slot--lunch  { color: var(--lunch); }
 .built-line__slot--dinner { color: var(--dinner); }
+.built-line__slot--last   { color: var(--last); }
 .built-name { margin-right: 8px; white-space: nowrap; }
 .built-name.is-me { font-weight: 700; }
 .built-name.is-full {

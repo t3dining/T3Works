@@ -2440,7 +2440,8 @@ function renderShiftSlots() {
   const 時刻で入れる = shiftUsesRange(storeId);
   const saved = Store.getDay(SHIFT_SET_STORE, storeId).items || {};
   const now = shiftSlotsOf(storeId);
-  el.shiftSlotCount.textContent = `${now.length}つ`;
+  // ★ラストの行（popo）は、ここでは直せないので数に入れません（下に出る行の数と合わせます）
+  el.shiftSlotCount.textContent = `${now.filter((sl) => sl.id !== SHIFT_LAST_ID).length}つ`;
   el.shiftSlotList.innerHTML = '';
 
   // ★その店舗の初めの形から出します。SHIFT_SLOTS_DEFAULT を直に読むと、
@@ -2531,7 +2532,14 @@ function renderShiftRangeNote(storeId) {
   const 名 = (id) => (getShiftSlot(storeId, id) || {}).name || id;
   if (b.昼から > 0) 行.push(`${時(b.昼から)}より前＝${名('open')}`);
   if (b.夜 - 刻み >= b.昼から) 行.push(`${時(b.昼から)}〜${時(b.夜 - 刻み)}＝${名('lunch')}`);
-  行.push(`${時(b.夜)}以降＝${名('dinner')}`);
+  // ★ラストの行がある店舗（popo）は、その境目も書きます（境目はコードで決めています → js/config.js の「ラスト」の節）
+  const ラスト = shiftLastFrom(storeId);
+  if (ラスト !== null && ラスト - 刻み >= b.夜) {
+    行.push(`${時(b.夜)}〜${時(ラスト - 刻み)}＝${名('dinner')}`);
+    行.push(`${時(ラスト)}以降＝${名(SHIFT_LAST_ID)}`);
+  } else {
+    行.push(`${時(b.夜)}以降＝${名('dinner')}`);
+  }
   const p1 = document.createElement('p');
   p1.className = 'admin-note';
   p1.innerHTML = 'この店舗は<b>出勤〜退勤の時刻を入れる</b>やり方です。'

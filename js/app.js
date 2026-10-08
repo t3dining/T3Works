@@ -10059,6 +10059,43 @@ function renderMeetingMove() {
   }
 }
 
+/**
+ * その月の数字を、いつ日報から取り込んだか
+ *
+ * ★会議資料の数字は、「日報から取り込む」を押したときの**写し**です。
+ *   日報は月が終わったあとも直されます（仕入の締め・検算）。写しが古いままだと、
+ *   日報ともスプレッドシートとも数字が合わなくなります（2026-10-08、9月分で実際に起きました）。
+ *   いつの写しかを画面に出して、古いことに気づけるようにします。
+ * ★時刻は、取り込みのとき `num:店舗id` の `at` に入れます（`pullNippou`）。
+ *   スプレッドシートへ書く道具（gas/会議資料に書く.gs）も同じ `at` を読み、古い写しは書きません。
+ *   **名前を変えるときは2か所いっしょに**（検算 test_nippou_stamp.py が、両方を同じ記録で動かして見ています）。
+ *
+ * 返すもの … null（取り込んだ数字が無い）
+ *            { at: 一番古い時刻 }（店舗で時刻が違えば、古い方）
+ *            { at: null }（時刻の無い店舗がある＝時刻を入れる前に取り込んだ月）
+ */
+function nippouPulledAt(y, m) {
+  const items = Store.getDay(MEETING_STORE, meetingMonthKey(y, m)).items || {};
+  const ats = Object.keys(items)
+    .filter((k) => k.indexOf('num:') === 0)
+    .map((k) => (items[k] && items[k].at) || null);
+  if (!ats.length) return null;
+  if (ats.some((a) => !a)) return { at: null };
+  return { at: ats.slice().sort()[0] };
+}
+
+/** 取り込みのボタンの横に出す一文（取り込んだ数字が無ければ空） */
+function nippouPulledText(y, m, いま = new Date()) {
+  const p = nippouPulledAt(y, m);
+  if (!p) return '';
+  if (!p.at) return '前にいつ取り込んだか分かりません。日報と数字が違うときは、もう一度押してください';
+  const d = new Date(p.at);
+  const 日 = Math.floor((いま.getTime() - d.getTime()) / 86400000);
+  const 時刻 = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return `前に取り込んだのは ${d.getMonth() + 1}月${d.getDate()}日 ${時刻}${日 >= 1 ? `（${日}日前）` : ''} です。`
+    + 'そのあと日報を直したら、もう一度押してください';
+}
+
 function renderNippou() {
   renderMeetingMove();
   const folders = NippouFolders.all();
@@ -10066,6 +10103,12 @@ function renderNippou() {
   el.nippouNote.textContent = n
     ? `${state.y}年${state.m}月と、${state.y - 1}年${state.m}月の日報を読みます（${n}店舗）`
     : 'マネージの「日報フォルダ」に登録すると使えます';
+  // ★いつの写しかを、すぐ下の行に出します（古いことに気づけるように）
+  const 前 = n ? nippouPulledText(state.y, state.m) : '';
+  if (前) {
+    el.nippouNote.appendChild(document.createElement('br'));
+    el.nippouNote.appendChild(document.createTextNode(前));
+  }
   el.nippouPull.disabled = !n || nippouBusy || !Sync.enabled();
 
   // 別の月に移ったら、前の月の結果は消します（どの月の話か分からなくなるため）
@@ -10105,6 +10148,8 @@ async function pullNippou() {
   el.nippouPull.textContent = '日報から取り込む';
 
   const lines = [{ head: true, text: `${y}年${m}月として取り込みました` }];
+  // ★いつ取り込んだかを、数字と一緒に残します（1回の取り込みで、どの店舗も同じ時刻）
+  const 取り込んだ時刻 = new Date().toISOString();
   if (!res.ok) {
     lines.push({ ok: false, text: res.error || '取り込めませんでした' });
   } else {
@@ -10127,7 +10172,7 @@ async function pullNippou() {
         // どのファイルを読んだかを出します（月がずれていないか、ここで分かります）
         parts.push(`${g.name || `${year}年`} ✓`);
       });
-      if (val.now || val.last) Store.setItem(MEETING_STORE, key, `num:${s.id}`, { value: val });
+      if (val.now || val.last) Store.setItem(MEETING_STORE, key, `num:${s.id}`, { value: val, at: 取り込んだ時刻 });
       lines.push({ ok: !ng && !!val.now, name: s.name, text: parts.join('　') });
     });
     meetingSeq += 1;
@@ -12136,10 +12181,15 @@ function shiftDayOf(rec, dateStr) {
         ? { ...e, t: shiftDefaultTime(state.storeId, id) }
         : e
     )));
+  // ★ラストの行（popo だけ）。記録では dinner の中に入っているので、出勤時刻で分けて出します
+  //   （→ js/config.js の「ラスト」の節。書くときは saveShiftDay が dinner へ戻します）。
+  //   ラストのない店舗は、last が空のままです
+  const 夜 = shiftSplitLast(state.storeId, arr('dinner', v.dinner));
   return {
     open: arr('open', v.open),
     lunch: arr('lunch', v.lunch),
-    dinner: arr('dinner', v.dinner),
+    dinner: 夜.dinner,
+    last: 夜.last,
     memo: v.memo || '',
     // その日のパティの枠（'lunch' か 'dinner'。無ければ空）
     patty: SHIFT_PATTY_SLOTS.includes(v.patty) ? v.patty : '',
@@ -12159,8 +12209,11 @@ function shiftMemoOf(rec, dateStr) {
 }
 
 function saveShiftDay(dateStr, day) {
+  // ★ラストの行の人は、記録では dinner に入れます（記録の形は open／lunch／dinner の3つのまま。
+  //   → js/config.js の「ラスト」の節）。読むときに shiftDayOf がまた分けます
+  const 夜 = (day.last && day.last.length) ? shiftSort(day.dinner.concat(day.last)) : day.dinner;
   Store.setItem(SHIFT_STORE, shiftRecKey(), shiftDayKey(dateStr), {
-    open: day.open, lunch: day.lunch, dinner: day.dinner,
+    open: day.open, lunch: day.lunch, dinner: 夜,
     memo: day.memo, patty: day.patty || '',
     short: shiftShortMap(day.short),
   });
@@ -12240,7 +12293,8 @@ function shiftWishInto(wishes, dateStr, slotId) {
   const out = [];
   wishes.forEach((w) => {
     (w.days[dateStr] || []).forEach((e) => {
-      if (!e || shiftSlotFor(e.s) !== slotId) return;
+      // ★時刻を入れる店舗（popo）は、出勤時刻で行を決めます（22時以降はラスト → shiftWishRow）
+      if (!e || shiftWishRow(state.storeId, e) !== slotId) return;
       // e … 退勤時刻（時刻を入れる店舗だけ入っています）
       out.push({
         name: w.name, t: e.t || '', e: e.e || '', s: e.s,
@@ -12280,7 +12334,7 @@ function shiftPlacedOn(rec, dateStr, name) {
   const out = [];
   shiftSlotsOf(state.storeId).forEach((slot) => {
     day[slot.id].forEach((e) => {
-      if (e.n === name) out.push({ slot: slot.id, t: e.t, f: !!e.f });
+      if (e.n === name) out.push({ slot: slot.id, t: e.t, e: e.e, f: !!e.f });
     });
   });
   return out;
@@ -13810,7 +13864,8 @@ function shiftGuideHtml(kind) {
           lunch: { h: { people: [{ t: '11:00〜17:00', n: 'Bさん' }] } },
           dinner: { k: { people: [{ t: '17:00〜23:00', n: 'Cさん' }] }, h: { people: [{ t: '11:30〜22:00', n: 'Dさん', cls: 'is-full' }], short: 1 } },
         } },
-        { label: '10/6（火）', cells: { lunch: { k: { wish: 2 } }, dinner: { h: { people: [{ t: '18:00〜23:00', n: 'Eさん' }] } } } },
+        { label: '10/6（火）', cells: { lunch: { k: { wish: 2 } }, dinner: { h: { people: [{ t: '18:00〜23:00', n: 'Eさん' }] } },
+          last: { h: { people: [{ t: '22:00〜27:00', n: 'Aさん' }] } } } },
       ];
     }
     return [
@@ -13826,6 +13881,7 @@ function shiftGuideHtml(kind) {
   const 組む手順 = [
     '<b>マスの「＋」</b>を押すと、そのマスに入れる人を選べます。名前を押すと入ります',
     range ? '入れる前に<b>出勤時刻</b>（と退勤時刻）を<b>時</b>と<b>分</b>で選べます。選ばなければ、その人が出した時刻で入ります。<b>出勤時刻で、入る行が決まります</b>'
+      + (shiftLastFrom(店[0]) !== null ? `（${shiftTimeText(shiftTimeKey(shiftLastFrom(店[0])))}以降の出勤は「${名('last')}」の行）` : '')
       : (yoru ? '入れる前に<b>開始時刻</b>を<b>時</b>と<b>分</b>で選べます。選ばなければ、その人が出した時刻で入ります'
         : '入れる前に<b>開始時刻</b>を押して選べます。選ばなければ、その人が出した時刻で入ります'),
     // ★4店舗（仕込み・営業）の形には「早上がり」を書きません（2026-09-25、ko-dai さんの指示）
@@ -13906,7 +13962,35 @@ function shiftGuideHtml(kind) {
   return out.join('');
 }
 
+/**
+ * ラストの行（popo）の色と、印刷のときの行の高さ
+ *
+ * ★css/style.css は本部のファイルなので、足す分は**ここから1回だけ**差し込みます（2026-10-08）。
+ *   立ち上げ・ランチ・ディナーの色（`--shift-open` など）と同じ書き方にそろえてあります。
+ *   ★マスの塗り（`td[data-slot="last"]`）は、style.css の3つと同じ**一番弱い書き方**です。
+ *     マスに直に色を書く（style 属性）と、落とし先の青（`.shift-cell.is-drop`）などの状態の色を消します
+ *     （style.css の「土台は一番弱く」の説明のとおり）。
+ * ★印刷の行の高さは、style.css が「3〜5行目」と行の番号で決めています。ラストは6行目なので、
+ *   行に印（`is-row-last`）を付けて、ここで高さを渡します（→ shiftSheetTable）。
+ */
+function shiftExtraStyle() {
+  if (document.getElementById('shiftExtraStyle')) return;
+  const st = document.createElement('style');
+  st.id = 'shiftExtraStyle';
+  st.textContent = ':root{--shift-last:#1f7a8c}'
+    + '@media (prefers-color-scheme: dark){:root{--shift-last:#6cc4d6}}'
+    + ':root[data-theme="dark"]{--shift-last:#6cc4d6}'
+    + '.shift-grid__slot--last{color:var(--shift-last)}'
+    + '.shift-grid tr > th.shift-grid__slot.shift-grid__slot--last{background:color-mix(in srgb, var(--shift-last) 24%, var(--surface-2))}'
+    + 'td[data-slot="last"]{background:color-mix(in srgb, var(--shift-last) 12%, var(--surface))}'
+    + '.wish-chip--last{background:var(--shift-last)}'
+    + '.wish-chip--last.is-yet{color:var(--shift-last)}'
+    + 'body.print-shift .shift-sheet tr.is-row-last td{height:var(--row-last, 10mm)}';
+  document.head.appendChild(st);
+}
+
 function renderShift() {
+  shiftExtraStyle();
   // ★名簿（シフトに入る人）は全店舗に出します。シフトを組むところは
   //   SHIFT_STORES の店舗だけです。組まない店舗では、名簿だけを出して
   //   あとは隠します（空の表を見せても、できることが無いためです）
@@ -15159,6 +15243,10 @@ function moveShiftChip(from, to) {
   const moved = { ...entry, p: to.lane };
   // 枠が変わったら、時刻はその枠の普段の時刻に入れかえます
   if (from.slot !== to.slot) moved.t = shiftDefaultTime(state.storeId, to.slot);
+  // ★退勤が出勤より前（か同じ）になったら、退勤を外します（小窓で出勤を直したときと同じ決め方）。
+  //   ディナーの「19:00〜22:00」の人をラストへ動かすと「22:00〜22:00」になっていました
+  if (moved.e !== undefined && moved.e !== '' && moved.t !== '' && moved.t !== undefined
+    && Number(moved.e) <= Number(moved.t)) delete moved.e;
 
   if (from.date === to.date) {
     dayFrom[from.slot].splice(at, 1);
@@ -15570,7 +15658,9 @@ function applyShiftFreeTime() {
   //   入っていた方が、表を見たときに読みまちがえません。
   //   立ち上げへは戻しません（立ち上げに入れたいときは、立ち上げの ＋ から）。
   let to = shiftSlotByTime(t, state.storeId);
-  if (to === 'open') to = slotId;
+  // ★時刻を入れる店舗（popo）は、いつも出勤時刻で行が決まります（立ち上げへも移します。時と分で選んだときと同じ）。
+  //   行に残すと、記録を読み直したときに別の行に出ます（行は出勤時刻から決め直すため）
+  if (to === 'open' && !shiftUsesRange(state.storeId)) to = slotId;
   // ★F（通し）の人を17時以降にずらしたら、それはもう通しではありません。
   //   通しの印（灰色の塗り）を外して、ディナーの枠へ移します
   if (entry.f && to === 'dinner') delete entry.f;
@@ -15670,7 +15760,7 @@ function removeShiftPick() {
  *
  * ★赤い「あき」（マスの ＋）に入れた人数から作ります。押して人を入れれば
  *   その分だけ減るので、**表を直せば文も直ります**（別に打ち直しません）。
- * ★持ち場（キッチン／ホール）は分けません。枠ごとに足します。
+ * ★持ち場（キッチン／ホール）は分けません。枠ごとに足します。★popo だけは分けて書きます（→ shiftShortByLane）。
  * ★**過ぎた日は入れません。**「9/1に来てください」とは頼めないためです。
  */
 function shiftShortDays(rec) {
@@ -15683,6 +15773,9 @@ function shiftShortDays(rec) {
   //     足し先が無く、「仕込み」はランチとは別の時間帯だからです。
   //     画面の表と、赤いあきの数え方は今までどおりです。**送る文だけの話です**
   const 足し先 = 枠一覧.some((sl) => sl.id === 'lunch') ? 'lunch' : null;
+  // ★popo だけ、持ち場（キッチン／ホール）まで分けて書きます（2026-10-08、ko-dai さんの指示
+  //   「◯/◯(◯)ランチキッチン◯人のように、いつどの時間帯でどこのポジションが何人必要か」→ shiftShortByLane）
+  const 分ける = shiftShortByLane(state.storeId);
   const out = [];
   shiftDays(state.y, state.m, shiftHalf).forEach((dateStr) => {
     if (dateStr < 今日) return;
@@ -15690,15 +15783,26 @@ function shiftShortDays(rec) {
     const day = shiftDayOf(rec, dateStr);
     const まとめ = {};
     枠一覧.forEach((slot) => {
-      const n = SHIFT_LANES.reduce((sum, lane) => sum + shiftShortOf(day, slot.id, lane.id), 0);
-      if (n <= 0) return;
-      const 行き先 = 足し先 && slot.id === 'open' ? 足し先 : slot.id;
-      まとめ[行き先] = (まとめ[行き先] || 0) + n;
+      SHIFT_LANES.forEach((lane) => {
+        const n = shiftShortOf(day, slot.id, lane.id);
+        if (n <= 0) return;
+        const 行き先 = 足し先 && slot.id === 'open' ? 足し先 : slot.id;
+        // ★持ち場まで分けて書く店舗（popo）は、枠×持ち場ごとに数えます。他は枠ごとに足します
+        const どこ = 分ける ? shiftShortKey(行き先, lane.id) : 行き先;
+        まとめ[どこ] = (まとめ[どこ] || 0) + n;
+      });
     });
-    // 並びは枠の順のままにします（ランチ→ディナー）
+    // 並びは枠の順のままにします（ランチ→ディナー→ラスト）。持ち場は キッチン→ホール
     const 枠 = [];
     枠一覧.forEach((slot) => {
-      if (まとめ[slot.id]) 枠.push({ name: slot.name, n: まとめ[slot.id] });
+      if (!分ける) {
+        if (まとめ[slot.id]) 枠.push({ name: slot.name, n: まとめ[slot.id] });
+        return;
+      }
+      SHIFT_LANES.forEach((lane) => {
+        const n = まとめ[shiftShortKey(slot.id, lane.id)];
+        if (n) 枠.push({ name: slot.name + lane.name, n });
+      });
     });
     if (枠.length) out.push({ dateStr, 枠 });
   });
@@ -16015,7 +16119,8 @@ function openShiftWishes() {
       const 組 = [];
       枠一覧.forEach((sl) => {
         const 入れた = mine.filter((e) => e.slot === sl.id);
-        const 出した = list.filter((e) => shiftSlotFor(e.s) === sl.id);
+        // ★時刻を入れる店舗（popo）は、出勤時刻で行を決めます（22時以降はラスト → shiftWishRow）
+        const 出した = list.filter((e) => shiftWishRow(state.storeId, e) === sl.id);
         if (入れた.length) {
           入れた.forEach((e, i) => 組.push({ 入: e, 出: 出した[i] || 出した[0] || null }));
         } else {
@@ -16049,10 +16154,12 @@ function openShiftWishes() {
               + (出 ? '（出してもらったとおりに入れました）' : '（希望なしで入れました）');
           }
         } else {
-          const slot = getShiftSlot(state.storeId, 出.s);
+          // ★色と名前は、時刻を入れる店舗では行（ラストなど）、枠で選ぶ店舗では選んだ枠（F は F の色）
+          const 種 = shiftUsesRange(state.storeId) ? shiftWishRow(state.storeId, 出) : 出.s;
+          const slot = getShiftSlot(state.storeId, 種);
           if (!slot) return;
           const 時刻 = 出.t !== '' && 出.t !== undefined ? shiftTimeText(出.t) : '';
-          chip.className = `wish-chip wish-chip--${出.s} is-yet`;
+          chip.className = `wish-chip wish-chip--${種} is-yet`;
           chip.textContent = 時刻 || slot.name;
           chip.title = `${slot.name}${時刻 ? ' ' + 時刻 : ''}（出してもらいましたが、まだ入れていません）`;
         }
@@ -16066,10 +16173,31 @@ function openShiftWishes() {
         note.title = w.notes[d];
         td.appendChild(note);
       }
+      // ★押すと、その人がその日に出した時刻（何時から何時まで）を上の欄に出します
+      //   （2026-10-08、ko-dai さんの指示。全部の店舗）。マスには出勤の時刻しか出ていないためです。
+      //   何もないマス（出していない・入れていない・連絡もない）は押せません
+      if (組.length || (w && w.notes[d])) {
+        td.style.cursor = 'pointer';
+        td.addEventListener('click', () => {
+          const 前 = table.querySelector('td[data-picked]');
+          if (前) { 前.removeAttribute('data-picked'); 前.style.boxShadow = ''; }
+          td.setAttribute('data-picked', '1');
+          td.style.boxShadow = 'inset 0 0 0 2px var(--accent)';
+          shiftWishDetail(詳しく, d, name, w, mine);
+        });
+      }
       tr.appendChild(td);
     });
     table.appendChild(tr);
   });
+
+  // ★押したマスの中身を出す欄。表の上に置き、表を送っても見えるように貼り付けます
+  const 詳しく = document.createElement('div');
+  詳しく.id = 'shiftWishDetail';
+  詳しく.style.cssText = 'position:sticky;top:0;z-index:3;margin:0 0 8px;padding:8px 10px;border:1px solid var(--line);'
+    + 'border-radius:9px;background:var(--surface-2);font-size:13px;line-height:1.6;';
+  shiftWishDetail(詳しく, '', '', null, []);
+  el.shiftWishList.appendChild(詳しく);
 
   const wrap = document.createElement('div');
   wrap.className = 'wish-wrap';
@@ -16093,10 +16221,99 @@ function openShiftWishes() {
       ['<span class="wish-chip wish-chip--lunch is-yet">薄い</span>',
         '出してもらったが、まだ入れていない'],
       ['<span class="wish-note">連</span>', '連絡あり（押すと中身が出ます）'],
+      ['<span style="font-weight:700;">押す</span>', 'マスを押すと、出してもらった時刻（何時から何時まで）と、シフトに入れた時刻が上に出ます'],
     ].map(([mark, text]) => `<p class="wish-legend__row">${mark}<span>${text}</span></p>`).join('');
   el.shiftWishList.appendChild(legend);
 
   el.shiftWishModal.classList.remove('is-hidden');
+}
+
+/**
+ * 提出の一覧で、押したマスの中身（その人が、その日に出した時刻）
+ *
+ * ★2026-10-08、ko-dai さん「提出されたシフトを押すと何時から何時までのシフトが出されているか確認できるように」
+ *   「これは全店舗でできるように」。マスには出勤（開始）の時刻しか出ていませんでした。
+ * ★時刻を入れる店舗（popo）は「11:00〜15:00」と出勤〜退勤。
+ *   枠で選ぶ店舗は、出してもらうのが**開始の時刻だけ**なので「営業 17:30から」です（退勤は聞いていません）。
+ * ★dateStr が空のときは、使い方の一言だけ出します（まだ何も押していないとき）。
+ * ★見た目は css/style.css（本部）に足さず、いまある `wish-chip`・`shift-said` を借ります。
+ */
+function shiftWishDetail(box, dateStr, name, w, mine) {
+  box.innerHTML = '';
+  const 行 = (字, 太い) => {
+    const p = document.createElement('p');
+    p.style.cssText = 'margin:0;' + (太い ? 'font-weight:700;' : '');
+    p.textContent = 字;
+    box.appendChild(p);
+    return p;
+  };
+  if (!dateStr) {
+    行('マスを押すと、その人が出した時刻（何時から何時まで）がここに出ます。').style.color = 'var(--text-sub)';
+    return;
+  }
+  const [, m, d] = dateStr.split('-').map(Number);
+  const dow = new Date(dateStr.replace(/-/g, '/')).getDay();
+  行(`${m}/${d}（${DOW[dow]}）　${name}さん`, true);
+
+  const 時刻で入れる = shiftUsesRange(state.storeId);
+  const 時 = (v) => (v !== '' && v !== undefined && v !== null ? shiftTimeText(v) : '');
+  const 札 = (種, 字, うすい) => {
+    const c = document.createElement('span');
+    c.className = `wish-chip wish-chip--${種}` + (うすい ? ' is-yet' : '');
+    c.style.cssText = 'display:inline-block;margin:0 6px 0 0;';
+    c.textContent = 字;
+    return c;
+  };
+  const 並べる = (見出し, 札たち, ないとき) => {
+    const p = document.createElement('p');
+    p.style.cssText = 'margin:2px 0 0;';
+    const h = document.createElement('span');
+    h.style.cssText = 'color:var(--text-sub);margin-right:6px;';
+    h.textContent = 見出し;
+    p.appendChild(h);
+    if (札たち.length) 札たち.forEach((c) => p.appendChild(c));
+    else p.appendChild(document.createTextNode(ないとき));
+    box.appendChild(p);
+  };
+
+  /* 出してもらった希望 */
+  const list = (w && w.days[dateStr]) || [];
+  const 出した = list.map((e) => {
+    const 種 = 時刻で入れる ? shiftWishRow(state.storeId, e) : e.s;
+    const slot = getShiftSlot(state.storeId, 種);
+    const 名 = e.s === SHIFT_FULL_ID && !時刻で入れる ? 'F（通し）' : (slot ? slot.name : '');
+    const t = 時(e.t);
+    const en = 時(e.e);
+    // 出勤〜退勤がそろっていれば「11:00〜15:00」。開始だけなら「17:30から」
+    const いつ = t && en ? `${t}〜${en}` : (t ? `${t}から` : '');
+    return 札(種, [名, いつ].filter(Boolean).join(' '), true);
+  });
+  並べる('出してもらった希望', 出した,
+    !w || !w.sentAt ? 'この半月は、まだ提出していません' : 'この日は、希望を出していません');
+  if (w && w.sentAt) {
+    const 出した日時 = new Date(w.sentAt);
+    if (!Number.isNaN(出した日時.getTime())) {
+      行(`提出 ${出した日時.toLocaleString('ja-JP')}`).style.cssText = 'margin:0;font-size:11.5px;color:var(--text-sub);';
+    }
+  }
+
+  /* シフトに入れた分 */
+  const 入れた = (mine || []).map((e) => {
+    const slot = getShiftSlot(state.storeId, e.slot);
+    const t = 時(e.t);
+    const en = 時(e.e);
+    const いつ = t && en ? `${t}〜${en}` : (t ? `${t}から` : '');
+    return 札(e.f ? SHIFT_FULL_ID : e.slot, [e.f ? 'F（通し）' : (slot ? slot.name : ''), いつ].filter(Boolean).join(' '), false);
+  });
+  並べる('シフトに入れた', 入れた, 'まだ入れていません');
+
+  if (w && w.notes[dateStr]) {
+    const said = document.createElement('p');
+    said.className = 'shift-said';
+    said.style.margin = '4px 0 0';
+    said.textContent = `連絡「${w.notes[dateStr]}」`;
+    box.appendChild(said);
+  }
 }
 
 /* -------- 表にする（印刷・PDF・JPEG） --------
@@ -16131,6 +16348,8 @@ function shiftSheetModel(pageIndex) {
     });
 
     const rows = shiftSlotsOf(state.storeId).map((slot) => ({
+      // ★id … どの枠の行か（ラストの行は高さの決め方が違うため → shiftSheetTable）
+      id: slot.id,
       label: slot.name,
       cells: part.flatMap((s) => {
         const day = shiftDayOf(rec, s);
@@ -16229,6 +16448,8 @@ function shiftSheetTable(block, perDay, size) {
     table.style.setProperty('--name-pt', `${size.pt}pt`);
     table.style.setProperty('--row-open', `${size.openMm}mm`);
     table.style.setProperty('--row-slot', `${size.slotMm}mm`);
+    // ★ラストの行（popo だけ）。行に付けた印（is-row-last）と、この高さで決まります（→ shiftExtraStyle）
+    if (size.lastMm) table.style.setProperty('--row-last', `${size.lastMm}mm`);
   }
 
   const head = document.createElement('tr');
@@ -16254,6 +16475,8 @@ function shiftSheetTable(block, perDay, size) {
 
   block.rows.forEach((row, ri) => {
     const tr = document.createElement('tr');
+    const ラスト = row.id === SHIFT_LAST_ID;
+    if (ラスト) tr.className = 'is-row-last';
     const th = document.createElement('th');
     th.className = 'shift-sheet__label';
     // ★枠名だけ縦書きにします。1文字分の幅で足りるので、
@@ -16286,7 +16509,7 @@ function shiftSheetTable(block, perDay, size) {
         const td = document.createElement('td');
         // ★人がたくさん入っているマスだけ、そのマスの中で小さくします
         if (size) {
-          const room = ri === 0 ? size.openMm : size.slotMm;
+          const room = ラスト ? size.lastMm : (ri === 0 ? size.openMm : size.slotMm);
           const one = shiftCellPt(size.pt, cell.names.length + cell.short, room);
           if (one < size.pt) td.style.setProperty('--name-pt', `${Math.floor(one * 10) / 10}pt`);
         }

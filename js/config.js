@@ -5376,7 +5376,11 @@ function shiftMergeSlots(items, storeId) {
       pick: v.pick || b.pick || slot.pick,
     });
   });
-  return out.length ? out : SHIFT_SLOTS_DEFAULT.slice();
+  if (!out.length) return SHIFT_SLOTS_DEFAULT.slice();
+  // ★ラストの行（popo だけ）。一番下に足します（→「ラスト」の節）
+  const ラスト = shiftLastSlot(storeId);
+  if (ラスト) out.push(ラスト);
+  return out;
 }
 
 /**
@@ -5488,9 +5492,13 @@ const SHIFT_STYLE_STORES = {
   //   出勤 10:00〜24:00 ／ 退勤 13:00〜27:00。
   //   27:00 は「翌朝3時」の書き方です。日付をまたぐ時刻を 25・26・27 と続けて
   //   書くのは、飲食のシフト表のふつうの書き方で、`shiftTimeText` もそのまま出します
+  // ★last: '22' … **22時以降に出勤する人は「ラスト」の行**に入ります（2026-10-08、ko-dai さんの指示
+  //   「popoのみ立ち上げ、ランチ、ディナー、ラストの４部構成に」「ラストは２２時以降出勤のシフトが自動的に入るように」）。
+  //   → 下の「ラスト」の節。★マネージからは変えられません（コードで決めます）
   popo: {
     range: true, step: 0.5, from: '10', to: '24',
     endFrom: '13', endTo: '27', lunchTo: '17', patty: false,
+    last: '22',
   },
   // ★仕込み／営業の4店舗。パティはバグるの言葉なので出しません
   //   （2026-09-07「メモ欄のボタンは全部消して、ただのメモ欄に」）
@@ -5594,9 +5602,103 @@ function shiftSlotByTime(t, storeId) {
   //   11 と 17 を書き固めていたときは、マネージで「Fの境目」やランチの時刻を
   //   直しても**入る行だけが動かず**、設定と表が食いちがいました（2026-09-13）。
   const b = shiftTimeBounds(storeId);
+  // ★ラストのある店舗（popo）は、22時以降の出勤をラストの行へ（→「ラスト」の節）
+  const ラスト = shiftLastFrom(storeId);
+  if (ラスト !== null && n >= ラスト) return SHIFT_LAST_ID;
   if (n >= b.夜) return 'dinner';
   if (n >= b.昼から) return 'lunch';
   return 'open';
+}
+
+/* -------- ラスト（popo だけの、4つ目の行） --------
+ *
+ *  2026-10-08、ko-dai さんの指示：「popoのみ立ち上げ、ランチ、ディナー、ラストの４部構成に」
+ *  「ラストは２２時以降出勤のシフトが自動的に入るように」。
+ *
+ *  ★★**ラストは「表の行」です。記録の形は変えていません。**
+ *    記録（`_shift/…` の `d:日付`）は今までどおり open／lunch／dinner の3つで、
+ *    ラストの人は **dinner の中**に入っています。読むときに出勤時刻で分け（→ shiftSplitLast）、
+ *    書くときに dinner へ戻します（js/app.js の shiftDayOf・saveShiftDay）。
+ *    こうしてある理由は3つです。
+ *      ・提出ページへ組んだ表を渡す所（cloudflare/worker.js・gas/シフト.gs の shiftBuiltOf）が
+ *        open／lunch／dinner だけを写します。`last` という入れ物を足すと、**アルバイトの画面から黙って消えます**
+ *      ・前の版のまま開いている端末は `last` を知らないので、その日を直した拍子に**ラストの人を消します**
+ *      ・popo は入る行が出勤時刻だけで決まるので、行を別に覚えておく必要がありません
+ *    ★出してもらった希望の枠（`s`）も、今までどおり dinner で残します（→ shiftStoredSlot）。
+ *      前の版の端末でも、希望がディナーの行に見えます。
+ *  ★足りない人数の印（`short` の 'last|k'）だけは、ラストの名前でそのまま残ります（決まった名前だけを通す所がないため）。
+ *  ★境目は SHIFT_STYLE_STORES の `last`（popo は 22）。**22:00 ちょうどの出勤はラスト**です。
+ */
+const SHIFT_LAST_ID = 'last';
+
+/** その店舗の、ラストの境目（22 など。ラストのない店舗は null） */
+function shiftLastFrom(storeId) {
+  const v = Number((SHIFT_STYLE_STORES[storeId] || {}).last);
+  return isFinite(v) && v > 0 ? v : null;
+}
+
+/** ラストの行（枠の並びの一番下に足す分。ラストのない店舗は null） */
+function shiftLastSlot(storeId) {
+  const 境 = shiftLastFrom(storeId);
+  if (境 === null) return null;
+  const st = SHIFT_STYLE_STORES[storeId] || {};
+  const step = Number(st.step) > 0 ? Number(st.step) : 0.5;
+  const to = Number(st.to) > 境 ? Number(st.to) : 境;
+  const times = [];
+  for (let t = 境; t <= to + 1e-9; t += step) times.push(shiftTimeKey(t));
+  return {
+    id: SHIFT_LAST_ID, name: 'ラスト', hint: `${shiftTimeText(shiftTimeKey(境))}から`,
+    times, pick: shiftTimeKey(境),
+  };
+}
+
+/** 記録に残す枠の名前（ラストは dinner に入れます。他はそのまま） */
+function shiftStoredSlot(slotId) {
+  return slotId === SHIFT_LAST_ID ? 'dinner' : slotId;
+}
+
+/**
+ * dinner の人を、ディナーとラストに分ける（ラストのない店舗は、全員ディナー）
+ *
+ * ★出勤時刻が境目以降の人がラストです。時刻の入っていない人はディナーに残します。
+ */
+function shiftSplitLast(storeId, list) {
+  const 境 = shiftLastFrom(storeId);
+  const all = Array.isArray(list) ? list : [];
+  if (境 === null) return { dinner: all, last: [] };
+  const ラストか = (e) => {
+    if (!e || e.t === '' || e.t === undefined || e.t === null) return false;
+    const n = Number(e.t);
+    return isFinite(n) && n >= 境;
+  };
+  return { dinner: all.filter((e) => !ラストか(e)), last: all.filter(ラストか) };
+}
+
+/**
+ * 記録のままの1日（open／lunch／dinner）から、その**行**に出す人
+ *
+ * ★提出ページ（shift/js/submit.js）のように、サーバーからもらった形をそのまま読む所が使います。
+ *   js/app.js は shiftDayOf が先に分けるので、こちらは通りません。
+ */
+function shiftRowList(storeId, day, slotId) {
+  const d = day || {};
+  if (slotId === SHIFT_LAST_ID) return shiftSplitLast(storeId, d.dinner).last;
+  if (slotId === 'dinner') return shiftSplitLast(storeId, d.dinner).dinner;
+  return Array.isArray(d[slotId]) ? d[slotId] : [];
+}
+
+/**
+ * 出してもらった希望が、どの**行**に入るか
+ *
+ * ★時刻を入れる店舗（popo）は、出勤時刻で決めます（希望の `s` は dinner のまま残っているため）。
+ *   枠で選ぶ店舗は、今までどおり選んだ枠です（F はランチへ → shiftSlotFor）。
+ */
+function shiftWishRow(storeId, e) {
+  if (!e) return '';
+  if (shiftUsesRange(storeId) && e.t !== '' && e.t !== undefined && e.t !== null) {
+    return shiftSlotByTime(e.t, storeId) || shiftSlotFor(e.s);
+  }
+  return shiftSlotFor(e.s);
 }
 
 /**
@@ -5968,6 +6070,18 @@ function shiftMemoToggle(memo, tag) {
  */
 function shiftShortKey(slotId, laneId) {
   return `${slotId}|${laneId}`;
+}
+
+/**
+ * 「足りない日をLINEにコピー」の文で、**持ち場（キッチン／ホール）まで分けて書く**店舗
+ *
+ * ★2026-10-08、ko-dai さんの指示：popo は「◯/◯(◯)ランチキッチン◯人」のように、
+ *   いつ・どの時間帯で・どの持ち場が・何人要るかを書く。**popo だけ**（他の店舗は今までどおり、枠ごとに足した人数）。
+ * ★立ち上げの分をランチに足すのは、popo でも今までどおりです（同じ持ち場のランチへ。ko-dai さんの決め）。
+ */
+const SHIFT_SHORT_LANE_STORES = ['popo'];
+function shiftShortByLane(storeId) {
+  return SHIFT_SHORT_LANE_STORES.includes(storeId);
 }
 
 /** 1つのマスで足りないと書ける、一番多い人数 */

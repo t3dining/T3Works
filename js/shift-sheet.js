@@ -193,8 +193,10 @@ function shiftSheetMetrics(model, perDay) {
 
   const need = shiftSlotNeed(model);
   const openNeed = Math.max(1, need[0] || 0);
-  // ランチとディナーは、多い方に合わせてそろえます
-  const share = Math.max(3, need[1] || 0, need[2] || 0);
+  // ★ラストの行（popo だけ。js/config.js の「ラスト」の節）。立ち上げと同じく、入っている人数分だけ取ります
+  const lastAt = sheetSlots(model).findIndex((sl) => sl.id === 'last');
+  // ランチとディナーは、多い方に合わせてそろえます（ラストは数えません）
+  const share = Math.max(3, ...need.filter((_, i) => i > 0 && i !== lastAt).map((n) => n || 0));
   // ★名前の大きさは「マスの幅」だけで決めます。高さでは減らしません。
   //   高さが足りないマスは、そのマスの中だけ小さくします（shiftCellPt）。
   const em = shiftPrintEm(model);
@@ -207,7 +209,10 @@ function shiftSheetMetrics(model, perDay) {
   // 立ち上げの行は「入っている人数分」だけ取り、残りをランチとディナーで
   // 半分ずつ分けます（この2つは必ず同じ高さです）
   const openMm = Math.min(rowsMm * 0.3, Math.max(9, openNeed * shiftPersonMm(pt) + 1.4));
-  const slotMm = (rowsMm - openMm) / 2;
+  // ★ラストの行があれば、その分を先に引きます。残りをランチとディナーで半分ずつ（今までと同じ分け方）
+  const lastMm = lastAt >= 0
+    ? Math.min(rowsMm * 0.25, Math.max(9, Math.max(1, need[lastAt] || 0) * shiftPersonMm(pt) + 1.4)) : 0;
+  const slotMm = (rowsMm - openMm - lastMm) / 2;
 
   return {
     pt,
@@ -215,6 +220,7 @@ function shiftSheetMetrics(model, perDay) {
     share,
     openMm: Math.round(openMm * 10) / 10,
     slotMm: Math.round(slotMm * 10) / 10,
+    lastMm: Math.round(lastMm * 10) / 10,
   };
 }
 
@@ -395,11 +401,13 @@ function drawShiftSheet(canvas, model, scale) {
   const need = shiftSlotNeed(model);
   // ★ランチとディナーは、多い方に合わせて同じ高さにします
   //   （どちらにも同じ人数を入れられるように）
-  const share = Math.max(3, need[1] || 0, need[2] || 0);
-  const weight = sheetSlots(model).map((slot, si) => (slot.id === 'open'
+  // ★ラストの行（popo だけ）は、立ち上げと同じく「入っている人数分」です。そろえる数にも入れません
+  const lastAt = sheetSlots(model).findIndex((sl) => sl.id === 'last');
+  const share = Math.max(3, ...need.filter((_, i) => i > 0 && i !== lastAt).map((n) => n || 0));
+  const weight = sheetSlots(model).map((slot, si) => (slot.id === 'open' || slot.id === 'last'
     // 立ち上げは1人分で足りますが、低すぎると縦書きの枠名が入らないので
-    // 少しだけ多めに取ります
-    ? Math.max(need[si] || 0, 1.6)
+    // 少しだけ多めに取ります（ラストは3文字なので、もう少し）
+    ? Math.max(need[si] || 0, slot.id === 'last' ? 2 : 1.6)
     : share));
   const unit = weight.reduce((a, b) => a + b, 0);
   const room = Math.max(unit * (lh + 8), H - y - pad - fixed);
