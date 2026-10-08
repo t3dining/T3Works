@@ -9225,6 +9225,7 @@ function latestMeetingMonth() {
  *   上ぬり … _meeting/YYYY-MM に保存された数字
  *            num:店舗id  … 日報から取り込んだ5項目
  *            util:店舗id … 手で入れた光熱費
+ *            sheet:店舗id … 会議資料のスプレッドシートの数（一番上に重ねます。MEETING_LAYERS）
  * 何度も呼ばれるので、取り込みや手入力があるまでは覚えたものを返します。
  */
 let meetingSeq = 0;
@@ -9241,9 +9242,37 @@ function meetingOf(y, m) {
   return val;
 }
 
+/**
+ * 記録の中の、数字の層（★うしろほど強い。同じ項目が2つの層にあれば、うしろの層の数が出ます）
+ *
+ *   num:   … 日報から取り込んだ数（売上・客数・原価・人件費・社員）
+ *   util:  … 手で入れた光熱費
+ *   sheet: … ★会議資料のスプレッドシートの数（2026-10-08、ko-dai さんの決め）
+ *
+ * ★会議資料は、スプレッドシート「売上比率_会議」が正です。アプリはそれに合わせます。
+ *   日報は月が終わったあとも直されるので、取り込み直すたびに num: の数は動きます。
+ *   スプレッドシートの数を一番上の層に置いておけば、**取り込み直してもスプレッドシートと同じまま**です
+ *   （取り込み直しは、社員の人件費＝「アルバイトのみ」を出すのに要ります。止められません）。
+ * ★sheet: に入れるのは、スプレッドシートに数が入っている項目だけです。無い項目は下の層の数が出ます。
+ */
+const MEETING_LAYERS = ['num:', 'util:', 'sheet:'];
+
+function meetingLayerOf(id) {
+  return MEETING_LAYERS.findIndex((p) => id.indexOf(p) === 0);
+}
+
+/** その月に、スプレッドシートの数（sheet:）が入っているか */
+function meetingHasSheet(y, m) {
+  const items = Store.getDay(MEETING_STORE, meetingMonthKey(y, m)).items || {};
+  return Object.keys(items).some((k) => k.indexOf('sheet:') === 0);
+}
+
 function meetingWithSaved(base, key) {
   const items = Store.getDay(MEETING_STORE, key).items || {};
-  const ids = Object.keys(items).filter((k) => k.indexOf('num:') === 0 || k.indexOf('util:') === 0);
+  const ids = Object.keys(items)
+    .filter((k) => meetingLayerOf(k) >= 0)
+    // ★層の順に重ねます（記録の中の並び順に頼りません）
+    .sort((a, b) => meetingLayerOf(a) - meetingLayerOf(b));
   if (!ids.length) return base;
 
   const out = { rows: {}, notes: (base && base.notes) || [] };
@@ -9302,6 +9331,25 @@ function meetingCatchOf(y, m) {
       out[id].people += Number(e.people) || 0;
     });
   return out;
+}
+
+/**
+ * 表の1行に、キャッチ（金額と人数）を入れます
+ *   v     … その店舗の、今年か昨年の数字（meetingRow の返すもの）。ここへ書きこみます
+ *   集計  … キャッチ集計の数 { yen, people }（無ければ undefined）
+ * 返すもの … スプレッドシートの数を出したら true
+ *
+ * ★スプレッドシートの数（sheet: の katch）があれば、それが勝ちます。0 でも勝ちます
+ *   （スプレッドシートに 0 と入っている＝その月はキャッチ無し、という記録です）。
+ */
+function meetingCatchFill(v, 集計) {
+  if (typeof v.katch === 'number') {
+    v.katchPeople = typeof v.katchPeople === 'number' ? v.katchPeople : 0;
+    return true;
+  }
+  v.katch = (集計 || {}).yen || 0;
+  v.katchPeople = (集計 || {}).people || 0;
+  return false;
 }
 
 /**
@@ -9651,6 +9699,7 @@ function renderMeeting() {
   const katch = meetingCatchOf(state.y, state.m);
   const katchLast = meetingCatchOf(state.y - 1, state.m);
   const list = [];
+  let シートのキャッチ = false;   // 今年のキャッチに、スプレッドシートの数を出している店舗があるか
   if (rec) {
     STORES.forEach((s) => {
       const v = rec.rows[s.id];
@@ -9660,11 +9709,11 @@ function renderMeeting() {
       // ★人件費に社員が入っていない年は、その人件費を「アルバイトのみ」として扱います
       now.laborPartOnly = state.y <= NIPPOU_社員なしの最後の年;
       last.laborPartOnly = state.y - 1 <= NIPPOU_社員なしの最後の年;
-      // キャッチだけは、シートの数字ではなくキャッチ集計の数字を使います
-      now.katch = (katch[s.id] || {}).yen || 0;
-      now.katchPeople = (katch[s.id] || {}).people || 0;
-      last.katch = (katchLast[s.id] || {}).yen || 0;
-      last.katchPeople = (katchLast[s.id] || {}).people || 0;
+      /* キャッチ … ★スプレッドシートの数が記録にあれば、それを出します（2026-10-08、ko-dai さんの決め）。
+           無ければ、今までどおりキャッチ集計（立替金の記録）から数えます。
+           ★金額がスプレッドシートの数なら、人数もスプレッドシートの数です（出どころを混ぜません） */
+      if (meetingCatchFill(now, katch[s.id])) シートのキャッチ = true;
+      meetingCatchFill(last, katchLast[s.id]);
       list.push({ store: s, now, last });
     });
   }
@@ -9672,7 +9721,9 @@ function renderMeeting() {
 
   /* キャッチは店舗ごとに数えるので、店舗が入っていない記録は
      どの店舗にも出ません。埋もれないよう、ここで知らせます */
-  const loose = katch[''] || null;
+  /* ★スプレッドシートのキャッチを出している月は、知らせません。
+       表の数は立替金の記録から数えたものではないので、「記録に店舗を入れると表に出ます」が嘘になります */
+  const loose = シートのキャッチ ? null : (katch[''] || null);
   el.meetingCatchWarn.classList.toggle('is-hidden', !(has && loose && loose.yen));
   if (loose && loose.yen) {
     el.meetingCatchWarn.textContent =
@@ -10088,12 +10139,22 @@ function nippouPulledAt(y, m) {
 function nippouPulledText(y, m, いま = new Date()) {
   const p = nippouPulledAt(y, m);
   if (!p) return '';
-  if (!p.at) return '前にいつ取り込んだか分かりません。日報と数字が違うときは、もう一度押してください';
+  /* ★「日報と違うときは押してください」とは書きません（2026-10-08）。
+       会議資料はスプレッドシートが正で、日報に合わせることが目的ではないためです。
+       押すと何が起きるかだけを書きます */
+  const 押すと = 'もう一度押すと、いまの日報の数に入れかわります';
+  if (!p.at) return `前にいつ取り込んだかは分かりません。${押すと}`;
   const d = new Date(p.at);
   const 日 = Math.floor((いま.getTime() - d.getTime()) / 86400000);
   const 時刻 = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
-  return `前に取り込んだのは ${d.getMonth() + 1}月${d.getDate()}日 ${時刻}${日 >= 1 ? `（${日}日前）` : ''} です。`
-    + 'そのあと日報を直したら、もう一度押してください';
+  return `前に取り込んだのは ${d.getMonth() + 1}月${d.getDate()}日 ${時刻}${日 >= 1 ? `（${日}日前）` : ''} です。${押すと}`;
+}
+
+/** スプレッドシートの数を重ねてある月に出す一文（無い月は空） */
+function meetingSheetText(y, m) {
+  if (!meetingHasSheet(y, m)) return '';
+  return '★この月は、スプレッドシートの数に合わせてあります。'
+    + 'スプレッドシートに入っている数は、日報から取り込んでも変わりません（社員の人件費だけ新しくなります）';
 }
 
 function renderNippou() {
@@ -10104,11 +10165,11 @@ function renderNippou() {
     ? `${state.y}年${state.m}月と、${state.y - 1}年${state.m}月の日報を読みます（${n}店舗）`
     : 'マネージの「日報フォルダ」に登録すると使えます';
   // ★いつの写しかを、すぐ下の行に出します（古いことに気づけるように）
-  const 前 = n ? nippouPulledText(state.y, state.m) : '';
-  if (前) {
+  const 行 = n ? [nippouPulledText(state.y, state.m), meetingSheetText(state.y, state.m)] : [];
+  行.filter(Boolean).forEach((文) => {
     el.nippouNote.appendChild(document.createElement('br'));
-    el.nippouNote.appendChild(document.createTextNode(前));
-  }
+    el.nippouNote.appendChild(document.createTextNode(文));
+  });
   el.nippouPull.disabled = !n || nippouBusy || !Sync.enabled();
 
   // 別の月に移ったら、前の月の結果は消します（どの月の話か分からなくなるため）
@@ -12201,11 +12262,13 @@ function shiftDayOf(rec, dateStr) {
 /**
  * その日のメモ
  *
- * 書いたものがあればそれ。無ければ、はじめから入れておく文
+ * 書いたものがあればそれ。なければ、はじめから入れておく文
  * （29日と2月9日の「肉の日」）を出します。
+ * ★「肉の日」が出るのはバグるだけです（js/config.js の SHIFT_MEAT_DAY_STORES）。
+ *   いま開いている店舗を渡します。渡し忘れると、バグるにも出なくなります
  */
 function shiftMemoOf(rec, dateStr) {
-  return shiftDayOf(rec, dateStr).memo || shiftDefaultMemo(dateStr);
+  return shiftDayOf(rec, dateStr).memo || shiftDefaultMemo(dateStr, state.storeId);
 }
 
 function saveShiftDay(dateStr, day) {
@@ -14183,7 +14246,7 @@ function shiftGridBlock(rec, wishes, days) {
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'shift-memo';
-    // ★29日と2月9日は「肉の日」がはじめから入ります（shiftDefaultMemo）
+    // ★バグるだけ、29日と2月9日は「肉の日」がはじめから入ります（shiftDefaultMemo）
     input.value = shiftMemoOf(rec, dateStr);
     input.addEventListener('change', () => {
       const now = shiftDayOf(shiftRec(), dateStr);

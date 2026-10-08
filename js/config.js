@@ -7091,13 +7091,26 @@ function equinox(y, base) {
 }
 
 /**
+ * 「肉の日」をはじめから入れておく店舗
+ *
+ * ★バグるだけです（2026-10-08、ko-dai さんの指示）。他の店舗には出しません。
+ *   店舗を足すときは、ここに店舗の id を足してください。
+ */
+const SHIFT_MEAT_DAY_STORES = ['baguru'];
+
+/**
  * その日にはじめから入れておくメモ
  *
  *  毎月29日と、2月9日は「肉の日」。シフト表に前もって出しておきます。
+ *  ★出すのは SHIFT_MEAT_DAY_STORES の店舗だけです。
+ *    店舗を渡し忘れると、どの店舗にも出ません（よその店舗に出るよりは、出ない方に倒します）。
  *  ★他にも決まった日があれば、ここに足してください。
  *  ★アルバイトの提出ページには出しません（組む側の覚え書きなので）。
+ *  ★出すだけで、記録には書きません。メモを書きかえたり、メモの札を押したりした日は、
+ *    そのときの字（「肉の日」ごと）が記録に入ります。その分は、店舗を外しても消えません。
  */
-function shiftDefaultMemo(dateStr) {
+function shiftDefaultMemo(dateStr, storeId) {
+  if (!SHIFT_MEAT_DAY_STORES.includes(storeId)) return '';
   const [, m, d] = String(dateStr || '').split('-').map(Number);
   if (d === 29 || (m === 2 && d === 9)) return '肉の日';
   return '';
