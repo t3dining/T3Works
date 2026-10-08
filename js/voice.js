@@ -52,6 +52,8 @@ const VoiceView = (() => {
 
   /** どこまで見たか（この端末の中だけ。返事の赤い印に使います） */
   const 見た印キー = `${typeof APP !== 'undefined' ? APP.storageKey : 't3d'}:voiceSeen`;
+  /** どの投稿を見たか（この端末の中だけ。新しい投稿の数に使います） */
+  const 見た投稿キー = `${typeof APP !== 'undefined' ? APP.storageKey : 't3d'}:voiceSeenIds`;
 
   let いまの画面 = 'list';   // list（一覧）／new（出す）／one（1件）
   let いまの印 = '';         // one のとき、どの投稿か
@@ -207,11 +209,74 @@ const VoiceView = (() => {
       && x.rec.返事の時 && String(x.rec.返事の時) > 見た).length;
   }
 
-  /** T3Dining の欄のボタンに、赤い印を出します */
+  /* ------------------------------------------------------------
+   *  新しい投稿の数（★マインだけ。2026-10-08、ko-dai さんの指示）
+   *
+   *  他の人が出して、この端末でまだ一覧に並べていない投稿を数えます。
+   *  一覧を開くと、並んだ投稿は見たことにして、数は消えます。
+   *
+   *  ★**時刻ではなく「どの印を見たか」で数えます。**
+   *    投稿の時刻は**出した端末の時計**、見た時刻は**この端末の時計**です。
+   *    時計のずれた端末から出した投稿や、電波の届かない所で出して遅れて届いた投稿は、
+   *    時刻で比べると「もう見た」側に入り、**数に出ないまま黙ります**。
+   *  ★現場のアプリ（ワークス）では数えません（ko-dai さんの指示）。
+   *    返事の数は、今までどおり両方のアプリに出します。
+   * ---------------------------------------------------------- */
+
+  const マインか = () => typeof isMine === 'function' && isMine();
+
+  /** 端末に覚えられないときの控え（開いている間だけ覚えます） */
+  let 見た投稿の控え = null;
+
+  /** 見た投稿の印たち。★まだ1度も覚えていなければ null（「1件も見ていない」とは別です） */
+  function 見た投稿を読む() {
+    try {
+      const s = localStorage.getItem(見た投稿キー);
+      if (s) {
+        const a = JSON.parse(s);
+        if (Array.isArray(a)) return a.map(String);
+      }
+    } catch (e) { /* 読めない端末は、下の控えを使います */ }
+    return 見た投稿の控え;
+  }
+
+  /** いま一覧に並んでいる投稿を、見たことにします */
+  function 見た投稿を書く() {
+    const 印たち = 全部().map((x) => x.印);
+    見た投稿の控え = 印たち;
+    try { localStorage.setItem(見た投稿キー, JSON.stringify(印たち)); } catch (e) { /* 覚えられない端末は、開き直すとまた数が出ます */ }
+  }
+
+  /** 一覧が、いま人の目に見えているか（閉じている間・アプリが裏にいる間は、見たことにしません） */
+  function 一覧を見せている() {
+    const panel = document.getElementById('voicePanel');
+    if (!panel || panel.classList.contains('is-hidden')) return false;
+    return !document.hidden;
+  }
+
+  /** まだ見ていない、他の人の投稿の数（★マインだけ） */
+  function 新しい投稿の数() {
+    if (!マインか()) return 0;
+    const 私 = 私の番号();
+    const 見た = 見た投稿を読む();
+    const 見た印たち = 見た ? new Set(見た) : null;
+    // ★印を覚える前から使っている端末は、前に開いた時刻で代えます
+    //   （この直しが届いた日に、読み終えた投稿まで新しく見えないように）
+    const 見た時 = 見た ? '' : 見た印を読む();
+    return 全部().filter((x) => {
+      if (私 && String(x.rec.番号 || '') === 私) return false;   // 自分の投稿は数えません
+      if (見た印たち) return !見た印たち.has(x.印);
+      return !(見た時 && String(x.rec.出した時 || '') <= 見た時);
+    }).length;
+  }
+
+  /** T3Dining の欄のボタンに、赤い印を出します（返事の数と、新しい投稿の数を足したもの） */
   function 印を出す() {
     const btn = document.getElementById('storesVoiceBtn');
     if (!btn) return;
-    const 数 = 新しい返事の数();
+    const 返事 = 新しい返事の数();
+    const 投稿 = 新しい投稿の数();
+    const 数 = 返事 + 投稿;
     let dot = btn.querySelector('.voice-dot');
     if (!数) { if (dot) dot.remove(); return; }
     if (!dot) {
@@ -219,8 +284,9 @@ const VoiceView = (() => {
       dot.className = 'voice-dot';
       btn.appendChild(dot);
     }
-    dot.textContent = String(数);
-    dot.setAttribute('aria-label', `返事が${数}件`);
+    dot.textContent = 数 > 99 ? '99+' : String(数);
+    dot.setAttribute('aria-label',
+      [投稿 ? `新しい投稿が${投稿}件` : '', 返事 ? `返事が${返事}件` : ''].filter(Boolean).join('、'));
   }
 
   /* ------------------------------------------------------------
@@ -414,7 +480,11 @@ const VoiceView = (() => {
     if (!箱) return;
     if (いまの画面 === 'new') 箱.innerHTML = 出す画面の絵();
     else if (いまの画面 === 'one') 箱.innerHTML = ひとつの絵(いまの印);
-    else 箱.innerHTML = 一覧の絵();
+    else {
+      箱.innerHTML = 一覧の絵();
+      // ★一覧を**見せた**ときだけ、並んだ投稿を見たことにします
+      if (一覧を見せている()) 見た投稿を書く();
+    }
 
     const 出すボタン = document.getElementById('voiceNew');
     if (出すボタン) 出すボタン.classList.toggle('is-hidden', いまの画面 !== 'list');
@@ -1010,7 +1080,7 @@ const VoiceView = (() => {
     panel.classList.remove('is-hidden');
     document.body.classList.add('is-voice-open');
     出す();
-    見た印を書く();      // 開いたら、返事は読んだことにします
+    見た印を書く();      // 開いたら、返事は読んだことにします（投稿の方は、上の `出す()` が一覧を見せたときに覚えます）
     印を出す();
   }
 
@@ -1058,7 +1128,7 @@ const VoiceView = (() => {
     window.addEventListener('resize', 置き直す);
     window.addEventListener('orientationchange', 置き直す);
     if (window.visualViewport) window.visualViewport.addEventListener('resize', 置き直す);
-    // 同期で返事が届いたら、赤い印を出し直します
+    // 同期で返事や新しい投稿が届いたら、赤い印を出し直します
     setInterval(() => {
       印を出す();
       if (!panel.classList.contains('is-hidden') && いまの画面 === 'list') 出す();
@@ -1080,5 +1150,7 @@ const VoiceView = (() => {
     返事を書ける, 管理の答えを入れる, 返事の欄が無いわけ,
     入れ先, 種類たち, 状態たち, 本文の上限, 写真の上限, 動画の上限, 添付の数, 動画の秒,
     文字, 新しい印, キー, 全部, ひとつ, 新しい返事の数, 確かめる, 大きさの文,
+    // ★検算用：新しい投稿の数（マインだけ出すか・時刻ではなく印で数えているか・いつ見たことにするか）
+    新しい投稿の数, 印を出す, 開く, 閉じる,
   };
 })();
