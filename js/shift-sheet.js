@@ -167,10 +167,13 @@ function shiftPersonMm(pt) {
  *   前は「一番多いマス」に表全部を合わせていたので、
  *   7人入る日が1つあるだけで、他の日まで小さくなっていました。
  */
+/** 1マスの中で小さくするときの、一番小さい字（ポイント）。これより小さくはしません（読めなくなるため） */
+const SHIFT_CELL_PT_MIN = 4.5;
+
 function shiftCellPt(pt, count, roomMm) {
   if (count <= 0) return pt;
   const fit = ((roomMm - 1.4) / count) * 2.8346 / SHIFT_ROW_EM;
-  return Math.max(4.5, Math.min(pt, fit));
+  return Math.max(SHIFT_CELL_PT_MIN, Math.min(pt, fit));
 }
 
 /**
@@ -212,7 +215,15 @@ function shiftSheetMetrics(model, perDay) {
   // ★ラストの行があれば、その分を先に引きます。残りをランチとディナーで半分ずつ（今までと同じ分け方）
   const lastMm = lastAt >= 0
     ? Math.min(rowsMm * 0.25, Math.max(9, Math.max(1, need[lastAt] || 0) * shiftPersonMm(pt) + 1.4)) : 0;
-  const slotMm = (rowsMm - openMm - lastMm) / 2;
+  // ★残りは「枠の行の数」で分けます（立ち上げとラストを除いた行。バグる・popo は ランチ・ディナーの2つ、
+  //   仕込み／営業の4店舗は 営業の1つ）。前はいつも2で割っていたので、4店舗では営業の行が残りの半分しか使わず、
+  //   紙の下3分の1が空いたままでした（ko-dai さん「こじゃれは画面上部に偏っています」）。
+  //   空いていた分を営業の行に回すので、人数の多い週末も字を小さくせずに済みます
+  const 枠の行 = Math.max(1, sheetSlots(model).filter((sl, i) => i > 0 && i !== lastAt).length);
+  const slotMm = (rowsMm - openMm - lastMm) / 枠の行;
+  // ★入りきらないほど人数の多い日に「立ち上げの行を縮めて回す」ことは、していません。
+  //   試したら、popo・バグるの普段の紙（ディナー6人ほど）でも立ち上げが一番小さい字になりました。
+  //   4店舗は、営業の行が広くなったので、1マス15人までは1枚に収まります（本物の画面を PDF にして数えました）
 
   return {
     pt,
@@ -410,7 +421,10 @@ function drawShiftSheet(canvas, model, scale) {
     ? Math.max(need[si] || 0, slot.id === 'last' ? 2 : 1.6)
     : share));
   const unit = weight.reduce((a, b) => a + b, 0);
-  const room = Math.max(unit * (lh + 8), H - y - pad - fixed);
+  // ★行に配る高さは、**紙に残っている高さまで**です。前は「人数×1人分」の方が大きいとそちらを使っていたので、
+  //   1マスに16人ほど入る半月では表が紙より長くなり、**下の段が切れて、人とメモが絵から消えていました**
+  //   （何も言わずに欠けます）。入りきらない分は、下でマスごとに字を小さくして収めます
+  const room = Math.max(0, H - y - pad - fixed);
   const slotH = sheetSlots(model).map((slot, i) => (room / blocks) * (weight[i] / unit));
 
   model.blocks.forEach((block, bi) => {
