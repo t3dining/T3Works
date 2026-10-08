@@ -12394,11 +12394,17 @@ function shiftWishes(rec, at) {
   };
   const order = shiftBuildNames(p.storeId);
   const found = new Map();
+  // ★その人の普段の持ち場（名簿で決めたもの）。マスの「＋2」を、キッチンとホールに分けて数えるのに使います
+  //   （→ shiftRestByLane）。取り込むときに入る列と同じ決め方です（決めていない人は左の持ち場 → shiftTake）。
+  //   ★名簿はここで1回だけ読みます（マスごとに読むと、古い端末で目に見えて重くなります）
+  const 持ち場 = {};
+  ShiftStaff.people(p.storeId).forEach((x) => { 持ち場[x.n] = x.p || ''; });
 
   const put = (name, v) => {
     if (!name || isShiftTester(name)) return;
     found.set(name, {
       name,
+      lane: shiftLaneOf({ p: 持ち場[name] }),
       days: v.days && typeof v.days === 'object' ? v.days : {},
       // 連絡は日ごとに書いてもらいます。note は日ごとにする前の書き方で、
       // そのころに出してもらった分がまだ残っているので読めるようにしています
@@ -12447,11 +12453,36 @@ function shiftWishInto(wishes, dateStr, slotId) {
       // ★時刻を入れる店舗（popo）は、出勤時刻で行を決めます（22時以降はラスト → shiftWishRow）
       if (!e || shiftWishRow(state.storeId, e) !== slotId) return;
       // e … 退勤時刻（時刻を入れる店舗だけ入っています）
+      // lane … その人の普段の持ち場（名簿で決めたもの。決めていない人は左の持ち場）
       out.push({
         name: w.name, t: e.t || '', e: e.e || '', s: e.s,
         full: e.s === SHIFT_FULL_ID,
+        lane: shiftLaneOf({ p: w.lane }),
       });
     });
+  });
+  return out;
+}
+
+/**
+ * まだ入れていない希望の数を、持ち場ごとに（{ k: 2, h: 4 } の形）
+ *
+ * ★2026-10-08、ko-dai さん「＋６などで数字が表示されていると思いますが、これをキッチンとホールごとに
+ *   ＋表記するようにしてください」。前は、左の持ち場（キッチン）のマスにだけ、両方を合わせた数を出していました。
+ * ★分けるのは**名簿で決めた普段の持ち場**です。「希望を取り込む」と同じ決め方なので、
+ *   「＋2」と出ているマスには、取り込むとその2人が入ります。決めていない人は、左の持ち場に数えます。
+ * ★数えるのは「その日のどこにも入っていない人」です。立ち上げからランチへ回した人まで数えると、
+ *   いつまでも減らないためです。**どちらの持ち場に入れたかは見ません**（ホールの人をキッチンに入れても、
+ *   ホールの数が1つ減ります）。
+ * ★持ち場を全部足すと、前に出していた数と同じです（分けただけで、数える人は変えていません）。
+ */
+function shiftRestByLane(wishes, day, dateStr, slotId) {
+  const inDay = (n) => shiftSlotsOf(state.storeId).some((sl) => day[sl.id].some((e) => e.n === n));
+  const out = {};
+  SHIFT_LANES.forEach((l) => { out[l.id] = 0; });
+  shiftWishInto(wishes, dateStr, slotId).forEach((w) => {
+    // ★持ち場はここでも確かめ直します（付いていない・知らない持ち場でも、左の持ち場に数えて、数から落としません）
+    if (!inDay(w.name)) out[shiftLaneOf({ p: w.lane })] += 1;
   });
   return out;
 }
@@ -13760,7 +13791,7 @@ function shiftGuideGrid(rep, days, opt) {
   h += '</tr>';
   slots.forEach((slot, si) => {
     h += `<tr${si > 0 ? ' class="is-slot-top"' : ''}><th class="shift-grid__slot shift-grid__slot--${slot.id}">${shiftGuideEsc(slot.name)}</th>`;
-    days.forEach((d) => SHIFT_LANES.forEach((l, li) => {
+    days.forEach((d) => SHIFT_LANES.forEach((l) => {
       const cell = ((d.cells || {})[slot.id] || {})[l.id] || {};
       h += '<td class="shift-cell">';
       (cell.people || []).forEach((e) => {
@@ -13773,7 +13804,8 @@ function shiftGuideGrid(rep, days, opt) {
           + '</button>';
       });
       for (let k = 0; k < (cell.short || 0); k += 1) h += '<button type="button" tabindex="-1" class="shift-short">＋</button>';
-      const wish = li === 0 ? (cell.wish || 0) : 0;
+      // ★本物と同じく、持ち場ごとに出します（→ shiftRestByLane）
+      const wish = cell.wish || 0;
       h += `<button type="button" tabindex="-1" class="shift-add${wish ? ' has-wish' : ''}">${wish ? `＋${wish}` : '＋'}</button></td>`;
     }));
     h += '</tr>';
@@ -13990,7 +14022,7 @@ function shiftGuideHtml(kind) {
       + `<div class="shift-top__acts">${shiftGuideB('提出を見る')}${shiftGuideB('希望を取り込む')}${shiftGuideB('これまでのシフト表')}</div></div>`));
   out.push(shiftGuideUl([
     '取り込んだあとに出してもらった分は、もう一度「希望を取り込む」を押すと足されます（一度入れた人は二重に入りません）',
-    'マスの<b>「＋2」</b>は、その日に希望を出していて、まだ表に入っていない人の数です',
+    'マスの<b>「＋2」</b>は、その日に希望を出していて、まだ表に入っていない人の数です。<b>キッチンとホールに分けて</b>出ます（名簿で決めた持ち場。決めていない人はキッチンに数えます）',
   ]));
 
   /* ---- 7 組む ---- */
@@ -14003,7 +14035,7 @@ function shiftGuideHtml(kind) {
           dinner: { k: { people: [{ t: '17:00', n: 'Aさん' }, { t: '18:00', n: 'Bさん' }] }, h: { people: [{ t: '17:00', n: 'Cさん' }], short: 1 } },
         }, helpTags: shiftGuideTag('ヘルプ要請 ホールあと１人（２人中）', 'var(--ng)') },
         { label: '10/6（火）', cells: {
-          open: { k: { wish: 2 } },
+          open: { k: { wish: 2 }, h: { wish: 1 } },
           dinner: { k: { people: [{ t: '17:30', n: 'Dさん' }] }, h: { people: [{ t: '17:00', n: 'Eさん' }] } },
         } },
       ];
@@ -14015,7 +14047,7 @@ function shiftGuideHtml(kind) {
           lunch: { h: { people: [{ t: '11:00〜17:00', n: 'Bさん' }] } },
           dinner: { k: { people: [{ t: '17:00〜23:00', n: 'Cさん' }] }, h: { people: [{ t: '11:30〜22:00', n: 'Dさん', cls: 'is-full' }], short: 1 } },
         } },
-        { label: '10/6（火）', cells: { lunch: { k: { wish: 2 } }, dinner: { h: { people: [{ t: '18:00〜23:00', n: 'Eさん' }] } },
+        { label: '10/6（火）', cells: { lunch: { k: { wish: 2 }, h: { wish: 1 } }, dinner: { h: { people: [{ t: '18:00〜23:00', n: 'Eさん' }] } },
           last: { h: { people: [{ t: '22:00〜27:00', n: 'Aさん' }] } } } },
       ];
     }
@@ -14025,7 +14057,7 @@ function shiftGuideHtml(kind) {
         lunch: { k: { people: [{ t: '11:00', n: 'Bさん', cls: 'is-full', f: true }] }, h: { people: [{ t: '11:30', n: 'Cさん' }] } },
         dinner: { h: { people: [{ t: '17:00', n: 'Dさん' }], short: 1 } },
       } },
-      { label: '10/6（火）', cells: { lunch: { k: { wish: 2 } }, dinner: { k: { people: [{ t: '17:00', n: 'Eさん', cls: 'is-early' }] } } } },
+      { label: '10/6（火）', cells: { lunch: { k: { wish: 2 }, h: { wish: 1 } }, dinner: { k: { people: [{ t: '17:00', n: 'Eさん', cls: 'is-early' }] } } } },
     ];
   })();
   out.push(shiftGuideShot(shiftGuideGrid(rep, 例, { help: ヘルプ }), '表の見本です（2日分）'));
@@ -14301,8 +14333,10 @@ function shiftGridBlock(rec, wishes, days) {
         return;
       }
       const day = shiftDayOf(rec, dateStr);
+      // まだ入れていない希望の数（持ち場ごと）。その日・その枠で1回だけ数えて、マスに配ります
+      const 残り = shiftRestByLane(wishes, day, dateStr, slot.id);
       SHIFT_LANES.forEach((lane, li) => {
-        const td = shiftCell(rec, wishes, day, dateStr, slot, lane, li === 0);
+        const td = shiftCell(rec, wishes, day, dateStr, slot, lane, 残り[lane.id] || 0);
         // パティの枠は、その日のその枠全部を桃色のふちで囲みます
         if (day.patty === slot.id) {
           td.classList.add('is-patty');
@@ -15009,7 +15043,7 @@ function shiftChipFill(chip, storeId, slotId, e) {
 }
 
 /** 表の1マス（その日・その枠・その持ち場） */
-function shiftCell(rec, wishes, day, dateStr, slot, lane, first) {
+function shiftCell(rec, wishes, day, dateStr, slot, lane, rest) {
   const td = document.createElement('td');
   td.className = 'shift-cell';
   // つまんで動かすときの行き先。どのマスに落としたかを、ここから読みます
@@ -15063,20 +15097,15 @@ function shiftCell(rec, wishes, day, dateStr, slot, lane, first) {
     td.appendChild(gap);
   }
 
-  // まだ入れていない希望の数。押す前に「あと何人いる」が分かるように、
-  // 左の持ち場にだけ出します（両方に出すと二重に数えたように見えます）。
-  // ★数えるのは「その日のどこにも入っていない人」です。立ち上げから
-  //   ランチへ回した人まで数えると、いつまでも減らないためです
-  const inDay = (n) => shiftSlotsOf(state.storeId).some((sl) => day[sl.id].some((e) => e.n === n));
-  const rest = first
-    ? shiftWishInto(wishes, dateStr, slot.id).filter((w) => !inDay(w.name)).length
-    : 0;
-
+  // まだ入れていない希望の数。押す前に、あと何人いるかが分かるように出します。
+  // ★キッチンとホールに分けて、それぞれのマスに出します（2026-10-08。数え方は shiftRestByLane）。
+  //   前は左の持ち場にだけ、両方を合わせた数を出していました
+  // ★この下の shiftMemoTagBox の説明の見張り（test.js）が、ここまで見ます。かぎかっこを書かないこと
   const add = document.createElement('button');
   add.type = 'button';
   add.className = 'shift-add' + (rest ? ' has-wish' : '');
   add.textContent = rest ? `＋${rest}` : '＋';
-  add.title = rest ? `希望を出していて、まだ入っていない人が${rest}人います` : '人を足す';
+  add.title = rest ? `希望を出していて、まだ入っていない${lane.name}の人が${rest}人います` : '人を足す';
   add.addEventListener('click', () => openShiftPick(dateStr, slot.id, lane.id, null));
   td.appendChild(add);
 
@@ -15754,7 +15783,13 @@ function renderShiftPick() {
       el.shiftPickNames.appendChild(grid);
     };
 
-    addGroup('希望を出している人', wish, true);
+    // ★希望を出している人は、持ち場ごとに分けて出します（押したマスの持ち場が先）。
+    //   マスの「＋2」は持ち場ごとの数なので、開いたときに同じ人数が先頭に並ぶようにします。
+    //   他の持ち場の人も、今までどおり選べます（ホールの人をキッチンに入れる日があるため）
+    const 押した持ち場 = shiftLaneOf({ p: shiftPickAt.laneId });
+    SHIFT_LANES.slice().sort((a, b) => (b.id === 押した持ち場) - (a.id === 押した持ち場)).forEach((l) => {
+      addGroup(`希望を出している人（${l.name}）`, wish.filter((w) => shiftLaneOf({ p: w.lane }) === l.id), true);
+    });
     addGroup('その他の人', others, false);
 
     if (!wish.length && !others.length) {
