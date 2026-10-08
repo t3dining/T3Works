@@ -10219,22 +10219,37 @@ async function pullNippou() {
       const val = {};
       const parts = [];
       let ng = false;
+      /* ★読めなかった側（今年・昨年）は、前に入っていた数を残します（2026-10-08）。
+           前は、今年の分だけ読めないと「昨年の分だけ」で上書きして、今年の数が消えていました */
+      const 前の = (Store.getDay(MEETING_STORE, key).items || {})[`num:${s.id}`] || {};
+      const 前の数 = 前の.value || {};
+      const 読めた = {};
+      const 残す = (side, 文) => {
+        if (前の数[side]) { val[side] = 前の数[side]; parts.push(`${文}（前の数のままです）`); } else parts.push(文);
+      };
       [['now', y], ['last', y - 1]].forEach(([side, year]) => {
         const g = got[side];
-        if (!g || g.error) { parts.push(`${year}年 ${(g && g.error) || '読めません'}`); return; }
+        if (!g || g.error) { 残す(side, `${year}年 ${(g && g.error) || '読めません'}`); return; }
         // 年ごとに配置が違うことがあるので、その年月の配置で組み立てます
         const o = nippouPick(s.id, nippouYm(year, m), g);
         // 売上が0の日報は、まだ書きこまれていないものとして入れません
-        if (!o.inc && !o.ex) { parts.push(`${g.name || year} まだ数字が入っていません`); return; }
+        if (!o.inc && !o.ex) { 残す(side, `${g.name || year} まだ数字が入っていません`); return; }
         // ★検算。日報としてありえない数なら、入れずに知らせます
         const hen = nippouCheck(o);
-        if (hen) { ng = true; parts.push(`${g.name || `${year}年`} ★${hen}`); return; }
-        val[side] = o;
+        if (hen) { ng = true; 残す(side, `${g.name || `${year}年`} ★${hen}`); return; }
+        // ★検算だけに使った項目は、記録に入れません
+        val[side] = nippouKeep(o);
+        読めた[side] = true;
         // どのファイルを読んだかを出します（月がずれていないか、ここで分かります）
         parts.push(`${g.name || `${year}年`} ✓`);
       });
-      if (val.now || val.last) Store.setItem(MEETING_STORE, key, `num:${s.id}`, { value: val, at: 取り込んだ時刻 });
-      lines.push({ ok: !ng && !!val.now, name: s.name, text: parts.join('　') });
+      /* ★時刻は、今年の分を読めたときだけ新しくします。
+           今年の数が前のままなのに「いま取り込んだ」と出すと、古い数を新しいと思わせます */
+      if (読めた.now || 読めた.last) {
+        Store.setItem(MEETING_STORE, key, `num:${s.id}`,
+          { value: val, at: 読めた.now ? 取り込んだ時刻 : (前の.at || null) });
+      }
+      lines.push({ ok: !ng && !!読めた.now, name: s.name, text: parts.join('　') });
     });
     meetingSeq += 1;
   }

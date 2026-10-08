@@ -7602,6 +7602,26 @@ const NIPPOU_まとめの基本 = {
   labor: 'G32',    // 人件費の当月累計（＝ SUM(G29:G31)。社員＋アルバイト＋交通費）
 };
 
+/**
+ * 検算だけに使うマス（★記録には入れません。NIPPOU_CHECK_FIELDS）
+ *
+ * ★2026-10-08、ko-dai さん：「毎月日報から読み込む部分は、必ず日報のまとめのページと誤差ないように」。
+ *   読むマスが1行でもずれると、0 ではなく**それらしい別の数**が入ります。
+ *   そこで、まとめのページ自身が持っている「数どうしの関係」を一緒に読んで確かめます（nippouCheck）。
+ *
+ *     人件費 … 社員（G29）＋アルバイト（G30）＋交通費（G31）＝ 当月累計（G32）
+ *     仕入   … 税込累計（24行）のすぐ下が税抜累計（25行）
+ *
+ *   2026年9月の6店舗のまとめで、見出しの文字とこの関係を1つずつ確かめました。
+ * ★2026年の配置にだけ付けています。2025年より前のまとめは、9月分しか見ていません
+ *   （付けた配置で関係が成り立たないと、その年の数は取り込めなくなります）。
+ */
+const NIPPOU_検算のマス = {
+  laborPart: 'G30',          // アルバイト
+  laborFare: 'G31',          // 交通費
+  costEx: ['F25', 'G25'],    // 仕入の税抜累計（現金＋掛）
+};
+
 const NIPPOU_LAYOUTS_DEFAULT = [
   { from: 0, cells: NIPPOU_まとめの基本 },
   /* ★2026年から、社員の当月累計（G29）も読みます（2026-10-01、ko-dai さんの指示）。
@@ -7613,7 +7633,7 @@ const NIPPOU_LAYOUTS_DEFAULT = [
      ★**2025年より前のまとめは、誰も見ていません。**並びが違うと、0 ではなく
        もっともらしい別の数が入ります。だから 2026年からにしています。
        2025年も同じ並びだと確かめたら、from を前へ動かすだけで去年の欄にも出ます */
-  { from: 202601, cells: { ...NIPPOU_まとめの基本, laborStaff: 'G29' } },
+  { from: 202601, cells: { ...NIPPOU_まとめの基本, laborStaff: 'G29', ...NIPPOU_検算のマス } },
 ];
 
 const NIPPOU_LAYOUTS = {
@@ -7637,6 +7657,7 @@ const NIPPOU_LAYOUTS = {
         cost: nippouCostCells(24, [4, 18], [4, 18]),
         labor: 'G32',
         laborStaff: 'G29',   // 社員の当月累計（他の店舗と同じ並び）
+        ...NIPPOU_検算のマス,
       },
     },
     // ★8月までの古い配置では、社員のマスを確かめていないので読みません（「アルバイトのみ」は —）
@@ -7658,6 +7679,12 @@ const NIPPOU_社員なしの最後の年 = 2025;
 /** 日報から取り込む項目（光熱費とキャッチは入りません）
  *  ★laborStaff は、配置に書いてある年月だけ読みます（書いていない年月は読まずに飛ばします） */
 const NIPPOU_FIELDS = ['inc', 'ex', 'guests', 'cost', 'labor', 'laborStaff'];
+/** 検算だけに使う項目。日報からは読みますが、**記録には入れません**（nippouKeep が落とします） */
+const NIPPOU_CHECK_FIELDS = ['laborPart', 'laborFare', 'costEx'];
+/** 日報から読む項目の全部（記録に入れるもの＋検算だけのもの） */
+const NIPPOU_READ_FIELDS = NIPPOU_FIELDS.concat(NIPPOU_CHECK_FIELDS);
+/** 検算で「同じ」とみなす幅（円）。サーバーがマスごとに四捨五入するので、足し算は数円ずれることがあります */
+const NIPPOU_丸めの幅 = 3;
 /**
  * 手で入れる光熱費
  *
@@ -7709,7 +7736,7 @@ function nippouAsk(storeId, y, m) {
   const want = {};
   [y, y - 1].forEach((year) => {
     const cells = nippouCells(storeId, nippouYm(year, m));
-    NIPPOU_FIELDS.forEach((f) => {
+    NIPPOU_READ_FIELDS.forEach((f) => {
       [].concat(cells[f] || []).forEach((a) => { want[a] = a; });
     });
   });
@@ -7720,7 +7747,7 @@ function nippouAsk(storeId, y, m) {
 function nippouPick(storeId, ym, got) {
   const cells = nippouCells(storeId, ym);
   const out = {};
-  NIPPOU_FIELDS.forEach((f) => {
+  NIPPOU_READ_FIELDS.forEach((f) => {
     let sum = 0;
     let ok = false;
     [].concat(cells[f] || []).forEach((a) => {
@@ -7746,7 +7773,11 @@ function nippouCheck(o) {
   const ex = o.ex || 0;
   if (inc <= 0 || ex <= 0) return '売上が読めません';
   if (ex > inc) return `税抜 ${yen(ex)} が税込 ${yen(inc)} より大きいです`;
-  if (ex < inc * 0.8) return `税抜 ${yen(ex)} が税込 ${yen(inc)} に対して小さすぎます`;
+  /* ★税抜は、税込を 1.08〜1.10 で割った数です（＝税込の 90.9〜92.6%）。少しだけ幅を持たせて 90〜93% で見ます。
+       2026-10-08 まで 80〜100% でした。隣の行を読んでも通ることがある幅だったので、狭めました
+       （2025年1月〜2026年9月の6店舗は、全部 90.9〜91.2% に入っています） */
+  if (ex < inc * 0.90) return `税抜 ${yen(ex)} が税込 ${yen(inc)} に対して小さすぎます`;
+  if (ex > inc * 0.93) return `税抜 ${yen(ex)} が税込 ${yen(inc)} に対して大きすぎます（税込と税抜の行がずれたかもしれません）`;
   const guests = o.guests || 0;
   if (guests <= 0) return '客数が読めません';
   const per = ex / guests;
@@ -7763,7 +7794,30 @@ function nippouCheck(o) {
   if (typeof o.laborStaff === 'number' && (o.laborStaff < 0 || o.laborStaff > o.labor)) {
     return `社員の人件費 ${yen(o.laborStaff)} が、人件費 ${yen(o.labor)} の中に収まりません（まとめの並びが変わったかもしれません）`;
   }
+  /* ★まとめのページ自身が持っている「数どうしの関係」で確かめます（2026-10-08、NIPPOU_検算のマス）。
+       読んだマスが1行でもずれていれば、下の2つは成り立ちません。
+       検算のマスを読んでいない年月（2025年より前）は、この2つを見ません */
+  if (typeof o.laborStaff === 'number' && typeof o.laborPart === 'number' && typeof o.laborFare === 'number') {
+    const 内わけ = o.laborStaff + o.laborPart + o.laborFare;
+    if (Math.abs(内わけ - o.labor) > NIPPOU_丸めの幅) {
+      return `人件費の内わけ（社員＋アルバイト＋交通費 ＝ ${yen(内わけ)}）が、当月累計 ${yen(o.labor)} と合いません（まとめの並びが変わったかもしれません）`;
+    }
+  }
+  if (typeof o.costEx === 'number' && (o.costEx > o.cost || o.costEx < o.cost * 0.90)) {
+    return `仕入の税抜累計 ${yen(o.costEx)} が、税込累計 ${yen(o.cost)} と合いません（まとめの並びが変わったかもしれません）`;
+  }
   return '';
+}
+
+/**
+ * 記録に入れる項目だけを残します（検算だけに使った項目を落とします）
+ *
+ * ★検算の項目まで記録に入れると、会議資料の表に関係のない数が同期に乗り、1か月の記録が太ります。
+ */
+function nippouKeep(o) {
+  const out = {};
+  NIPPOU_FIELDS.forEach((f) => { if (typeof o[f] === 'number') out[f] = o[f]; });
+  return out;
 }
 
 /** 店舗ごとの日報フォルダ（マネージで登録するまでは空） */
