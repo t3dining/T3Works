@@ -9247,24 +9247,37 @@ function meetingOf(y, m) {
  *
  *   num:   … 日報から取り込んだ数（売上・客数・原価・人件費・社員）
  *   util:  … 手で入れた光熱費
- *   sheet: … ★会議資料のスプレッドシートの数（2026-10-08、ko-dai さんの決め）
+ *   sheet: … 会議資料のスプレッドシート「売上比率_会議」の数。★使うのはキャッチだけです（MEETING_SHEET_FIELDS）
  *
- * ★会議資料は、スプレッドシート「売上比率_会議」が正です。アプリはそれに合わせます。
- *   日報は月が終わったあとも直されるので、取り込み直すたびに num: の数は動きます。
- *   スプレッドシートの数を一番上の層に置いておけば、**取り込み直してもスプレッドシートと同じまま**です
- *   （取り込み直しは、社員の人件費＝「アルバイトのみ」を出すのに要ります。止められません）。
- * ★sheet: に入れるのは、スプレッドシートに数が入っている項目だけです。無い項目は下の層の数が出ます。
+ * ★どの数字が、どこを正とするか（2026-10-08、ko-dai さんの決め。同じ日に2回決め直しています）
+ *     売上・客数・原価・人件費 … **日報のまとめのページ**。「必ず日報のまとめと誤差ないように」
+ *     キャッチ               … スプレッドシートの数があればそれ。無ければキャッチ集計（立替金の記録）
+ *     光熱費                 … 手で入れた数（日報にも無い）
+ *   はじめは「売上なども、スプレッドシートに合わせる」でした。スプレッドシートは日報をある日に写した数で、
+ *   日報はそのあとも直されます。日報と違う数が残るので、「日報の数にする」に変わりました。
  */
 const MEETING_LAYERS = ['num:', 'util:', 'sheet:'];
+
+/**
+ * sheet: の層から使う項目
+ *
+ * ★日報から読む項目は、sheet: に入っていても**使いません**（日報のまとめが正のため）。
+ *   記録を書きかえる順番や、消し忘れに頼らず、ここで止めます。
+ */
+const MEETING_SHEET_FIELDS = ['katch', 'katchPeople'];
 
 function meetingLayerOf(id) {
   return MEETING_LAYERS.findIndex((p) => id.indexOf(p) === 0);
 }
 
-/** その月に、スプレッドシートの数（sheet:）が入っているか */
+/** その月に、スプレッドシートのキャッチ（sheet: の katch）が入っているか */
 function meetingHasSheet(y, m) {
   const items = Store.getDay(MEETING_STORE, meetingMonthKey(y, m)).items || {};
-  return Object.keys(items).some((k) => k.indexOf('sheet:') === 0);
+  return Object.keys(items).some((k) => {
+    if (k.indexOf('sheet:') !== 0) return false;
+    const v = (items[k] && items[k].value) || {};
+    return ['now', 'last'].some((side) => typeof (v[side] || {}).katch === 'number');
+  });
 }
 
 function meetingWithSaved(base, key) {
@@ -9291,6 +9304,8 @@ function meetingWithSaved(base, key) {
       if (!src) return;
       if (!out.rows[sid][side]) out.rows[sid][side] = [];
       Object.keys(src).forEach((f) => {
+        // ★sheet: の層から使うのは、決まった項目（キャッチ）だけです
+        if (k.indexOf('sheet:') === 0 && !MEETING_SHEET_FIELDS.includes(f)) return;
         const i = MEETING_FIELDS.indexOf(f);
         if (i >= 0 && typeof src[f] === 'number') out.rows[sid][side][i] = src[f];
       });
@@ -10139,22 +10154,59 @@ function nippouPulledAt(y, m) {
 function nippouPulledText(y, m, いま = new Date()) {
   const p = nippouPulledAt(y, m);
   if (!p) return '';
-  /* ★「日報と違うときは押してください」とは書きません（2026-10-08）。
-       会議資料はスプレッドシートが正で、日報に合わせることが目的ではないためです。
-       押すと何が起きるかだけを書きます */
-  const 押すと = 'もう一度押すと、いまの日報の数に入れかわります';
-  if (!p.at) return `前にいつ取り込んだかは分かりません。${押すと}`;
+  /* ★マインで開いたとき、1時間たっていれば自動で読み直します（nippouAutoPull）。そのことを書きます */
+  const 自動 = `開いたとき、${NIPPOU_AUTO_分}分たっていれば自動で読み直します`;
+  if (!p.at) return `いつ日報から取り込んだか分からない数です（${自動}）`;
   const d = new Date(p.at);
   const 日 = Math.floor((いま.getTime() - d.getTime()) / 86400000);
   const 時刻 = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
-  return `前に取り込んだのは ${d.getMonth() + 1}月${d.getDate()}日 ${時刻}${日 >= 1 ? `（${日}日前）` : ''} です。${押すと}`;
+  return `日報から取り込んだのは ${d.getMonth() + 1}月${d.getDate()}日 ${時刻}${日 >= 1 ? `（${日}日前）` : ''} です（${自動}）`;
 }
 
-/** スプレッドシートの数を重ねてある月に出す一文（無い月は空） */
+/** スプレッドシートのキャッチを出している月に出す一文（無い月は空） */
 function meetingSheetText(y, m) {
   if (!meetingHasSheet(y, m)) return '';
-  return '★この月は、スプレッドシートの数に合わせてあります。'
-    + 'スプレッドシートに入っている数は、日報から取り込んでも変わりません（社員の人件費だけ新しくなります）';
+  return '★この月のキャッチは、スプレッドシートの数です（売上・客数・原価・人件費は、日報の数です）';
+}
+
+/* ------------------------------------------------------------
+ *  自動の取り込み直し（★マインだけ・2026-10-08、ko-dai さんの決め）
+ *
+ *  会議資料の数は、日報から取り込んだときの写しです。日報はあとから直されます
+ *  （2026年9月分は、1週間で20か所変わっていました）。
+ *  「必ず日報のまとめのページと誤差ないように」するために、マインで月を開いたとき、
+ *  前の取り込みから時間がたっていたら、押さなくても読み直します。
+ *
+ *  ★現場の端末（ワークス）は読みません。日報を読むのに10秒ほどかかり、サーバーも使うためです。
+ *    マインが読み直した数は、普段の同期で現場にも届きます。
+ *  ★これからの月は読みません（日報がまだ無いか、空です）。
+ *  ★読めなかったときに叩き続けないよう、同じ月を自動で試すのは NIPPOU_AUTO_分 に1回までです。
+ * ---------------------------------------------------------- */
+const NIPPOU_AUTO_分 = 60;
+/** 月のキー → 最後に自動で試した時刻（この画面を開いている間だけ覚えます） */
+const nippouAutoTried = {};
+
+/** いま、この月を自動で読み直すべきか */
+function nippouAutoWanted(y, m, いま = new Date()) {
+  if (!isMine()) return false;
+  if (!Sync.enabled()) return false;
+  const folders = NippouFolders.all();
+  if (!STORES.some((s) => folders[s.id])) return false;
+  if (y * 100 + m > いま.getFullYear() * 100 + (いま.getMonth() + 1)) return false;
+  const 幅 = NIPPOU_AUTO_分 * 60000;
+  const 試した = nippouAutoTried[meetingMonthKey(y, m)];
+  if (試した && いま.getTime() - 試した < 幅) return false;
+  const p = nippouPulledAt(y, m);
+  if (p && p.at && いま.getTime() - new Date(p.at).getTime() < 幅) return false;
+  return true;
+}
+
+function nippouAutoPull() {
+  if (nippouBusy || state.view !== 'meeting') return;
+  if (!nippouAutoWanted(state.y, state.m)) return;
+  nippouAutoTried[meetingMonthKey(state.y, state.m)] = Date.now();
+  // ★描いている途中から呼ばれます。描き終わってから読みはじめます
+  Promise.resolve().then(() => pullNippou({ 自動: true }));
 }
 
 function renderNippou() {
@@ -10177,9 +10229,17 @@ function renderNippou() {
     el.nippouResult.classList.add('is-hidden');
     nippouShownKey = '';
   }
+  // ★マインで開いたとき、前の取り込みから時間がたっていたら、自動で読み直します
+  nippouAutoPull();
 }
 
-async function pullNippou() {
+/**
+ * 日報から取り込みます
+ *   opts.自動 … 自動の取り込み直し（nippouAutoPull）から呼ばれたとき true。
+ *               ★ボタンから呼ばれたときは、ここにクリックの出来事が入ってきます（自動ではありません）
+ */
+async function pullNippou(opts) {
+  const 自動 = !!(opts && opts.自動 === true);
   if (nippouBusy) return;
   const folders = NippouFolders.all();
   const targets = STORES.filter((s) => folders[s.id]);
@@ -10208,7 +10268,8 @@ async function pullNippou() {
   nippouBusy = false;
   el.nippouPull.textContent = '日報から取り込む';
 
-  const lines = [{ head: true, text: `${y}年${m}月として取り込みました` }];
+  const lines = [{ head: true,
+    text: 自動 ? `${y}年${m}月の日報を、自動で読み直しました` : `${y}年${m}月として取り込みました` }];
   // ★いつ取り込んだかを、数字と一緒に残します（1回の取り込みで、どの店舗も同じ時刻）
   const 取り込んだ時刻 = new Date().toISOString();
   if (!res.ok) {
@@ -10224,6 +10285,7 @@ async function pullNippou() {
       const 前の = (Store.getDay(MEETING_STORE, key).items || {})[`num:${s.id}`] || {};
       const 前の数 = 前の.value || {};
       const 読めた = {};
+      const 変わった = [];
       const 残す = (side, 文) => {
         if (前の数[side]) { val[side] = 前の数[side]; parts.push(`${文}（前の数のままです）`); } else parts.push(文);
       };
@@ -10240,6 +10302,16 @@ async function pullNippou() {
         // ★検算だけに使った項目は、記録に入れません
         val[side] = nippouKeep(o);
         読めた[side] = true;
+        // ★前の数から変わった項目を覚えます（日報があとから直されたことに気づけるように）
+        if (前の数[side]) {
+          const 名前 = { inc: '税込', ex: '税抜', guests: '客数', cost: '原価', labor: '人件費', laborStaff: '社員' };
+          NIPPOU_FIELDS.forEach((f) => {
+            const 前 = 前の数[side][f];
+            if (typeof 前 === 'number' && typeof val[side][f] === 'number' && 前 !== val[side][f]) {
+              変わった.push(`${side === 'now' ? '今年' : '昨年'}の${名前[f] || f}`);
+            }
+          });
+        }
         // どのファイルを読んだかを出します（月がずれていないか、ここで分かります）
         parts.push(`${g.name || `${year}年`} ✓`);
       });
@@ -10249,6 +10321,7 @@ async function pullNippou() {
         Store.setItem(MEETING_STORE, key, `num:${s.id}`,
           { value: val, at: 読めた.now ? 取り込んだ時刻 : (前の.at || null) });
       }
+      if (変わった.length) parts.push(`★前の数から変わりました：${変わった.join('・')}`);
       lines.push({ ok: !ng && !!読めた.now, name: s.name, text: parts.join('　') });
     });
     meetingSeq += 1;
