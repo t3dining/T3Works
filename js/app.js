@@ -14027,12 +14027,16 @@ function shiftGuideHtml(kind) {
 
   /* ---- 7 組む ---- */
   out.push(shiftGuideH(次(), '表を組む（足す・直す・動かす）'));
+  // ★社員側だけで退勤を決める店舗（4店舗）の、退勤の選び先。説明の字は、設定から作ります（数字を書き写しません）
+  const 退勤の並び = shiftStaffEnd(rep) ? shiftEndTimes(rep) : [];
+  const 退勤の例 = 退勤の並び.includes('22') ? '22:00' : shiftTimeText(退勤の並び[0] || '');
   const 例 = (() => {
     if (yoru) {
       return [
         { label: '10/5（月）', memo: '店長17時〜', cells: {
           open: { k: { people: [{ t: '14:00', n: 'Aさん' }] } },
-          dinner: { k: { people: [{ t: '17:00', n: 'Aさん' }, { t: '18:00', n: 'Bさん' }] }, h: { people: [{ t: '17:00', n: 'Cさん' }], short: 1 } },
+          // ★退勤を決めた人は「〜22:00」「〜ラスト」が付きます（決めていない Cさん は開始時刻だけ）
+          dinner: { k: { people: [{ t: `17:00〜${退勤の例}`, n: 'Aさん' }, { t: `18:00〜${SHIFT_END_LAST_NAME}`, n: 'Bさん' }] }, h: { people: [{ t: '17:00', n: 'Cさん' }], short: 1 } },
         }, helpTags: shiftGuideTag('ヘルプ要請 ホールあと１人（２人中）', 'var(--ng)') },
         { label: '10/6（火）', cells: {
           open: { k: { wish: 2 }, h: { wish: 1 } },
@@ -14067,6 +14071,11 @@ function shiftGuideHtml(kind) {
       + (shiftLastFrom(店[0]) !== null ? `（${shiftTimeText(shiftTimeKey(shiftLastFrom(店[0])))}以降の出勤は「${名('last')}」の行）` : '')
       : (yoru ? '入れる前に<b>開始時刻</b>を<b>時</b>と<b>分</b>で選べます。選ばなければ、その人が出した時刻で入ります'
         : '入れる前に<b>開始時刻</b>を押して選べます。選ばなければ、その人が出した時刻で入ります'),
+    // ★退勤は社員側だけで決めます（2026-10-08、ko-dai さんの指示）。アルバイトの出し方は変わりません
+    退勤の並び.length ? `<b>退勤時刻</b>も決められます（${shiftTimeText(退勤の並び[0])}〜${shiftTimeText(退勤の並び[退勤の並び.length - 1])} の${Math.round(Number(shiftStaffEnd(rep).step) * 60)}分おき`
+      + (shiftEndHasLast(rep) ? `と、時の並びの一番下の<b>「${SHIFT_END_LAST_NAME}」</b>` : '') + '）。'
+      + `決めると、名前の上に <b>17:00〜${退勤の例}</b>${shiftEndHasLast(rep) ? ` や <b>18:00〜${SHIFT_END_LAST_NAME}</b>` : ''} のように出て、アルバイトの提出ページの決まったシフト表にも、同じ字で出ます。`
+      + '決めなければ、今までどおり開始時刻だけです。<b>アルバイトの希望の出し方は変わりません</b>（退勤は、お店が決めます）' : '',
     // ★4店舗（仕込み・営業）の形には「早上がり」を書きません（2026-09-25、ko-dai さんの指示）
     yoru ? '<b>入っている名前を押す</b>と、時刻・持ち場を直したり、<b>「この人を外す」</b>で外したりできます'
       : '<b>入っている名前を押す</b>と、時刻・持ち場を直したり、<b>「早上がり」</b>にしたり、<b>「この人を外す」</b>で外したりできます',
@@ -14074,6 +14083,8 @@ function shiftGuideHtml(kind) {
     '人が足りないマスには、「＋」の小窓の<b>「あと何人欲しいか」</b>で人数を入れます。<b>赤い「＋」</b>が付き、人を入れると消えます',
     '<b>メモ</b>の行には、その日の連絡（社員の動きなど）を書けます',
   ];
+  // 退勤を決めない店舗では、上の退勤の行が空なので、手順から外します
+  for (let i = 組む手順.length - 1; i >= 0; i -= 1) if (!組む手順[i]) 組む手順.splice(i, 1);
   if (kind === 'hiru') 組む手順.push(`<b>F</b>（通し）は名前のうしろに「F」が付きます。${名('open')}や${名('lunch')}の人を押すと、ランチだけか F かを変えられます`);
   if (range) 組む手順.push('灰色の人は通し（ランチからディナーまで）です。時刻から自動で決まります');
   out.push(shiftGuideOl(組む手順));
@@ -14082,6 +14093,7 @@ function shiftGuideHtml(kind) {
       + '<div class="field"><span class="field__label">持ち場</span><div class="seg"><span class="seg__btn">キッチン</span><span class="seg__btn is-on">ホール</span></div></div>'
       + `<div class="field"><span class="field__label">${range ? '出勤時刻' : '開始時刻'}（選ばなければ、その人の希望どおりに入ります）</span>`
       + `${yoru || range ? shiftGuideWheel(range ? '18時' : '17時', '00分') : '<div class="seg seg--wrap"><span class="seg__btn">17:00</span><span class="seg__btn">17:30</span><span class="seg__btn">18:00</span></div>'}</div>`
+      + (退勤の並び.length ? `<div class="field"><span class="field__label">退勤時刻（決めなければ、開始時刻だけが出ます）</span>${shiftGuideWheel(`${退勤の例.split(':')[0]}時`, `${退勤の例.split(':')[1]}分`)}</div>` : '')
       + '<div class="field"><span class="field__label">あと何人欲しいか（その人数だけ赤く出ます）</span>'
       + `<span style="display:inline-flex;gap:8px;align-items:center;"><span class="field__input" style="display:inline-block;width:5em;text-align:center;">1</span>${shiftGuideB('決める')}</span></div>`
       + `<div style="display:flex;gap:6px;flex-wrap:wrap;">${shiftGuideB('Cさん')}${shiftGuideB('Eさん')}</div>`),
@@ -15028,7 +15040,9 @@ function shiftChipFill(chip, storeId, slotId, e) {
     chip.textContent = shiftNameText(storeId, slotId, e);
     return chip;
   }
-  const 縮める = shiftUsesRange(storeId);
+  // ★4店舗（こじゃれなど）は、退勤を決めた人だけ「17:00〜22:00」「17:00〜ラスト」と長くなります。
+  //   その札だけ縮めます（退勤を決めていない「17:00」は、今までどおりの大きさ）
+  const 縮める = shiftUsesRange(storeId) || time.indexOf('〜') >= 0;
   if (縮める) chip.style.containerType = 'inline-size';
   const 上 = document.createElement('span');
   上.className = 'chip-time';
@@ -15353,7 +15367,9 @@ function renderKeepScroll() {
 /**
  * 退勤時刻を選ぶところ
  *
- * ★時刻を入れる店舗（popo）だけに出します。
+ * ★退勤を持つ店舗だけに出します（shiftUsesEnd）。時刻を入れる店舗（popo）と、
+ *   社員側だけで退勤を決める4店舗（こじゃれ・炭まろ・ちゃこる・おいでんテラス。2026-10-08、ko-dai さんの指示）。
+ *   4店舗は 20:00〜23:45 の15分おきと、時の並びの一番下の「ラスト」から選びます。
  * ★入れ物は index.html ではなく、ここで作って差し込みます。
  *   index.html は本部のファイルなので、部署からは触りません。
  * ★出勤より前の時刻は出しません（10:00出勤で9:00退勤は作れません）。
@@ -15367,6 +15383,7 @@ function renderShiftEndTimes(使うか, dateStr, slotId, index, entry, 選べる
     box.className = 'field';
     const cap = document.createElement('span');
     cap.className = 'field__label';
+    cap.id = 'shiftPickEndLabel';
     cap.textContent = '退勤時刻';
     const seg = document.createElement('div');
     seg.className = 'seg seg--wrap';
@@ -15377,6 +15394,12 @@ function renderShiftEndTimes(使うか, dateStr, slotId, index, entry, 選べる
   }
   box.classList.toggle('is-hidden', !使うか);
   if (!使うか) return;
+
+  // ★欄の名前は、開くたびに入れ直します（店舗を替えても、入れ物は同じものを使い回すため）。
+  //   4店舗は、アルバイトが退勤を出さないので、決めなくてもよいことを書きます
+  const 社員が決める = !!shiftStaffEnd(state.storeId);
+  const cap = document.getElementById('shiftPickEndLabel');
+  if (cap) cap.textContent = 社員が決める ? '退勤時刻（決めなければ、開始時刻だけが出ます）' : '退勤時刻';
 
   const seg = document.getElementById('shiftPickEnds');
   seg.innerHTML = '';
@@ -15403,7 +15426,7 @@ function renderShiftEndTimes(使うか, dateStr, slotId, index, entry, 選べる
       shiftPickAt.end = t;
       renderShiftPick();
     }
-  }, 'field__input'));
+  }, 'field__input', shiftEndHasLast(state.storeId) ? [{ value: SHIFT_END_LAST, label: SHIFT_END_LAST_NAME }] : []));
 }
 
 /** 名前を、別のマスへ移します */
@@ -15602,6 +15625,8 @@ function renderShiftPick() {
         if (entry) {
           const now = shiftDayOf(shiftRec(), dateStr);
           const 直した = { ...now[slotId][index], t };
+          // ★退勤が開始より前（か同じ）になったら、退勤を外します（popo と同じ決め方。「ラスト」は外しません）
+          if (t !== '' && 直した.e !== undefined && 直した.e !== '' && Number(直した.e) <= Number(t)) delete 直した.e;
           now[slotId].splice(index, 1);
           now[slotId].push(直した);
           now[slotId] = shiftSort(now[slotId]);
@@ -15648,11 +15673,10 @@ function renderShiftPick() {
     });
   }
 
-  /* 退勤時刻（時刻を入れる店舗だけ） */
-  // ★退勤は、出勤とは別の幅から選びます（popo は 13:00〜27:00）。
-  //   出勤の一覧をそのまま渡すと、深夜の時刻が出せません
-  renderShiftEndTimes(時刻で入れる, dateStr, slotId, index, entry,
-    時刻で入れる ? shiftRangeTimes(state.storeId, 'out') : 選べる時刻);
+  /* 退勤時刻（退勤を持つ店舗だけ。popo と、社員側だけで退勤を決める4店舗） */
+  // ★退勤は、出勤とは別の幅から選びます（popo は 13:00〜27:00。4店舗は 20:00〜23:45 と「ラスト」）。
+  //   出勤の一覧をそのまま渡すと、深夜の時刻が出せません（→ js/config.js の shiftEndTimes）
+  renderShiftEndTimes(shiftUsesEnd(state.storeId), dateStr, slotId, index, entry, shiftEndTimes(state.storeId));
 
   /* --- ここまで --- */
   /* 持ち場（キッチン／ホール） */
@@ -15746,7 +15770,8 @@ function renderShiftPick() {
           if (slotId === 'lunch' && full) add.f = true;
           // ★退勤時刻。押した選び → その人の希望、の順です
           const 退勤 = shiftPickAt.end || (isWish && item.e) || '';
-          if (退勤) add.e = 退勤;
+          // ★開始より前（か同じ）の退勤は入れません（退勤を選んだあとに、開始を後ろへずらしたとき）。「ラスト」は入れます
+          if (退勤 && !(Number(退勤) <= Number(t))) add.e = 退勤;
           // ★出勤時刻で入る行が決まる店舗では、押した行ではなく時刻で決めます
           const 行き先 = shiftUsesRange(state.storeId) ? shiftSlotByTime(t, state.storeId) : slotId;
           now[行き先].push(add);
@@ -15838,6 +15863,8 @@ function applyShiftFreeTime() {
 
   const now = shiftDayOf(shiftRec(), dateStr);
   const entry = { ...now[slotId][index], t };
+  // ★退勤が開始より前（か同じ）になったら、退勤を外します（小窓で時と分を選んだときと同じ決め方）
+  if (entry.e !== undefined && entry.e !== '' && Number(entry.e) <= Number(t)) delete entry.e;
 
   // ★入れた時刻に合う枠へ、自動で移します。
   //   立ち上げの欄に「18:00」と書いてあるより、ディナーの欄に
@@ -16487,8 +16514,10 @@ function shiftWishDetail(box, dateStr, name, w, mine) {
   const 入れた = (mine || []).map((e) => {
     const slot = getShiftSlot(state.storeId, e.slot);
     const t = 時(e.t);
-    const en = 時(e.e);
-    const いつ = t && en ? `${t}〜${en}` : (t ? `${t}から` : '');
+    // ★退勤は「ラスト」のこともあります（4店舗 → shiftEndText）
+    const en = e.e !== '' && e.e !== undefined && e.e !== null ? shiftEndText(e.e) : '';
+    // 開始がなくて退勤だけ決めた人は「〜22:30」（表の札と同じ字）
+    const いつ = t && en ? `${t}〜${en}` : (t ? `${t}から` : (en ? `〜${en}` : ''));
     return 札(e.f ? SHIFT_FULL_ID : e.slot, [e.f ? 'F（通し）' : (slot ? slot.name : ''), いつ].filter(Boolean).join(' '), false);
   });
   並べる('シフトに入れた', 入れた, 'まだ入れていません');

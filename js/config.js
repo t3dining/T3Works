@@ -5487,6 +5487,28 @@ const SHIFT_STYLE_DEFAULT = {
  * ★lunchTo: '17' … 17時より前に出て、17時より**あと**まで残る人をFとします。
  *   Fは名前を灰色に塗るだけで、**バグるのような「F」の字は出しません**。
  */
+/**
+ * 退勤の「ラスト」（閉店まで）を、記録に入れるときの印
+ *
+ * ★時刻（'22.5' など）の代わりに、entry.e にこの字が入ります。画面には「ラスト」と出します（→ shiftEndText）。
+ * ★popo の「ラスト」の**行**（22時以降に出勤する人の行。SHIFT_LAST_ID）とは別ものです。こちらは**退勤**の選び先です。
+ */
+const SHIFT_END_LAST = 'L';
+const SHIFT_END_LAST_NAME = 'ラスト';
+
+/**
+ * 社員側だけで退勤を決める店舗の、退勤の選び方
+ *
+ * ★2026-10-08、ko-dai さん「こじゃれ、炭まろ、ちゃこる、おいでんテラスでアルバイトのシフト提出の仕方は今のまま、
+ *   社員側だけpopoと同じように退勤時間を決めれるようにしてください」
+ *   「２０時〜２３：４５までは１５分ごと、２４時以降の代わりにラストで選択できるようにしてください」。
+ * ★アルバイトの提出ページは変えません（開始の時刻だけ出してもらう、今までどおり）。
+ *   退勤は、組む画面の小窓で社員が決めます。**決めなくてもかまいません**（決めなければ、今までどおり開始時刻だけ出ます）。
+ * ★from〜to を step おきに並べ、last が true なら最後に「ラスト」を足します（24時以降は並べません）。
+ * ★マネージからは変えられません（コードで決めます）。
+ */
+const SHIFT_STAFF_END_YORU = { from: '20', to: '23.75', step: 0.25, last: true };
+
 const SHIFT_STYLE_STORES = {
   // ★出勤と退勤で、選べる幅が違います（2026-09-07 ko-dai の指示）。
   //   出勤 10:00〜24:00 ／ 退勤 13:00〜27:00。
@@ -5502,10 +5524,11 @@ const SHIFT_STYLE_STORES = {
   },
   // ★仕込み／営業の4店舗。パティはバグるの言葉なので出しません
   //   （2026-09-07「メモ欄のボタンは全部消して、ただのメモ欄に」）
-  kojare:   { patty: false },
-  sumimaro: { patty: false },
-  chacoru:  { patty: false },
-  oiden:    { patty: false },
+  // ★staffEnd … 社員側だけで退勤を決めます（2026-10-08 → 上の SHIFT_STAFF_END_YORU）
+  kojare:   { patty: false, staffEnd: SHIFT_STAFF_END_YORU },
+  sumimaro: { patty: false, staffEnd: SHIFT_STAFF_END_YORU },
+  chacoru:  { patty: false, staffEnd: SHIFT_STAFF_END_YORU },
+  oiden:    { patty: false, staffEnd: SHIFT_STAFF_END_YORU },
 };
 
 /** その店舗の入れ方（マネージで直した分も重ねます） */
@@ -5533,6 +5556,47 @@ function shiftStyleOf(storeId) {
 /** その店舗は「出勤〜退勤の時刻を入れる」やり方か */
 function shiftUsesRange(storeId) {
   return !!shiftStyleOf(storeId).range;
+}
+
+/**
+ * 社員側だけで退勤を決める店舗なら、その選び方（そうでなければ null）
+ *
+ * ★時刻を入れる店舗（popo）は、アルバイトが退勤まで出すので、こちらは使いません（null を返します）。
+ */
+function shiftStaffEnd(storeId) {
+  const st = shiftStyleOf(storeId);
+  if (st.range || !st.staffEnd) return null;
+  return st.staffEnd;
+}
+
+/** その店舗の記録が、退勤（entry.e）を持つか（popo と、社員側だけで退勤を決める4店舗） */
+function shiftUsesEnd(storeId) {
+  return shiftUsesRange(storeId) || !!shiftStaffEnd(storeId);
+}
+
+/** 組む画面の小窓で選べる退勤の時刻（「ラスト」は入りません → shiftEndHasLast） */
+function shiftEndTimes(storeId) {
+  if (shiftUsesRange(storeId)) return shiftRangeTimes(storeId, 'out');
+  const s = shiftStaffEnd(storeId);
+  if (!s) return [];
+  const from = Number(s.from), to = Number(s.to);
+  const step = Number(s.step) > 0 ? Number(s.step) : 0.25;
+  const out = [];
+  if (!isFinite(from) || !isFinite(to) || to < from) return out;
+  for (let t = from; t <= to + 1e-9; t += step) out.push(shiftTimeKey(t));
+  return out;
+}
+
+/** 退勤に「ラスト」を選べる店舗か */
+function shiftEndHasLast(storeId) {
+  const s = shiftStaffEnd(storeId);
+  return !!(s && s.last);
+}
+
+/** 退勤の字（'22.5' → '22:30'、ラストの印 → 'ラスト'。入っていなければ空） */
+function shiftEndText(e) {
+  if (e === SHIFT_END_LAST) return SHIFT_END_LAST_NAME;
+  return shiftTimeText(e);
 }
 
 /** その店舗でパティを使うか */
@@ -6745,11 +6809,16 @@ function shiftDefaultTime(storeId, slotId) {
  *   value  … いまの時刻（空なら「—」）
  *   onPick … 選び直したら、新しい時刻（または空）で呼びます
  *   selClass … select に付ける見た目（画面ごとに違うため）
+ *   おまけ … 時刻でない選び先（[{ value: 'L', label: 'ラスト' }] の形。なくてもよい）。
+ *            時の並びの一番下に出ます。選ぶと分は選べなくなり、onPick にその value が渡ります
+ *            （4店舗の退勤の「ラスト」。2026-10-08）。★value に数字を入れないこと（時と見分けられなくなります）
  */
-function shiftWheel(times, value, onPick, selClass) {
+function shiftWheel(times, value, onPick, selClass, おまけ) {
   const 並び = (times || []).slice();
+  const おまけ一覧 = (おまけ || []).filter((x) => x && x.value && !isFinite(Number(x.value)));
+  const おまけか = (v) => おまけ一覧.some((x) => x.value === v);
   const いま = value === undefined || value === null ? '' : String(value);
-  if (いま !== '' && !並び.includes(いま)) 並び.push(いま);
+  if (いま !== '' && !おまけか(いま) && !並び.includes(いま)) 並び.push(いま);
   const 時の = {};
   並び.forEach((t) => {
     const h = Math.floor(Number(t));
@@ -6773,7 +6842,7 @@ function shiftWheel(times, value, onPick, selClass) {
   時sel.setAttribute('aria-label', '時');
   分sel.setAttribute('aria-label', '分');
 
-  const いまの時 = いま === '' ? '' : String(Math.floor(Number(いま)));
+  const いまの時 = いま === '' || おまけか(いま) ? '' : String(Math.floor(Number(いま)));
   const 空 = document.createElement('option');
   空.value = '';
   空.textContent = '—';
@@ -6783,6 +6852,13 @@ function shiftWheel(times, value, onPick, selClass) {
     o.value = String(h);
     o.textContent = `${h}時`;
     if (String(h) === いまの時) o.selected = true;
+    時sel.appendChild(o);
+  });
+  おまけ一覧.forEach((x) => {
+    const o = document.createElement('option');
+    o.value = x.value;
+    o.textContent = x.label;
+    if (x.value === いま) o.selected = true;
     時sel.appendChild(o);
   });
   const 分を並べる = (h, 選ぶ) => {
@@ -6809,6 +6885,8 @@ function shiftWheel(times, value, onPick, selClass) {
   時sel.addEventListener('change', () => {
     const h = 時sel.value;
     if (h === '') { 分を並べる('', ''); onPick(''); return; }
+    // おまけ（ラスト）は時刻ではないので、分は選べなくします
+    if (おまけか(h)) { 分を並べる('', ''); onPick(h); return; }
     const 前の分 = 分sel.value ? 分の字(分sel.value) : '';
     const その時 = 時の[h] || [];
     const t = その時.find((x) => 分の字(x) === 前の分) || その時[0] || '';
@@ -6930,22 +7008,36 @@ function helpFromLabel(entry) {
 /**
  * 表に出す時刻。**退勤まで入っていれば「10:00〜15:00」と出します**
  *
- * ★時刻を入れる店舗（popo）だけ、うしろが付きます。
- *   枠で選ぶ店舗（バグる）は退勤を持たないので、今までどおり「10:00」です。
+ * ★うしろが付くのは、退勤を持つ店舗だけです（shiftUsesEnd）。
+ *   時刻を入れる店舗（popo）と、社員側だけで退勤を決める4店舗（こじゃれ・炭まろ・ちゃこる・おいでんテラス。
+ *   2026-10-08）。4店舗は「17:00〜22:00」の他、「17:00〜ラスト」とも出ます（→ shiftEndText）。
+ *   枠で選ぶだけの店舗（バグる）は退勤を持たないので、今までどおり「10:00」です。
+ * ★組む画面の表・印刷・絵・アルバイトの「決まったシフト」は、全部ここを通ります。
  */
 function shiftTimeSpan(storeId, slotId, entry) {
   const at = entry && entry.t;
-  if (at === undefined || at === null || at === '') return '';
+  if (at === undefined || at === null || at === '') {
+    // ★社員側だけで退勤を決める店舗は、開始が入っていなくても、決めた退勤を「〜22:30」「〜ラスト」と出します。
+    //   4店舗は、希望を出していない人を時刻を選ばずに足すと、開始が空のまま入ります（名前だけの札）。
+    //   そこで退勤だけ決めたときに何も出ないと、決めたはずの退勤が見えなくなります
+    const 退勤だけ = entry && shiftStaffEnd(storeId) && getShiftSlot(storeId, slotId) ? shiftEndText(entry.e) : '';
+    return 退勤だけ ? `〜${退勤だけ}` : '';
+  }
 
   // ★時刻を入れる店舗（popo）では、枠が引けるかを見ません。
   //   時刻はその人自身のものなので、枠の設定に左右されてはいけません。
   //   前は枠が引けないと時刻ごと消えていました（使わない設定にした枠に
   //   人が残っていると、名前だけになって何時の人か分からなくなります）
-  if (!shiftUsesRange(storeId)) return shiftTimeMark(storeId, slotId, at);
+  if (!shiftUsesRange(storeId)) {
+    const mark = shiftTimeMark(storeId, slotId, at);
+    // ★社員側だけで退勤を決める店舗は、退勤が入っている人だけ、うしろを付けます
+    const 退勤 = mark && shiftStaffEnd(storeId) ? shiftEndText(entry.e) : '';
+    return 退勤 ? `${mark}〜${退勤}` : mark;
+  }
 
   const from = shiftTimeText(at);
-  const to = entry && entry.e;
-  return to === undefined || to === null || to === '' ? from : `${from}〜${shiftTimeText(to)}`;
+  const 退勤 = shiftEndText(entry && entry.e);
+  return 退勤 ? `${from}〜${退勤}` : from;
 }
 
 /**
