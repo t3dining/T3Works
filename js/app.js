@@ -14181,7 +14181,24 @@ function shiftExtraStyle() {
     + 'td[data-slot="last"]{background:color-mix(in srgb, var(--shift-last) 12%, var(--surface))}'
     + '.wish-chip--last{background:var(--shift-last)}'
     + '.wish-chip--last.is-yet{color:var(--shift-last)}'
-    + 'body.print-shift .shift-sheet tr.is-row-last td{height:var(--row-last, 10mm)}';
+    + 'body.print-shift .shift-sheet tr.is-row-last td{height:var(--row-last, 10mm)}'
+    // ★紙の1人分の組み方：時刻の段の行送り1・名前の段の行送り1.1・下の空き0（＝名前の大きさの2.1倍）。
+    //   js/shift-sheet.js の SHIFT_ROW_EM と**同じ数**です。行の高さはこの数で決めているので、
+    //   css/style.css（本部のファイル）の指定が変わっても紙からはみ出さないよう、紙のときだけここで決め直します。
+    //   メモは 6pt・行送り1.3（SHIFT_MEMO_PT・SHIFT_MEMO_LINE_MM と同じ）。長いメモは、どこででも折り返して全文出します
+    + '@media print{'
+    // ★紙の下の、見えない空きを消します。画面用の下の空き（body の padding-bottom 16px＝4.2mm。日付の帯の分）と、
+    //   最後の表の下の空き（3mm）が紙にも付いていて、紙の高さ 204mm のうち約7mmを使っていました。
+    //   そのため「8mm 残している」つもりの余裕が 1〜3mm しかなく、メモが少し長いだけで紙がもう1枚出ていました
+    + 'body.print-shift{padding:0 !important;margin:0 !important}'
+    + 'body.print-shift .shift-sheet:last-child{margin-bottom:0 !important}'
+    // 2枚目の見出し（popo）は、1枚目の見出しと同じ高さにします（画面用の空き14pxのままだと、2枚目だけ2mm下がります）
+    + 'body.print-shift .shift-sheet__page{margin:0 0 2mm !important;font-size:12pt !important;line-height:1.55 !important}'
+    + 'body.print-shift .shift-sheet__name{margin-bottom:0}'
+    + 'body.print-shift .shift-sheet__at{line-height:1}'
+    + 'body.print-shift .shift-sheet__who{line-height:1.1}'
+    + 'body.print-shift .shift-sheet td.shift-sheet__memo{font-size:6pt;line-height:1.3;white-space:normal;overflow-wrap:anywhere;word-break:break-all}'
+    + '}';
   document.head.appendChild(st);
 }
 
@@ -14378,17 +14395,34 @@ function shiftGridBlock(rec, wishes, days) {
       return;
     }
 
-    const input = document.createElement('input');
-    input.type = 'text';
+    // ★メモは、長くても**全文見える**ように、折り返して欄が下へ伸びる形です（2026-10-09、ko-dai さん
+    //   「メモ欄に書いたものが長いと途中で切れて見れないので、シフトを組む画面でも全文見れるように」）。
+    //   前は1行だけの欄（input）で、はみ出した分は見えませんでした。
+    //   ★見た目は今までと同じ（css/style.css の .shift-memo）。足りない分だけ、ここで持たせます
+    //   ★メモは1行の文のままです。改行は入れません（Enter は「書き終わり」。貼り付けた改行は、空白に直します）
+    const input = document.createElement('textarea');
+    input.rows = 1;
     input.className = 'shift-memo';
+    input.style.cssText = 'display:block;resize:none;overflow:hidden;line-height:1.4;word-break:break-all;overflow-wrap:anywhere;';
     // ★バグるだけ、29日と2月9日は「肉の日」がはじめから入ります（shiftDefaultMemo）
     input.value = shiftMemoOf(rec, dateStr);
+    input.addEventListener('input', () => shiftMemoFit(input));
+    input.addEventListener('keydown', (ev) => {
+      // 変換を決める Enter（日本語を打っている途中）は、そのまま通します
+      if (ev.key !== 'Enter' || ev.isComposing || ev.keyCode === 229) return;
+      ev.preventDefault();
+      input.blur();
+    });
     input.addEventListener('change', () => {
+      const 文 = shiftMemoText(input.value);
+      if (文 !== input.value) { input.value = 文; shiftMemoFit(input); }
       const now = shiftDayOf(shiftRec(), dateStr);
-      now.memo = input.value.trim();
+      now.memo = 文;
       saveShiftDay(dateStr, now);
     });
     td.appendChild(input);
+    // 表が画面に入ってから、中身に合わせて高さを決めます（入る前は、高さが測れません）
+    shiftMemoFitSoon(input);
 
     // アルバイトからのその日の連絡。組むときに見えないと意味がないので、ここに出します
     const said = wishes
@@ -15055,6 +15089,44 @@ function shiftChipFill(chip, storeId, slotId, e) {
   下.textContent = String((e && e.n) || '') + helpFromLabel(e);
   chip.append(上, 下);
   return 下;
+}
+
+/** メモに入れる文（前後の空白を落とし、改行は空白1つに直します。メモは1行の文のままにします） */
+function shiftMemoText(v) {
+  return String(v || '').replace(/\s*[\r\n]+\s*/g, ' ').trim();
+}
+
+/**
+ * メモの欄の高さを、中身に合わせます（長いメモは折り返して、全文見えるように）
+ *
+ * ★2行以上になったら左よせにします。真ん中ぞろえのまま折り返すと、行の頭がそろわず読みにくいためです。
+ *   1行のあいだは、今までどおり真ん中です。
+ */
+function shiftMemoFit(ta) {
+  if (!ta || !ta.style) return;
+  ta.style.height = 'auto';
+  const h = ta.scrollHeight;
+  if (!h) return;   // まだ画面に入っていない（測れない）
+  // ふちの線の分（上下1pxずつ）を足します。足さないと、最後の行の下が少し欠けます
+  ta.style.height = `${h + 2}px`;
+  const 一行 = parseFloat(getComputedStyle(ta).lineHeight) || 17;
+  ta.style.textAlign = h > 一行 * 1.9 + 12 ? 'left' : '';
+}
+
+/** 画面に入ったあとで、メモの欄の高さを合わせます（画面の幅が変わったときも合わせ直します） */
+let shiftMemoFitHooked = false;
+function shiftMemoFitSoon(ta) {
+  // ★合わせるきっかけは3つ重ねます。画面を描く合図（requestAnimationFrame）だけだと、アプリが裏にあるあいだに
+  //   表を作り直したとき（他の端末の直しが届いたとき）に合図が来ず、長いメモが1行のまま残ります
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => shiftMemoFit(ta));
+  setTimeout(() => shiftMemoFit(ta), 0);
+  setTimeout(() => shiftMemoFit(ta), 300);
+  if (shiftMemoFitHooked || typeof window === 'undefined' || !window.addEventListener) return;
+  shiftMemoFitHooked = true;
+  const 全部 = () => document.querySelectorAll('textarea.shift-memo').forEach((x) => shiftMemoFit(x));
+  window.addEventListener('resize', 全部);
+  // アプリを表に戻したときにも合わせ直します（裏にいるあいだは、高さが測れないことがあるため）
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) 全部(); });
 }
 
 /** 表の1マス（その日・その枠・その持ち場） */
@@ -16727,7 +16799,8 @@ function shiftSheetTable(block, perDay, size) {
         // ★人がたくさん入っているマスだけ、そのマスの中で小さくします
         if (size) {
           const room = ラスト ? size.lastMm : (ri === 0 ? size.openMm : size.slotMm);
-          const one = shiftCellPt(size.pt, cell.names.length + cell.short, room);
+          // ★一番小さい字は、普段 4.5pt。それでも紙に入りきらない半月だけ、もう少し下げます（size.minPt）
+          const one = shiftCellPt(size.pt, cell.names.length + cell.short, room, size.minPt);
           if (one < size.pt) td.style.setProperty('--name-pt', `${Math.floor(one * 10) / 10}pt`);
         }
         // パティの枠は、キッチンとホールをまとめて桃色のふちで囲みます

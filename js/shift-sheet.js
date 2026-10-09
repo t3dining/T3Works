@@ -148,12 +148,65 @@ function shiftSlotNeed(model) {
 }
 
 /**
- * 1人分の高さが、名前の大きさの何倍か
+ * 紙（パソコンの印刷）で、1人分の高さが名前の大きさの何倍か
  *
- * ★two＝時刻を名前の上の段に出す（名前を大きくできる）
- *   one＝時刻と名前を1行に並べる（背が低いので、人の多い日に強い）
+ * ★時刻の段（1.0）＋名前の段（1.1）＝2.1。**人と人のあいだの空きは、紙にはありません。**
+ *   前は 2.45（空き .35 を足した数）で数えていましたが、紙の実物は 2.1 でした（css/style.css の紙の指定が、
+ *   空きを0にしています。PDF にして測ると 2.07〜2.08）。多めに数えていた分だけ、人数の多いマスの字が
+ *   入るはずの大きさより小さく、「入らない」と早く決めていました（2026-10-09 に合わせました）。
+ * ★この数は、紙の組み方と**必ず同じ**にします。組み方は js/app.js の shiftExtraStyle が、紙のときだけ
+ *   「時刻の段の行送り1・名前の段の行送り1.1・下の空き0」と決め直しています（css/style.css が変わっても、ここは動きません）。
+ * ★絵（iPhone・iPad の PDF／JPEG）は別の数え方です（drawShiftSheet の中。空きを描くので 2.45）。
  */
-const SHIFT_ROW_EM = 1.1 + SHIFT_TIME_SCALE * 1.0 + 0.35;
+const SHIFT_ROW_EM = SHIFT_TIME_SCALE * 1.0 + 1.1;
+
+/**
+ * 紙で、名前の行（立ち上げ・ランチなど）の一番低い高さ（ミリ）
+ *
+ * ★行は、左の縦書きの枠名より低くできません（枠名は 6pt。「立ち上げ」「ディナー」の4文字で約10mm）。
+ *   これより低く決めても、紙では枠名の高さまで伸びて、その分だけ表が長くなります
+ *   （PDF にして測ると、9mm と決めた立ち上げの行が 9.4mm ほどで出ていました）。
+ */
+const SHIFT_ROW_MIN_MM = 9;
+function shiftRowMinMm(label) {
+  return Math.max(SHIFT_ROW_MIN_MM, String(label || '').length * (6 / 2.8346) + 1.6);
+}
+
+/**
+ * 紙のメモ：1行分の高さと、メモの行の一番低い高さ（ミリ）
+ * ★字は 6pt・行送り 1.3（css/style.css の紙の指定と同じ。shiftExtraStyle でも同じ数に決め直しています）
+ */
+const SHIFT_MEMO_PT = 6;
+const SHIFT_MEMO_LINE_MM = (SHIFT_MEMO_PT * 1.3) / 2.8346;
+const SHIFT_MEMO_MIN_MM = 5.5;
+
+/**
+ * 紙で、そのメモが何行になるか（**多めに**数えます）
+ *
+ * ★メモは長いと折り返して、行が増えます。その分だけ表が下へ伸びるので、前は
+ *   長いメモが1つあるだけで、紙が2枚に分かれていました（2026-10-09、ko-dai さん
+ *   「印刷時にはpopoは1週間で1枚、それ以外は2週間で1枚のシフト表に収まるように」）。
+ *   行の数を先に数えて、その分を名前の行から引きます。
+ * ★少なく数えると紙からはみ出すので、幅は 0.93 倍に見て、半角の字は 0.62 文字分と数えます
+ *   （多く数えた分は、メモの下に少し空きができるだけです）。
+ */
+function shiftMemoLines(text, widthMm) {
+  const t = String(text || '');
+  if (!t) return 1;
+  let n = 0;
+  for (const ch of t) n += /[\u0020-\u007e\uff61-\uff9f]/.test(ch) ? 0.62 : 1;
+  const perLine = Math.max(1, (widthMm / (SHIFT_MEMO_PT / 2.8346)) * 0.93);
+  return Math.max(1, Math.ceil(n / perLine));
+}
+
+/** 紙で、その段のメモの行の高さ（ミリ）。その段で一番長いメモに合わせます */
+function shiftMemoMm(block, perDay) {
+  // 1日分の幅（キッチン＋ホール）から、内よ白とけい線の分（約1mm）を引いたものが、メモの字の入る幅です
+  const dayMm = (297 - 3 * 2 - SHIFT_SHEET_LABEL_MM) / perDay - 1.0;
+  let lines = 1;
+  (block.memo || []).forEach((m) => { lines = Math.max(lines, shiftMemoLines(m, dayMm)); });
+  return Math.max(SHIFT_MEMO_MIN_MM, lines * SHIFT_MEMO_LINE_MM + 1.1);
+}
 
 /** 1人分の高さ（ミリ）。名前の大きさ（ポイント）から出します */
 function shiftPersonMm(pt) {
@@ -167,13 +220,18 @@ function shiftPersonMm(pt) {
  *   前は「一番多いマス」に表全部を合わせていたので、
  *   7人入る日が1つあるだけで、他の日まで小さくなっていました。
  */
-/** 1マスの中で小さくするときの、一番小さい字（ポイント）。これより小さくはしません（読めなくなるため） */
+/**
+ * 1マスの中で小さくするときの、一番小さい字（ポイント）
+ * ★普段は 4.5pt より小さくしません。それでも紙に入りきらない半月だけ、3pt まで下げます
+ *   （shiftSheetMetrics が minPt で渡します。紙を2枚に分けないためです）
+ */
 const SHIFT_CELL_PT_MIN = 4.5;
+const SHIFT_CELL_PT_FLOOR = 3;
 
-function shiftCellPt(pt, count, roomMm) {
+function shiftCellPt(pt, count, roomMm, minPt) {
   if (count <= 0) return pt;
   const fit = ((roomMm - 1.4) / count) * 2.8346 / SHIFT_ROW_EM;
-  return Math.max(SHIFT_CELL_PT_MIN, Math.min(pt, fit));
+  return Math.max(minPt > 0 ? minPt : SHIFT_CELL_PT_MIN, Math.min(pt, fit));
 }
 
 /**
@@ -188,11 +246,17 @@ function shiftSheetMetrics(model, perDay) {
   // 1.05mm 引いているのは、マスの内よ白（0.3mm×2）とけい線（1px）の分です
   const cellMm = (297 - 3 * 2 - SHIFT_SHEET_LABEL_MM) / (perDay * SHIFT_LANES.length) - 1.05;
 
-  // ★使える高さ。A4横204mmのうち196mmまでにして、
-  //   メモが2行に伸びる分を残します
+  // ★使える高さ。A4横204mmのうち196mmまでにして、8mm を念のために残します
+  //   （メモの行の数は多めに数えていますが、端末や字の形で少し変わるためです）。
+  //   ★この 8mm が**本当に残る**ように、紙のときだけ、画面用の下の空き（body の16px）と、最後の表の下の空き（3mm）を
+  //     0にしています（js/app.js の shiftExtraStyle）。前はこの2つが 8mm のうち約7mmを使っていて、
+  //     残りは こじゃれ で約3mm・popo の2枚目で約1mm しかありませんでした（PDF にして、行を少しずつ高くして測りました）
+  // ★メモの行は、**その段で一番長いメモの行の数**だけ取ります（shiftMemoMm）。
+  //   前は1行分（5.5mm）と決めていたので、長いメモがあると表が下へ伸びて、紙が2枚に分かれていました
   const blocks = model.blocks.length || 1;
-  const fixed = 6.5 + 4 + 5.5;              // 日付・持ち場・メモ
-  const rowsMm = Math.max(30, (196 - 8.5 - 3 * blocks) / blocks - fixed);
+  const memoMm = model.blocks.map((b) => shiftMemoMm(b, perDay));
+  const fixed = memoMm.reduce((a, m) => a + 6.5 + 4 + m, 0);   // 日付・持ち場・メモ（段ごとに足します）
+  const rowsMm = Math.max(30, (196 - 8.5 - 3 * blocks - fixed) / blocks);
 
   const need = shiftSlotNeed(model);
   const openNeed = Math.max(1, need[0] || 0);
@@ -211,19 +275,57 @@ function shiftSheetMetrics(model, perDay) {
 
   // 立ち上げの行は「入っている人数分」だけ取り、残りをランチとディナーで
   // 半分ずつ分けます（この2つは必ず同じ高さです）
-  const openMm = Math.min(rowsMm * 0.3, Math.max(9, openNeed * shiftPersonMm(pt) + 1.4));
+  // ★どの行も、左の縦書きの枠名より低くはしません（shiftRowMinMm）
+  const 枠 = sheetSlots(model);
+  const 低さ = (i) => shiftRowMinMm((枠[i] || {}).name);
+  const openMin = 低さ(0);
+  const lastMin = lastAt >= 0 ? 低さ(lastAt) : 0;
+  const slotMin = Math.max(SHIFT_ROW_MIN_MM, ...枠.map((_, i) => (i > 0 && i !== lastAt ? 低さ(i) : 0)));
+  let openMm = Math.min(rowsMm * 0.3, Math.max(openMin, openNeed * shiftPersonMm(pt) + 1.4));
   // ★ラストの行があれば、その分を先に引きます。残りをランチとディナーで半分ずつ（今までと同じ分け方）
-  const lastMm = lastAt >= 0
-    ? Math.min(rowsMm * 0.25, Math.max(9, Math.max(1, need[lastAt] || 0) * shiftPersonMm(pt) + 1.4)) : 0;
+  const lastNeed = lastAt >= 0 ? Math.max(1, need[lastAt] || 0) : 0;
+  let lastMm = lastAt >= 0
+    ? Math.min(rowsMm * 0.25, Math.max(lastMin, lastNeed * shiftPersonMm(pt) + 1.4)) : 0;
   // ★残りは「枠の行の数」で分けます（立ち上げとラストを除いた行。バグる・popo は ランチ・ディナーの2つ、
   //   仕込み／営業の4店舗は 営業の1つ）。前はいつも2で割っていたので、4店舗では営業の行が残りの半分しか使わず、
   //   紙の下3分の1が空いたままでした（ko-dai さん「こじゃれは画面上部に偏っています」）。
   //   空いていた分を営業の行に回すので、人数の多い週末も字を小さくせずに済みます
   const 枠の行 = Math.max(1, sheetSlots(model).filter((sl, i) => i > 0 && i !== lastAt).length);
-  const slotMm = (rowsMm - openMm - lastMm) / 枠の行;
-  // ★入りきらないほど人数の多い日に「立ち上げの行を縮めて回す」ことは、していません。
-  //   試したら、popo・バグるの普段の紙（ディナー6人ほど）でも立ち上げが一番小さい字になりました。
-  //   4店舗は、営業の行が広くなったので、1マス15人までは1枚に収まります（本物の画面を PDF にして数えました）
+  let slotMm = (rowsMm - openMm - lastMm) / 枠の行;
+
+  // ★ここまでの配り方で、**一番小さい字（4.5pt）でも入りきらない行があるときだけ**、配り直します
+  //   （2026-10-09、ko-dai さん「印刷時にはpopoは1週間で1枚、それ以外は2週間で1枚のシフト表に収まるように」）。
+  //   そのままだと、入りきらない行が下へ伸びて、紙が次の1枚へこぼれます（popo は、ランチかディナーの1マスに
+  //   6人入ると3枚になっていました）。
+  //   配り直すときは、**どの行も同じ大きさの字で入るように、人数の割合で**高さを分けます
+  //   （絵の方 drawShiftSheet と同じ考え方。立ち上げだけ大きい字のまま・他は入らない、をやめます）。
+  //   それでも 4.5pt で入らない半月は、字をもう少し小さくします（minPt。3pt まで）。
+  //   ★普段の人数（どの行も 4.5pt 以上で入る）では、ここは通りません。配り方は上のままです
+  const slotNeed = Math.max(1, ...need.filter((_, i) => i > 0 && i !== lastAt).map((n) => n || 0));
+  const 要る = (n, 字, 低) => Math.max(低, n * shiftPersonMm(字) + 1.4);
+  let minPt = SHIFT_CELL_PT_MIN;
+  const 入る = openMm + 0.05 >= 要る(openNeed, minPt, openMin) && slotMm + 0.05 >= 要る(slotNeed, minPt, slotMin)
+    && (lastAt < 0 || lastMm + 0.05 >= 要る(lastNeed, minPt, lastMin));
+  if (!入る) {
+    const 行 = [{ n: openNeed, 数: 1, 低: openMin }, { n: slotNeed, 数: 枠の行, 低: slotMin }]
+      .concat(lastAt >= 0 ? [{ n: lastNeed, 数: 1, 低: lastMin }] : []);
+    // 1人分の高さ p（ミリ）を、「どの行も 人数×p で入る」一番大きい数にします。
+    // 行には低さの限り（枠名の高さ）があるので、式では解かずに、はさんで探します
+    const 合計 = (p) => 行.reduce((a, r) => a + r.数 * Math.max(r.低, r.n * p + 1.4), 0);
+    let lo = 0;
+    let hi = shiftPersonMm(pt);
+    for (let k = 0; k < 40; k += 1) {
+      const mid = (lo + hi) / 2;
+      if (合計(mid) <= rowsMm) lo = mid; else hi = mid;
+    }
+    const p = lo;
+    openMm = Math.max(openMin, openNeed * p + 1.4);
+    lastMm = lastAt >= 0 ? Math.max(lastMin, lastNeed * p + 1.4) : 0;
+    // 残りは全部、枠の行へ（紙の高さを使い切ります）
+    slotMm = Math.max(slotMin, (rowsMm - openMm - lastMm) / 枠の行);
+    const 字 = Math.floor((p * 2.8346 / SHIFT_ROW_EM) * 10) / 10;
+    minPt = Math.max(SHIFT_CELL_PT_FLOOR, Math.min(SHIFT_CELL_PT_MIN, 字));
+  }
 
   return {
     pt,
@@ -232,9 +334,11 @@ function shiftSheetMetrics(model, perDay) {
     openMm: Math.round(openMm * 10) / 10,
     slotMm: Math.round(slotMm * 10) / 10,
     lastMm: Math.round(lastMm * 10) / 10,
+    // 段ごとのメモの行の高さ（ミリ）と、マスの中で小さくするときの一番小さい字
+    memoMm: memoMm.map((m) => Math.round(m * 10) / 10),
+    minPt,
   };
 }
-
 
 /* -------- 画像にする --------
  *
@@ -401,10 +505,27 @@ function drawShiftSheet(canvas, model, scale) {
   const gapBlocks = 12;
   const dateH = 34;
   const laneH = 22;
-  const memoH = 28;
+  // ★メモは、マスの幅で折り返して**全文**出します（2026-10-09。前は1行に押しこんでいたので、長いメモは
+  //   字が横につぶれて読めませんでした）。段ごとに、一番長いメモの行の数だけ高さを取ります
+  const memoSize = 13;
+  const memoLh = 17;
+  const memoWrap = (text, w) => {
+    cx.font = font(memoSize, false);
+    const out = [];
+    let cur = '';
+    for (const ch of String(text || '')) {
+      // ★行の頭に「。」「、」やかっこの閉じが来ないようにします（その字は、前の行の終わりに付けます）
+      const 頭に置けない = '、。，．・：；！？）」』】〕｝〉》,.!?)]}'.indexOf(ch) >= 0;
+      if (cur && !頭に置けない && cx.measureText(cur + ch).width > w) { out.push(cur); cur = ch; } else cur += ch;
+    }
+    if (cur) out.push(cur);
+    return out;
+  };
+  const memoLines = model.blocks.map((b) => b.head.map((d, i) => (d.closed ? [] : memoWrap((b.memo || [])[i], colW * SHIFT_LANES.length - 12))));
+  const memoHs = memoLines.map((days) => Math.max(28, Math.max(0, ...days.map((ls) => ls.length)) * memoLh + 10));
   // 残りの高さを、枠の行に等しく配ります
   const blocks = model.blocks.length || 1;
-  const fixed = (dateH + laneH + memoH) * blocks + gapBlocks * (blocks - 1);
+  const fixed = (dateH + laneH) * blocks + memoHs.reduce((a, h) => a + h, 0) + gapBlocks * (blocks - 1);
   // ★元のスプレッドシートと同じ配分です。立ち上げは1人、
   //   ランチとディナーは3人分入る高さにします。
   //   それより多く入っている日（足りない人数の赤いあきも数に入れます）は、
@@ -430,6 +551,7 @@ function drawShiftSheet(canvas, model, scale) {
   model.blocks.forEach((block, bi) => {
     const top = y;
     const x0 = pad + labelW;
+    const memoH = memoHs[bi];   // この段のメモの行の高さ
 
     // 日付
     block.head.forEach((d, i) => {
@@ -538,7 +660,8 @@ function drawShiftSheet(canvas, model, scale) {
         cx.fillRect(x, y, w, memoH);
         return;
       }
-      center(block.memo[i] || '', x, w, y + memoH / 2, 13, false, '#3d434b');
+      const ls = memoLines[bi][i];
+      ls.forEach((t, li) => center(t, x, w, y + memoH / 2 + (li - (ls.length - 1) / 2) * memoLh, memoSize, false, '#3d434b'));
     });
     y += memoH;
 
