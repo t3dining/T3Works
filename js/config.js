@@ -7525,10 +7525,12 @@ const SHIFT_HELP_STORES = ['kojare', 'sumimaro', 'chacoru', 'oiden'];
 
 /**
  * 「早上がり」を使わない店舗（2026-09-25、ko-dai さんの指示：こじゃれ・炭まろ・ちゃこる・おいでんテラスではボタンも出さない）
+ * ★popo も使いません（2026-10-09、ko-dai さんの指示「popoのシフト作成で早上がりと最後までを選ぶボタンをなくしてください」）。
+ *   popo は退勤の時刻を入れるので、早く上がる人は、退勤を早い時刻にすれば足ります。**使うのは、いまはバグるだけ**です
  * ★店舗は名指しです（ヘルプ要請と同じ決め方。枠の形では決めません）。載っていない店舗は、今までどおり使います
  * ★記録の `early` は消しません。この店舗では、あっても印（橙のふち）を出さず、押す所も出しません
  */
-const SHIFT_NO_EARLY_STORES = ['kojare', 'sumimaro', 'chacoru', 'oiden'];
+const SHIFT_NO_EARLY_STORES = ['kojare', 'sumimaro', 'chacoru', 'oiden', 'popo'];
 function shiftUsesEarly(storeId) {
   return !SHIFT_NO_EARLY_STORES.includes(storeId);
 }
