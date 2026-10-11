@@ -102,8 +102,8 @@
 <link rel="icon" type="image/png" sizes="512x512" href="img/works-icon-512.png?v=dddd764f">
 <link rel="icon" type="image/png" sizes="64x64" href="img/works-icon-64.png?v=0f9cbed2">
 <title>T3 Works｜T3Dining株式会社</title>
-<link rel="stylesheet" href="css/style.css?v=41e8cdfe">
-<meta name="app-version" content="a0bee7d6">
+<link rel="stylesheet" href="css/style.css?v=266e0aa9">
+<meta name="app-version" content="ab59fafa">
 </head>
 <body>
 
@@ -1766,6 +1766,24 @@
   </div>
 </div>
 
+<!-- ===== アルバイトの画面（シフト提出ページ）を、アプリの中で開く枠（2026-10-11、ko-dai さんの指示） =====
+     「アルバイトが触る単体のアプリは表示させない。ワークスからアルバイト画面に飛んだときは閉じるボタンだけ。
+       マインからアルバイト画面に飛んだときはマインと同じものを表示」（オーナーから入ったときも、マインと同じ）
+     ★提出ページ（shift/）は1文字も変えていません。ここは、その外側に付ける枠です（中は iframe で shift/ を開くだけ）。
+       アルバイトが自分で開く提出ページには、何も付きません。
+     ★マイン … ヘッダー（同期の印・ホーム・Manage・提出記録・設定）を残して、その下に出します。右上は本物のままです
+       ワークス … 全面に出して、閉じるボタンだけ
+     ★出し入れは js/app.js の ptFrameOpen・ptFrameClose。iframe の src は、開くときに入れます（ここには書きません） -->
+<div class="pt-frame is-hidden" id="ptFrame" role="dialog" aria-modal="true" aria-label="アルバイトの画面">
+  <div class="pt-frame__bar">
+    <span class="pt-frame__title">アルバイトの画面</span>
+    <button type="button" class="pt-frame__close" id="ptFrameClose">✕ 閉じる</button>
+  </div>
+  <!-- ★sandbox は付けません（提出ページは、端末の保存・確かめの小窓・画像の保存を使います。シフトの部署の調べ）。
+       allow="web-share" は、提出ページの「画像で保存する」（共有）のためです -->
+  <iframe class="pt-frame__page" id="ptFramePage" title="アルバイトの画面（シフト提出）" allow="web-share"></iframe>
+</div>
+
 <script src="js/config.js?v=18f57647"></script>
 <script src="js/storage.js?v=0d227957"></script>
 <script src="js/sync.js?v=bdf717fe"></script>
@@ -1773,7 +1791,7 @@
 <!-- 会議資料の中身。スプレッドシートから取り込んだ数字と議事メモです -->
 <!-- シフト表を絵に描くところ。提出ページ（shift/）でも同じものを使います -->
 <script src="js/shift-sheet.js?v=a858fa8d"></script>
-<script src="js/app.js?v=72092ab1"></script>
+<script src="js/app.js?v=0843773f"></script>
 <script src="js/interview.js?v=1f652c4a"></script>
 <script src="js/share.js?v=4d2bf95f"></script>
 <script src="js/voice.js?v=45cf2f80"></script>

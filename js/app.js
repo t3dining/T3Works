@@ -7893,6 +7893,91 @@ function renderToday() {
 }
 
 /* ------------------------------------------------------------
+ *  アルバイトの画面（シフト提出ページ）を、アプリの中で開く枠（2026-10-11、ko-dai さんの指示）
+ *
+ *  「アルバイトが触る単体のアプリは表示させないでください。ワークスからアルバイト画面に飛んだときは閉じるボタンだけ付けてください。
+ *    マインからアルバイト画面に飛んだときはマインと同じものを表示させてください」（オーナーから入ったときも、マインと同じ）
+ *
+ *  ★**提出ページ（shift/）は、1文字も変えていません。**ここは、その外側に付ける枠です（中は iframe）。
+ *    アルバイトが自分で開く提出ページには、何も付きません。
+ *  ★マイン   … ヘッダー（同期の印・ホーム・Manage・提出記録・設定）を残して、その下に出します。**右上は本物のまま**です
+ *              （提出ページに同期の印を描き足すと、中身の無い飾りになります。本物を残す方を選びました）
+ *    ワークス … 全面に出して、閉じるボタンだけ
+ *    オーナー … カードが、マインの `?open=parttime` を開きます。閉じると、オーナーに戻ります
+ *  ★開いているあいだにヘッダーから別の画面へ移ったら、枠はしまいます（下の画面と食いちがわないように）。
+ *  ★中のページを入れかえるのは location.replace です（iframe の src を書きかえると、戻るの履歴が1つ増えます）。
+ *  ★検算は .claude/skills/t3works-zentai/test_pt_frame.py。
+ * ---------------------------------------------------------- */
+let ptFrameFrom = '';   // 'owner' ＝ オーナーのカードから来た（閉じたら、オーナーへ戻ります）
+
+/** 枠を置く場所：マインはヘッダーの上の段の下、ワークスは全面 */
+function ptFramePlace() {
+  const 枠 = $('ptFrame');
+  if (!枠) return;
+  const 上の段 = isMine() ? document.querySelector('.app-header__inner') : null;
+  枠.classList.toggle('pt-frame--cover', !上の段);
+  枠.style.top = 上の段 ? `${Math.max(0, Math.round(上の段.getBoundingClientRect().bottom))}px` : '';
+}
+
+/** 枠の中のページを入れかえる（★戻るの履歴を増やしません） */
+function ptFrameLoad(url) {
+  const 中 = $('ptFramePage');
+  if (!中) return;
+  try { 中.contentWindow.location.replace(url); } catch (e) { 中.src = url; }
+}
+
+/**
+ * アルバイトの画面を、枠の中に開く
+ *
+ *   url  … shiftSubmitUrl() が作った提出ページの URL（見本の番号つきでもよい）
+ *   from … 'owner' なら、閉じたときにオーナーへ戻ります
+ *
+ * ★開くのは、このアプリと同じ場所の提出ページ（shift/）だけです。よその URL は、枠の中に入れません。
+ * ★枠の部品が無いとき（端末に古い index.html が残っている）は、今までどおり別の窓で開きます。
+ */
+function ptFrameOpen(url, from) {
+  const 枠 = $('ptFrame');
+  if (!枠 || !$('ptFramePage')) { window.open(url, '_blank', 'noopener'); return; }
+  let 先;
+  try { 先 = new URL(url, location.href); } catch (e) { return; }
+  if (先.origin !== location.origin || 先.pathname !== new URL(shiftSubmitUrl()).pathname) return;
+  ptFrameFrom = from || '';
+  枠.classList.remove('is-hidden');
+  document.documentElement.classList.add('is-pt-open');
+  ptFramePlace();
+  ptFrameLoad(先.href);
+}
+
+/** 枠をしまう（★しまうだけ。オーナーへは戻りません。ヘッダーから別の画面へ移ったときに使います） */
+function ptFrameHide() {
+  const 枠 = $('ptFrame');
+  if (!枠 || 枠.classList.contains('is-hidden')) return false;
+  枠.classList.add('is-hidden');
+  document.documentElement.classList.remove('is-pt-open');
+  ptFrameLoad('about:blank');   // 中のページを止めます（開いたままだと、裏で動き続けます）
+  // ★オーナーから来た印（?open=parttime）を URL から外します。残すと、読み込み直すたびに枠が開きます
+  if (/[?&]open=parttime(&|$)/.test(location.search)) {
+    try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) { /* 外せなくても、動きは同じです */ }
+  }
+  return true;
+}
+
+/** 「閉じる」を押したとき。オーナーから来ていたら、オーナーへ戻ります */
+function ptFrameClose() {
+  const オーナーから = ptFrameFrom === 'owner';
+  ptFrameFrom = '';
+  if (!ptFrameHide()) return;
+  const 戻る先 = オーナーから ? $('toOwnerBtn') : null;
+  if (戻る先 && 戻る先.href) location.href = 戻る先.href;
+}
+
+/** オーナーのカードから来たとき（…/mine/?open=parttime）。★マインでだけ開きます */
+function ptFrameFromUrl() {
+  if (!isMine() || !/[?&]open=parttime(&|$)/.test(location.search)) return;
+  ptFrameOpen(shiftSubmitUrl(), 'owner');
+}
+
+/* ------------------------------------------------------------
  *  業務選択（店舗を選んだあとの画面）
  *
  *  ただの入口ではなく、その店舗の「いまの状況」を並べています。
@@ -13694,6 +13779,11 @@ function shiftCodeList(store, people) {
       open.target = '_blank';
       open.rel = 'noopener';
       open.textContent = 'アルバイトの画面を見る';
+      // ★本部の枠（ptFrameOpen）で開きます。マインはヘッダーの下、ワークスは全面＋閉じるボタン。
+      //   枠の部品が無い端末（古い版が残っている）では、今までどおり別のタブで開きます（2026-10-11・本部が足した）
+      open.addEventListener('click', (e) => {
+        if (typeof ptFrameOpen === 'function') { e.preventDefault(); ptFrameOpen(open.href); }
+      });
       line.appendChild(open);
     }
     wrap.appendChild(line);
@@ -18039,6 +18129,17 @@ function bindEvents() {
     ['todayPickBack', () => openTodayShift('')]];
   今日のシフトの口.forEach(([id, する]) => { const b = $(id); if (b) b.addEventListener('click', する); });
 
+  /* アルバイトの画面を開く枠（★部品が無ければ、何もしません。今日のシフトの口と同じわけです） */
+  if ($('ptFrameClose')) $('ptFrameClose').addEventListener('click', ptFrameClose);
+  // ヘッダーから別の画面へ移ったら、枠はしまいます（オーナーへは戻りません）
+  window.addEventListener('hashchange', ptFrameHide);
+  ['homeBtn', 'reportBtn'].forEach((id) => { const b = $(id); if (b) b.addEventListener('click', ptFrameHide); });
+  // 画面を回したとき・幅が変わったとき、ヘッダーの下に合わせ直します
+  window.addEventListener('resize', () => {
+    const 枠 = $('ptFrame');
+    if (枠 && !枠.classList.contains('is-hidden')) ptFramePlace();
+  });
+
   /* 立替金 */
   $('storesExpenseBtn').addEventListener('click', () => openAllStores('expense'));
   $('expenseBack').addEventListener('click', goHome);
@@ -18351,6 +18452,7 @@ async function init() {
 
   render();
   window.T3_START = true;   // ★起動の見張りへ：最初の描画まで終わりました
+  ptFrameFromUrl();          // オーナーのカードから来たとき（?open=parttime）、アルバイトの画面を枠の中に開きます
 
   // 新しい版が公開されたら画面下で知らせる（PINの有無に関係なく動かす）
   Updater.start();

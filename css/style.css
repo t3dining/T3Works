@@ -3214,6 +3214,38 @@ body[data-mode="mine"] .nippou.mine-only { display: block; }
 }
 .today-table__back { margin: 0 0 12px; }
 
+/* ===================== アルバイトの画面を開く枠（2026-10-11、ko-dai さんの指示） =====================
+   提出ページ（shift/）を、アプリの中で開くための外側の枠です（中は iframe）。提出ページそのものは変えていません。
+     マイン   … ヘッダーの下に出します（top は js/app.js の ptFramePlace が入れます）。右上は本物のマインのまま
+     ワークス … 全面（.pt-frame--cover）。閉じるボタンだけ
+   ★重なりの順：ヘッダー 30 ＜ この枠 50 ＜ 設定などの窓 60（設定の窓は、この枠の上に出ます）
+   ★全面のときだけ、バーが画面の上の切り欠き（ノッチ）の分を払います。ヘッダーの下に出すときは、ヘッダーが払っています
+     （両方が払うと二重になります。ご意見のパネルで 2026-09-24 に踏みました） */
+.pt-frame {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; flex-direction: column;
+  background: var(--bg); color: var(--text);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.pt-frame.is-hidden { display: none; }
+html.is-pt-open, html.is-pt-open body { overflow: hidden; }
+.pt-frame__bar {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 5px 10px;
+  background: var(--surface-2); border-bottom: 1px solid var(--line);
+}
+.pt-frame--cover .pt-frame__bar { padding-top: calc(env(safe-area-inset-top) + 5px); }
+.pt-frame__title { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 700; color: var(--text-sub); }
+/* ワークスは「閉じるボタンだけ」。字は出しません（場所は残して、ボタンを右に置きます） */
+.pt-frame--cover .pt-frame__title { visibility: hidden; }
+.pt-frame__close {
+  flex: 0 0 auto; padding: 5px 13px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--text);
+  font: inherit; font-size: 13px; font-weight: 800; line-height: 1.5; white-space: nowrap;
+}
+.pt-frame__close:active { background: var(--line-2); }
+.pt-frame__page { flex: 1 1 auto; min-height: 0; width: 100%; border: 0; background: var(--bg); }
+
 /* ===================== 面接マニュアル =====================
    T3Dining の欄から開く、上に重ねるパネルです（js/interview.js）。
    ★z-index は 50。ヘッダー（30）と「新しい版」の帯（45）より上、

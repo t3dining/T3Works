@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="../img/owner-icon-180.png?v=cbb1087e">
 <link rel="icon" type="image/png" sizes="64x64" href="../img/owner-icon-64.png?v=ce05c3fc">
 <title>T3 Owner｜T3Dining株式会社</title>
-<link rel="stylesheet" href="../css/style.css?v=41e8cdfe">
+<link rel="stylesheet" href="../css/style.css?v=266e0aa9">
 <style>
 /* ============================================================
  *  切り替え画面（ホーム画面のフォルダ代わり）
@@ -89,7 +89,7 @@ body {
   font-variant-numeric: tabular-nums;
 }
 </style>
-<meta name="app-version" content="a0bee7d6">
+<meta name="app-version" content="ab59fafa">
 </head>
 <body class="no-daytabs">
 
@@ -147,8 +147,11 @@ body {
     </li>
     <li>
       <!-- アルバイトが希望を出すページ。ko-dai は「どう見えているか」を
-           確かめるために開きます（番号を入れないと中には入れません） -->
-      <a class="hub-card" href="../shift/" style="--card-color:#bf5480">
+           確かめるために開きます（番号を入れないと中には入れません）。
+           ★行き先は shift/ そのものではなく、**マインの中の枠**です（2026-10-11、ko-dai さんの指示）。
+             マインのヘッダー（同期の印など）を残したまま、その下に提出ページが開きます。閉じると、ここへ戻ります。
+             開くのは js/app.js の ptFrameFromUrl。アルバイトが自分で開く shift/ には、何も付きません -->
+      <a class="hub-card" href="../mine/?open=parttime" style="--card-color:#bf5480">
         <span class="hub-card__icon"><img src="../img/shift-icon-180.png?v=ab0bd671" alt=""></span>
         <span class="hub-card__text">
           <span class="hub-card__name">シフト提出<span class="kakko">（アルバイト画面）</span></span>
