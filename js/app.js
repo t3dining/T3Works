@@ -13559,7 +13559,11 @@ function shiftCodeList(store, people) {
     + '選んだ店舗の名簿にも<b>同じ番号で入る</b>ので、'
     + '<b>向こうでも押された状態</b>になります（二重に登録しなくて済みます）。<br>'
     + '<b>キッチン／ホール</b>は、その人の普段の持ち場です。希望を取り込むと、ここで決めた側に入ります'
-    + '（決めていない人はキッチン。もう一度押すと外れます）。<b>もう組んだ分は動きません。</b>';
+    + '（決めていない人はキッチン。もう一度押すと外れます）。<b>もう組んだ分は動きません。</b>'
+    // ★高校生の説明は、ボタンを出す店舗（バグる）にだけ出します
+    + (shiftUsesHs(state.storeId)
+      ? `<br><b>高校生</b>を押した人は、<b>「今日のシフト」の表で、ディナー（F も）が${shiftHsEndText()}まで</b>と出ます（もう一度押すと外れます）。`
+      : '');
   wrap.appendChild(url);
 
   // ★番号は申請で配るので、「送りずみ ◯/◯人」・名前の左の送りずみのチェック・番号の「コピー」は出しません
@@ -13647,6 +13651,25 @@ function shiftCodeList(store, people) {
       shiftRosterDone();
     });
     line.appendChild(rename);
+
+    // ★高校生（2026-10-11、ko-dai さんの指示。**バグるだけ** → js/config.js の「高校生」の節）。
+    //   「名前を直す」の右。押した人は、今日のシフトの表で、ディナー（F も）が 22:00 までと出ます。もう一度押すと外れます。
+    //   ★印は名簿の中ではなく、番号ごとに別の行に持ちます（名前を直しても、付いたままです）
+    if (shiftUsesHs(state.storeId)) {
+      const on = shiftHsByCode(state.storeId, p.c);
+      const hs = document.createElement('button');
+      hs.type = 'button';
+      hs.className = 'btn btn--small' + (on ? ' btn--primary' : '');
+      hs.textContent = '高校生';
+      hs.title = on ? 'もう一度押すと外れます' : `高校生にする（今日のシフトで、${shiftHsEndText()}までと出ます）`;
+      hs.setAttribute('data-shift-hs', on ? 'on' : 'off');
+      hs.setAttribute('aria-pressed', on ? 'true' : 'false');
+      hs.addEventListener('click', () => {
+        shiftSetHs(state.storeId, p.c, !on);
+        renderKeepScroll();
+      });
+      line.appendChild(hs);
+    }
 
     // ★見本は、社員がその場でアルバイトの画面を開けるようにします
     if (isShiftTester(p.n)) {

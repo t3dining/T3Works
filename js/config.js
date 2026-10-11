@@ -6697,6 +6697,8 @@ function shiftReissue(storeId, name) {
     }
   }));
   ShiftStaff.save(map);
+  // ★「高校生」の印は番号で持っているので、新しい番号へ移します（→ 高校生の節）
+  shiftMarkMove(前, 新);
   return 替えた;
 }
 
@@ -7502,6 +7504,122 @@ function shiftSubmitUrl(code) {
   return u.href;
 }
 
+/* -------- 高校生（名簿の人に付ける印。2026-10-11、ko-dai さんの指示） --------
+ *
+ *  ko-dai さん「バグるのアルバイト番号の部分に高校生というボタンを名前を直すの右側に作成してください」
+ *  「このボタンを押した人はディナーでシフトを入れたときに、今日のシフトのタイムテーブルで22時までになるように」
+ *  「他の店舗では一旦なしで大丈夫です」。
+ *
+ *  ★押す所は、ワークス・マインの名簿（名前と番号を出す）の「名前を直す」の右（js/app.js の shiftCodeList）。
+ *    **バグるだけ**です（SHIFT_HS_STORES。店舗は名指し）。
+ *  ★効く所は、いまは「今日のシフト」の表だけです（→ 下の shiftTableBar）。ラストまで入る枠（ディナー・F）の帯が、
+ *    22:00 で止まります。組む画面の札・印刷・アルバイトの画面は変わりません。
+ *
+ *  ★★**印は、名簿（shiftStaff）の中ではなく、別の行に持ちます。** `_rostermark/店舗id` の1行で、
+ *    1項目＝1人（キーは**番号**）、中身は `{ hs: true | false, at: 日時 }`。
+ *    ・名簿の1人分（`{ n, c, s, p }`）は js/storage.js（本部のファイル）が形を決めていて、
+ *      知らない項目は読むときにも書くときにも落ちます。名簿に足すと、名簿を書き直す全部の所
+ *      （名前を直す・他店舗にも所属・番号を作り直す・承認・マネージの欄）で運び忘れると、**黙って消えます**。
+ *      別の行なら、名簿をどう書き直しても消えません
+ *    ・キーが番号なので、「名前を直す」をしても付いたままです。番号を作り直したときは、shiftReissue が新しい番号へ移します
+ *    ・店舗ごとの行です。他店舗にも所属している人でも、向こうの店舗には付きません
+ *    ・外すときは `hs: false` を書きます（消えたことも同期で届くように。項目は消しません）
+ *    ・名簿にいない番号の印は、無いものとして読みます（辞めた人の印が、後から同じ番号になった人に付かないように。
+ *      書くついでに、その店舗の名簿にいない番号の印は外します → shiftSetHs）
+ *  ★同期はふつうの記録と同じ道です（サーバーは触っていません。`_helpreq` と同じ手）。
+ *    `_shift` で始まる名前にしていないのも `_helpreq` と同じ理由です（`_shift/` を前から数える所にまぎれないように）。
+ *  ★この行は、アルバイトの提出ページには渡りません（`_shiftset` に入れると、枠の設定と一緒に全員へ渡ってしまいます）。
+ *  ★検算は .claude/skills/t3works-shift/high-school.js。
+ */
+const SHIFT_MARK_STORE = '_rostermark';
+/** 「高校生」のボタンを出す店舗（名指し。載っていない店舗には出さず、印があっても効きません） */
+const SHIFT_HS_STORES = ['baguru'];
+/** 高校生が上がる時刻（22時。'22' = 22:00） */
+const SHIFT_HS_END = '22';
+
+/** その店舗で「高校生」の印を使うか */
+function shiftUsesHs(storeId) {
+  return SHIFT_HS_STORES.includes(storeId);
+}
+
+/** 高校生が上がる時刻の字（'22:00'。画面の文に出す分） */
+function shiftHsEndText() {
+  return shiftTimeText(SHIFT_HS_END);
+}
+
+/** その店舗の印の行の中身（{ 番号: { hs, at } }。読めなければ空） */
+function shiftMarkItems(storeId) {
+  try {
+    if (typeof Store === 'undefined' || !storeId) return {};
+    const v = Store.getDay(SHIFT_MARK_STORE, storeId).items;
+    return v && typeof v === 'object' ? v : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+/** その番号の人に「高校生」の印が付いているか（使わない店舗では、いつも false） */
+function shiftHsByCode(storeId, code) {
+  const c = String(code || '');
+  if (!c || !shiftUsesHs(storeId)) return false;
+  const v = shiftMarkItems(storeId)[c];
+  return !!(v && v.hs === true);
+}
+
+/**
+ * その店舗で「高校生」の印が付いている人の名前（いま名簿にいる人だけ）
+ *
+ * ★表を描くときは、1回だけ呼んで使い回します（人ごとに名簿を読むと、古い端末で重くなります）。
+ */
+function shiftHsNames(storeId) {
+  if (!shiftUsesHs(storeId) || typeof ShiftStaff === 'undefined') return [];
+  const 印 = shiftMarkItems(storeId);
+  return ShiftStaff.people(storeId)
+    .filter((p) => p.c && 印[p.c] && 印[p.c].hs === true)
+    .map((p) => p.n);
+}
+
+/**
+ * 「高校生」の印を付ける／外す
+ *
+ * ★書くついでに、その店舗の名簿にいない番号の印を外します（辞めた人の分が残らないように）。
+ *   名簿が読めない・空のときは、片づけません（まだ名簿が届いていない端末で、みんなの印を外さないため）。
+ * 返り値：書いたら true（使わない店舗・番号なしは false）
+ */
+function shiftSetHs(storeId, code, on) {
+  const c = String(code || '');
+  if (!c || !shiftUsesHs(storeId) || typeof Store === 'undefined') return false;
+  const at = new Date().toISOString();
+  Store.setItem(SHIFT_MARK_STORE, storeId, c, { hs: !!on, at });
+  const いる = typeof ShiftStaff !== 'undefined' ? ShiftStaff.people(storeId).map((p) => String(p.c || '')).filter(Boolean) : [];
+  if (いる.length) {
+    const 印 = shiftMarkItems(storeId);
+    Object.keys(印).forEach((k) => {
+      if (k !== c && 印[k] && 印[k].hs === true && !いる.includes(k)) {
+        Store.setItem(SHIFT_MARK_STORE, storeId, k, { hs: false, at });
+      }
+    });
+  }
+  return true;
+}
+
+/**
+ * 番号が変わったとき、印を新しい番号へ移す（shiftReissue が呼びます）
+ *
+ * ★印の行は店舗ごとなので、印を使う店舗を全部見ます（他店舗にも所属している人は、同じ番号が何店舗かにあります）。
+ */
+function shiftMarkMove(前の番号, 新しい番号) {
+  const 前 = String(前の番号 || '');
+  const 新 = String(新しい番号 || '');
+  if (!前 || !新 || 前 === 新 || typeof Store === 'undefined') return;
+  const at = new Date().toISOString();
+  SHIFT_HS_STORES.forEach((id) => {
+    if (!shiftHsByCode(id, 前)) return;
+    Store.setItem(SHIFT_MARK_STORE, id, 新, { hs: true, at });
+    Store.setItem(SHIFT_MARK_STORE, id, 前, { hs: false, at });
+  });
+}
+
 /* -------- 今日のシフト（タイムテーブル。2026-10-11、ko-dai さんの指示） --------
  *
  *  「シフトの使い方」の下の「今日のシフト」を押すと、その日のシフトを、**縦に名前・横に時刻**の表で出します
@@ -7524,6 +7642,8 @@ function shiftSubmitUrl(code) {
  *               ディナー・F（通し） … ラストまで
  *               立ち上げ・ランチだけ … ディナーの一番早い時刻まで（★何時に上がるかは記録にないので、右を薄くします）
  *               早上がり            … 何時に上がるかは記録にないので、右を薄くして、橙のふちを付けます
+ *               ★高校生（名簿で印を付けた人。バグるだけ）… ラストまで入る枠（ディナー・F）でも **22:00 まで**（濃いまま）。
+ *                 名前の下の字も「17:00〜22:00」になります（→ 高校生の節。2026-10-11、ko-dai さんの指示）
  *  ★同じ人が同じ日に2つの枠に入っていたら、**1行に帯を2本**出します（前の帯は、次の帯の始まりで止めます）。
  *  ★見本（テスト用）の人は出しません。ヘルプで来た人は、名前のうしろに「（店舗）」が付きます。
  *  ★検算は .claude/skills/t3works-shift/today-table.js。
@@ -7592,8 +7712,9 @@ function shiftTableNoon(storeId) {
  *   to   … 帯の終わり（時刻か、ラストの印）
  *   noFrom／noTo … 記録にその時刻が入っていない（薄くする側）
  *   text … 名前の下に出す字（「17:00〜22:00」「11:00 F」「仕込み」など）
+ *   高校生 … その人に「高校生」の印が付いているか（呼ぶ側が名簿から引いて渡します。渡さなければ付いていない）
  */
-function shiftTableBar(storeId, slotId, entry) {
+function shiftTableBar(storeId, slotId, entry, 高校生) {
   const slot = shiftSlotsOf(storeId).find((s) => s.id === slotId) || null;
   let from = shiftTableNum(entry.t);
   const noFrom = from === null;
@@ -7613,10 +7734,21 @@ function shiftTableBar(storeId, slotId, entry) {
     if (from === null || 昼まで > from) to = 昼まで;
     noTo = true;
   }
+  // ★高校生は、ラストまで入る枠（ディナー・F）でも 22:00 まで。決まった時刻なので、薄くしません。
+  //   退勤を記録に持つ店舗（popo・4店舗）では使いません（入っている退勤が正しいため）。出勤が22時以降なら、そのまま
+  let 高校生の上がり = '';
+  if (高校生 && !shiftUsesEnd(storeId) && to === SHIFT_END_LAST) {
+    const 上がり = shiftTableNum(SHIFT_HS_END);
+    if (上がり !== null && (from === null || 上がり > from)) {
+      to = 上がり;
+      高校生の上がり = shiftHsEndText();
+    }
+  }
   const early = !!entry.early && shiftUsesEarly(storeId);
   if (early) noTo = true;
 
   let text = shiftTimeSpan(storeId, slotId, entry) || (slot ? slot.name : '');
+  if (高校生の上がり) text += `〜${高校生の上がり}`;
   if (通し && shiftShowsFullMark(storeId)) text += ' F';
   if (early) text += ' 早上がり';
   return { slot: slotId, from, to, noFrom, noTo, early, text };
@@ -7637,6 +7769,8 @@ function shiftTableModel(storeId, dateStr, day, 名簿の順) {
   const order = Array.isArray(名簿の順) ? 名簿の順 : [];
   const rows = [];
   const 行の = {};
+  // 「高校生」の印が付いている人（名簿から1回だけ引きます。使わない店舗では空）
+  const 高校生 = shiftHsNames(storeId);
   shiftSlotsOf(storeId).forEach((slot) => {
     shiftRowList(storeId, day, slot.id).forEach((raw) => {
       if (!raw || !raw.n || isShiftTester(raw.n)) return;
@@ -7647,7 +7781,8 @@ function shiftTableModel(storeId, dateStr, day, 名簿の順) {
         行の[key] = { n: String(e.n), label: String(e.n) + helpFromLabel(e), lane: shiftLaneOf(e), bars: [] };
         rows.push(行の[key]);
       }
-      行の[key].bars.push(shiftTableBar(storeId, slot.id, e));
+      // ★ヘルプで来た人（よその店舗の人）には、この店舗の印を当てません（同じ名前の別の人のことがあるため）
+      行の[key].bars.push(shiftTableBar(storeId, slot.id, e, !e[HELP_FROM_KEY] && 高校生.includes(String(e.n))));
     });
   });
 
