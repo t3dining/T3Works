@@ -1723,6 +1723,84 @@ function renderDone() {
   });
 }
 
+/* -------- 今日のシフト（2026-10-11、ko-dai さんの指示） --------
+ *
+ *  ko-dai さん「アルバイト側も自分が登録した店舗の今日のシフトが見れるようにしてください」。
+ *  「今日のシフト」を押すと、**いま開いているお店**の今日のシフトを、時刻の表で出します
+ *  （2つ以上のお店に入っている人は、上の切り替えで開いているお店の分）。
+ *
+ *  ★出すのは**確定したシフトだけ**です。サーバーからもらっている「決まったシフト」（built）と
+ *    「過去の確定ずみ」（past）の中から、今日が入っている半月を探します。**サーバーには新しく何も聞きません。**
+ *    今日の半月がまだ確定していなければ、「まだ確定していません」と出します（組んでいる途中の表は、アルバイトには見せません）。
+ *  ★表を描く部品は js/shift-sheet.js の shiftTodayRender（ワークス・マインの「今日のシフト」と同じもの）。
+ *    時刻の軸・帯・色の決まりも同じです（js/config.js の shiftTableModel）。
+ *  ★「今日」は業務上の今日です（朝6時までは前の日。ワークスと同じ → shiftTodayStr）。
+ *  ★見本（テスト用）の番号でも出します。今日の分が確定していなければ、見本の表を出して、そう書きます
+ *    （社員が、アルバイトの画面でどう見えるかを確かめる口は、見本の番号だけのため）。
+ */
+
+/**
+ * 今日が入っている半月の、確定したシフトの今日の分
+ *
+ *   返すもの … { 日: 'YYYY-MM-DD', 確定: その半月が確定して届いているか, day: 記録のままの1日（なければ空） }
+ */
+function todayPick() {
+  const 日 = shiftTodayStr();
+  const [y, m, d] = 日.split('-').map(Number);
+  const half = shiftHalfOf(d);
+  const 同じ半月 = (v) => !!v && Number(v.y) === y && Number(v.m) === m && Number(v.half) === half;
+  let 表 = null;
+  // いま出している半月が今日の半月で、確定している（見本の「確定後」で作った見本の表は、本物ではないので使いません）
+  if (!me.demo && built && typeof built === 'object' && 同じ半月(period)) 表 = built;
+  if (!表) {
+    const v = (past || []).find(同じ半月);
+    if (v && v.built && typeof v.built === 'object') 表 = v.built;
+  }
+  return { 日, 確定: !!表, day: (表 && 表[日]) || {} };
+}
+
+/** 見本の番号のとき、今日の分が確定していなければ出す、見本の1日（送りも保存もしません） */
+function todayDemoDay() {
+  if (!me.demo || !period) return null;
+  const 見本 = demoBuilt();
+  const 日 = Object.keys(見本).sort()[0];
+  return 日 ? 見本[日] : null;
+}
+
+function openToday() {
+  const 今日 = todayPick();
+  const store = getStore(me.store);
+  const 中身 = {
+    storeId: me.store,
+    dateStr: 今日.日,
+    day: 今日.day,
+    title: `${shiftDayLabel(今日.日, DOW)}　${(store && store.name) || ''}`,
+    notes: isClosedOn(今日.日) ? [{ text: 'この日は定休日です。' }] : [],
+    empty: 今日.確定 ? '今日のシフトには、誰も入っていません。' : '今日のシフトは、まだ確定していません。',
+    memo: 今日.確定 ? (今日.day.memo || '') : '',
+    me: me.name,
+  };
+  // ★見本の番号で、今日の分がまだ確定していないとき：見本の表を出します（どう見えるかを確かめるため）
+  if (!今日.確定) {
+    const 見本 = todayDemoDay();
+    if (見本) {
+      中身.day = 見本;
+      中身.notes.push({ text: '★見本の表です（今日のシフトは、まだ確定していません。見本の番号のときだけ出ます）。', warn: true });
+    }
+  }
+  shiftTodayRender(el('todayBody'), 中身);
+  el('today').classList.remove('is-hidden');
+  document.body.classList.add('is-help');
+  // 表が横に動く幅（スマホの縦持ち）では、いまの時刻のあたりから見えるようにします
+  shiftTodayToNow(el('todayBody'));
+  el('todayClose').focus();
+}
+
+function closeToday() {
+  el('today').classList.add('is-hidden');
+  document.body.classList.remove('is-help');
+}
+
 /* -------- 出し方 --------
  *
  *  ★普段は出しません。分からなくなった人が「？出し方」を押したときだけ
@@ -1936,6 +2014,13 @@ async function boot() {
   el('helpBack').addEventListener('click', closeHelp);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !el('help').classList.contains('is-hidden')) closeHelp();
+  });
+  el('todayBtn').addEventListener('click', openToday);
+  el('todayClose').addEventListener('click', closeToday);
+  el('todayClose2').addEventListener('click', closeToday);
+  el('todayBack').addEventListener('click', closeToday);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !el('today').classList.contains('is-hidden')) closeToday();
   });
   el('bootRetry').addEventListener('click', () => {
     el('bootText').textContent = '読み込んでいます…';

@@ -5400,6 +5400,8 @@ function setShiftSlots(storeId, items) {
     // ★入れ方（時刻を入れるか、通しの境目はどこか）も一緒に控えます。
     //   ここを渡し忘れると、提出ページだけ古い決まりで動きます
     style: src[SHIFT_STYLE_KEY] || {},
+    // ★「高校生」の印が付いている人の名前（今日のシフトの表で 22:00 までにする人。→ 高校生の節の shiftHsPublish）
+    hs: shiftHsGivenNames(src),
   };
 }
 
@@ -6736,6 +6738,8 @@ function shiftRename(storeId, oldName, newName) {
   }
   who.n = name;
   ShiftStaff.save(map);
+  // ★「高校生」の印は番号で持っているので付いたままです。アルバイトの画面へ渡す名前だけの写しを、新しい名前に合わせます
+  shiftHsPublish(storeId);
   return { ok: true, stores: [storeId] };
 }
 
@@ -7528,7 +7532,16 @@ function shiftSubmitUrl(code) {
  *      書くついでに、その店舗の名簿にいない番号の印は外します → shiftSetHs）
  *  ★同期はふつうの記録と同じ道です（サーバーは触っていません。`_helpreq` と同じ手）。
  *    `_shift` で始まる名前にしていないのも `_helpreq` と同じ理由です（`_shift/` を前から数える所にまぎれないように）。
- *  ★この行は、アルバイトの提出ページには渡りません（`_shiftset` に入れると、枠の設定と一緒に全員へ渡ってしまいます）。
+ *  ★この行（番号ごとの印）は、アルバイトの提出ページには渡りません。**番号は、どんな形でも渡しません。**
+ *
+ *  ★★アルバイトの画面へ渡すのは、**名前だけの写し**です（2026-10-11、ko-dai さん「アルバイト側も自分が登録した店舗の
+ *    今日のシフトが見れるように」）。提出ページの「今日のシフト」でも 22:00 で止めるには、誰が 22:00 までかを
+ *    提出ページが知る必要があります。提出ページへ渡る行は `_shiftset/店舗id`（枠の設定。サーバーが丸ごと渡します）だけなので、
+ *    そこへ `hsNames: { names: [名前…], at }` を**写し**として書きます（→ shiftHsPublish）。
+ *    ・**正は番号ごとの印**（`_rostermark`）です。写しは、印を付ける・外す・名前を直す・名簿を開く、のたびに作り直します。
+ *      ずれていても、名簿を開けば直ります。写しが消えても、正からまた作れます
+ *    ・社員の画面（ワークス・マイン）は、いつも正から読みます。写しを読むのは提出ページだけです（→ shiftHsNames）
+ *    ・渡るのは「その店舗で 22:00 までの人の名前」だけです。表を見れば分かることと同じ中身です
  *  ★検算は .claude/skills/t3works-shift/high-school.js。
  */
 const SHIFT_MARK_STORE = '_rostermark';
@@ -7536,6 +7549,8 @@ const SHIFT_MARK_STORE = '_rostermark';
 const SHIFT_HS_STORES = ['baguru'];
 /** 高校生が上がる時刻（22時。'22' = 22:00） */
 const SHIFT_HS_END = '22';
+/** アルバイトの画面へ渡す、名前だけの写しの入れ先（`_shiftset/店舗id` の中のキー） */
+const SHIFT_HS_PUBLIC_KEY = 'hsNames';
 
 /** その店舗で「高校生」の印を使うか */
 function shiftUsesHs(storeId) {
@@ -7567,16 +7582,59 @@ function shiftHsByCode(storeId, code) {
 }
 
 /**
- * その店舗で「高校生」の印が付いている人の名前（いま名簿にいる人だけ）
- *
- * ★表を描くときは、1回だけ呼んで使い回します（人ごとに名簿を読むと、古い端末で重くなります）。
+ * 正（番号ごとの印）から読んだ、「高校生」の印が付いている人の名前（いま名簿にいる人だけ。名簿の順）
  */
-function shiftHsNames(storeId) {
+function shiftHsFromMarks(storeId) {
   if (!shiftUsesHs(storeId) || typeof ShiftStaff === 'undefined') return [];
   const 印 = shiftMarkItems(storeId);
   return ShiftStaff.people(storeId)
     .filter((p) => p.c && 印[p.c] && 印[p.c].hs === true)
     .map((p) => p.n);
+}
+
+/** サーバーから渡ってきた設定の中の、名前だけの写し（提出ページ用。読めなければ空） */
+function shiftHsGivenNames(items) {
+  const v = items && typeof items === 'object' ? items[SHIFT_HS_PUBLIC_KEY] : null;
+  const names = v && Array.isArray(v.names) ? v.names : [];
+  return names.map((n) => String(n || '')).filter(Boolean);
+}
+
+/**
+ * その店舗で「高校生」の印が付いている人の名前
+ *
+ * ★社員の画面（ワークス・マイン）は、**正（番号ごとの印）**から読みます。
+ *   提出ページは名簿も印も持たないので、サーバーから渡ってきた**名前だけの写し**を読みます。
+ * ★表を描くときは、1回だけ呼んで使い回します（人ごとに名簿を読むと、古い端末で重くなります）。
+ */
+function shiftHsNames(storeId) {
+  if (!shiftUsesHs(storeId)) return [];
+  if (shiftSlotsGiven && shiftSlotsGiven.storeId === storeId) return (shiftSlotsGiven.hs || []).slice();
+  return shiftHsFromMarks(storeId);
+}
+
+/**
+ * アルバイトの画面へ渡す名前だけの写しを、正（番号ごとの印）に合わせる
+ *
+ * ★ずれているときだけ書きます（同じなら何もしません）。
+ * ★名簿が空の端末では書きません（まだ名簿が届いていない端末で、写しを空にしないため）。
+ * ★まだ写しがなく、付いている人もいないときは、書きません（使っていない間は、行を汚しません）。
+ * 返り値：書いたら true
+ */
+function shiftHsPublish(storeId) {
+  if (!shiftUsesHs(storeId) || typeof Store === 'undefined' || typeof ShiftStaff === 'undefined') return false;
+  if (!ShiftStaff.people(storeId).length) return false;
+  const 正 = shiftHsFromMarks(storeId);
+  let いま = null;
+  try {
+    const v = (Store.getDay(SHIFT_SET_STORE, storeId).items || {})[SHIFT_HS_PUBLIC_KEY];
+    いま = v && Array.isArray(v.names) ? v.names : null;
+  } catch (e) {
+    いま = null;
+  }
+  if (いま === null && !正.length) return false;
+  if (いま !== null && JSON.stringify(いま) === JSON.stringify(正)) return false;
+  Store.setItem(SHIFT_SET_STORE, storeId, SHIFT_HS_PUBLIC_KEY, { names: 正, at: new Date().toISOString() });
+  return true;
 }
 
 /**
@@ -7600,6 +7658,8 @@ function shiftSetHs(storeId, code, on) {
       }
     });
   }
+  // アルバイトの画面へ渡す名前だけの写しも、合わせます
+  shiftHsPublish(storeId);
   return true;
 }
 
@@ -7617,6 +7677,7 @@ function shiftMarkMove(前の番号, 新しい番号) {
     if (!shiftHsByCode(id, 前)) return;
     Store.setItem(SHIFT_MARK_STORE, id, 新, { hs: true, at });
     Store.setItem(SHIFT_MARK_STORE, id, 前, { hs: false, at });
+    shiftHsPublish(id);
   });
 }
 
@@ -7640,12 +7701,20 @@ function shiftMarkMove(前の番号, 新しい番号) {
  *      退勤 … 退勤を持つ店舗（popo と4店舗）は entry.e。空なら、ラストまで、右を薄くして出します
  *             バグる（退勤を持たない）は、枠の意味で決めます
  *               ディナー・F（通し） … ラストまで
- *               立ち上げ・ランチだけ … ディナーの一番早い時刻まで（★何時に上がるかは記録にないので、右を薄くします）
+ *               立ち上げ・ランチだけ … **14:00 から 16:00 にかけて薄く**して、16:00 で終わります
+ *                 （2026-10-11、ko-dai さん「バグるのランチだけの人は14時〜16時にかけて薄くなっていくように」→ SHIFT_TABLE_LUNCH_OUT）
  *               早上がり            … 何時に上がるかは記録にないので、右を薄くして、橙のふちを付けます
  *               ★高校生（名簿で印を付けた人。バグるだけ）… ラストまで入る枠（ディナー・F）でも **22:00 まで**（濃いまま）。
  *                 名前の下の字も「17:00〜22:00」になります（→ 高校生の節。2026-10-11、ko-dai さんの指示）
  *  ★同じ人が同じ日に2つの枠に入っていたら、**1行に帯を2本**出します（前の帯は、次の帯の始まりで止めます）。
  *  ★見本（テスト用）の人は出しません。ヘルプで来た人は、名前のうしろに「（店舗）」が付きます。
+ *
+ *  ★帯の色の分け方（2026-10-11、ko-dai さんの指示。→ shiftTableKind）
+ *      バグる                     … ランチ／ディナー／F の3色。**立ち上げでは色を分けません**（立ち上げの人は、F なら F・そうでなければランチの色）
+ *      popo                       … ランチ／ディナー／ラスト の3色（立ち上げの人はランチの色。F では分けません）
+ *      こじゃれ・炭まろ・ちゃこる・おいでんテラス
+ *                                 … **仕込みの行にだけ入っている人**だけ、仕込みの色。他の人は全員、営業の色
+ *                                   （仕込みと営業の両方に入っている人も、営業の色。仕込みだけの人がいない日は、全員同じ色）
  *  ★検算は .claude/skills/t3works-shift/today-table.js。
  */
 const SHIFT_TABLE_AXIS = {
@@ -7659,6 +7728,44 @@ const SHIFT_TABLE_AXIS = {
 };
 /** 上に書いていない店舗の軸（★店舗を足したら、上に1行足してください。検算が、書いていない店舗を数えます） */
 const SHIFT_TABLE_AXIS_OTHER = { from: 12, to: 23 };
+
+/**
+ * 退勤を持たない店舗（バグる）で、ランチだけの人（立ち上げ・ランチの枠で、F でない人）が上がる時刻の幅
+ *
+ *   from … ここから薄くしはじめます（14時）　／　to … ここで帯が終わります（16時）
+ * ★書いていない店舗は、前の決まり（ディナーの一番早い時刻まで、帯の全体を薄く）のままです。
+ */
+const SHIFT_TABLE_LUNCH_OUT = {
+  baguru: { from: 14, to: 16 },
+};
+
+/** 帯の色の種類（この順に、表の下の説明に並べます） */
+const SHIFT_TABLE_KINDS = ['open', 'lunch', 'dinner', 'full', 'last'];
+
+/**
+ * その帯の色の種類（'open' 仕込み／'lunch' ランチ／'dinner' ディナー・営業／'full' F／'last' ラスト）
+ *
+ *   仕込みだけ … その人が、その日、立ち上げ（仕込み）の行にだけ入っているか（ランチのない店舗でだけ使います）
+ * ★店舗の形で決めます（→ 上の「帯の色の分け方」）。
+ */
+function shiftTableKind(storeId, slotId, entry, 仕込みだけ) {
+  if (shiftUsesRange(storeId)) {
+    if (slotId === SHIFT_LAST_ID) return 'last';
+    return slotId === 'dinner' ? 'dinner' : 'lunch';
+  }
+  if (shiftHasSlot(storeId, 'lunch')) {
+    if (slotId === 'dinner') return 'dinner';
+    return shiftIsFull(storeId, entry) ? 'full' : 'lunch';
+  }
+  return 仕込みだけ ? 'open' : 'dinner';
+}
+
+/** 色の種類の、画面に出す名前（枠の名前。F は「F」） */
+function shiftTableKindName(storeId, kind) {
+  if (kind === 'full') return 'F';
+  const slot = shiftSlotsOf(storeId).find((s) => s.id === kind);
+  return slot ? slot.name : '';
+}
 
 /** 時刻として読めるか（'' や null は「入っていない」。★Number('') は 0 なので、先に空を見ます） */
 function shiftTableNum(v) {
@@ -7711,7 +7818,8 @@ function shiftTableNoon(storeId) {
  *   from … 帯の始まり（時刻）。出勤が空で、枠にも時刻がなければ null（軸の左端から出します）
  *   to   … 帯の終わり（時刻か、ラストの印）
  *   noFrom／noTo … 記録にその時刻が入っていない（薄くする側）
- *   text … 名前の下に出す字（「17:00〜22:00」「11:00 F」「仕込み」など）
+ *   fadeFrom … 右を薄くするとき、ここから薄くしはじめる時刻（決まっていなければ null＝帯のはじめの方から）
+ *   full … F（通し）か　／　text … 名前の下に出す字（「17:00〜22:00」「11:00 F」「仕込み」など）
  *   高校生 … その人に「高校生」の印が付いているか（呼ぶ側が名簿から引いて渡します。渡さなければ付いていない）
  */
 function shiftTableBar(storeId, slotId, entry, 高校生) {
@@ -7722,6 +7830,7 @@ function shiftTableBar(storeId, slotId, entry, 高校生) {
 
   let to = SHIFT_END_LAST;
   let noTo = false;
+  let fadeFrom = null;
   const 通し = shiftIsFull(storeId, entry);
   if (shiftUsesEnd(storeId)) {
     const 退勤 = shiftTableNum(entry.e);
@@ -7729,9 +7838,17 @@ function shiftTableBar(storeId, slotId, entry, 高校生) {
     else if (退勤 !== null && (from === null || 退勤 > from)) to = 退勤;
     else noTo = true;   // 決めていない（または出勤より前）。ラストまで、薄く
   } else if (slotId !== 'dinner' && !通し) {
-    // 立ち上げ・ランチだけ。何時に上がるかは記録にないので、ディナーの始まりまでを、薄く
-    const 昼まで = shiftTableNoon(storeId);
-    if (from === null || 昼まで > from) to = 昼まで;
+    // 立ち上げ・ランチだけ。何時に上がるかは記録にありません
+    const 幅 = SHIFT_TABLE_LUNCH_OUT[storeId];
+    if (幅 && (from === null || from < 幅.to)) {
+      // ★バグる：14:00 から 16:00 にかけて薄く（14:00 より後に入った人は、入った時刻から薄く）
+      to = 幅.to;
+      fadeFrom = from === null ? 幅.from : Math.max(幅.from, from);
+    } else {
+      // 幅を決めていない店舗（と、16:00 より後に入った人）は、ディナーの始まりまでを、薄く
+      const 昼まで = shiftTableNoon(storeId);
+      if (from === null || 昼まで > from) to = 昼まで;
+    }
     noTo = true;
   }
   // ★高校生は、ラストまで入る枠（ディナー・F）でも 22:00 まで。決まった時刻なので、薄くしません。
@@ -7751,7 +7868,7 @@ function shiftTableBar(storeId, slotId, entry, 高校生) {
   if (高校生の上がり) text += `〜${高校生の上がり}`;
   if (通し && shiftShowsFullMark(storeId)) text += ' F';
   if (early) text += ' 早上がり';
-  return { slot: slotId, from, to, noFrom, noTo, early, text };
+  return { slot: slotId, from, to, noFrom, noTo, fadeFrom, early, full: 通し, text };
 }
 
 /**
@@ -7759,8 +7876,9 @@ function shiftTableBar(storeId, slotId, entry, 高校生) {
  *
  *   day      … 記録のままの1日（{ open, lunch, dinner }。なければ空として読みます）
  *   名簿の順 … 名前の並び（同じ時刻の人を、名簿の順に並べるため。渡さなくても動きます）
- *   返すもの … { axis, rows: [{ n, label, lane, bars: [{ slot, from, to, noFrom, noTo, early, text, x0, x1 }] }] }
- *              x0・x1 は、帯の左端・右端が軸の左から何割か（0〜1）です
+ *   返すもの … { axis, rows: [{ n, label, lane, bars: [{ slot, kind, from, to, noFrom, noTo, early, text, x0, x1, fade }] }] }
+ *              x0・x1 は、帯の左端・右端が軸の左から何割か（0〜1）。kind は色の種類（→ shiftTableKind）。
+ *              fade は、右を薄くする帯で、薄くしはじめる所が帯の左から何割か（0〜1。決まっていなければ null）
  *
  * ★行は持ち場（キッチン → ホール）ごと、その中は出勤の早い順です。
  * ★店舗の id を渡せば、どの画面からでも呼べます（いま開いている店舗を見ません）。
@@ -7813,7 +7931,15 @@ function shiftTableModel(storeId, dateStr, day, 名簿の順) {
     if (x1 < x0 + 最小) x1 = x0 + 最小;
     b.x0 = x0;
     b.x1 = x1;
+    // 薄くしはじめる所（バグるのランチだけの人：14:00）。次の帯で止めた帯（薄くしない）には付けません
+    b.fade = b.noTo && b.fadeFrom !== null && b.fadeFrom !== undefined
+      ? Math.min(1, Math.max(0, (shiftTablePos(axis, b.fadeFrom) - x0) / (x1 - x0))) : null;
   }));
+  // 色の種類（4店舗は、仕込みの行にだけ入っている人だけ別の色）
+  rows.forEach((r) => {
+    const 仕込みだけ = r.bars.every((b) => b.slot === 'open');
+    r.bars.forEach((b) => { b.kind = shiftTableKind(storeId, b.slot, { f: b.full, t: b.from, e: b.to }, 仕込みだけ); });
+  });
 
   const 持ち場の順 = SHIFT_LANES.map((l) => l.id);
   const 名簿で = (n) => { const i = order.indexOf(n); return i < 0 ? 9999 : i; };

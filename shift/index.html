@@ -46,7 +46,7 @@
 <link rel="icon" href="../img/shift-icon-64.png?v=0254ff8c">
 
 <link rel="stylesheet" href="css/submit.css?v=8a6429a6">
-<meta name="app-version" content="e2d92449">
+<meta name="app-version" content="483a9977">
 </head>
 <body>
 
@@ -179,6 +179,15 @@
       <p class="period__state" id="periodState"></p>
     </div>
 
+    <!-- ===== 今日のシフト（2026-10-11、ko-dai さんの指示） =====
+         ★いま開いているお店の、今日のシフトを、時刻の表で出します（確定したシフトだけ）。
+           表を描く部品は js/shift-sheet.js（ワークスの「今日のシフト」と同じもの）です -->
+    <div class="past-bar" id="todayBar">
+      <div class="past-bar__acts">
+        <button type="button" class="btn" id="todayBtn">今日のシフト</button>
+      </div>
+    </div>
+
     <!-- ===== 決まったシフトを見るボタン（ページの上の方に置きます） =====
          ★募集を始めると、出す半月が新しい方に変わります。新しい方はまだ
            組んでいないので、決まっているシフトが画面から消えていました
@@ -237,6 +246,24 @@
 
 </main>
 
+<!-- ===== 今日のシフト =====
+     「今日のシフト」を押したときだけ出ます。中身は js/submit.js が入れます（openToday）。
+     ★枠は「出し方」と同じ部品です。表が横に長いので、幅だけ広げてあります -->
+<div class="help is-hidden" id="today" role="dialog" aria-modal="true" aria-labelledby="todayTitle">
+  <div class="help__back" id="todayBack"></div>
+  <div class="help__panel" style="max-width:1100px;">
+    <div class="help__head">
+      <h2 class="help__title" id="todayTitle">今日のシフト</h2>
+      <button type="button" class="help__x" id="todayClose" aria-label="閉じる">✕</button>
+    </div>
+    <div class="help__body">
+      <!-- ★min-width:0 … 枠が格子（grid）なので、付けないと表が枠ごと横に広がり、表だけを横に動かせません -->
+      <div id="todayBody" style="min-width:0;"></div>
+      <button type="button" class="btn btn--wide" id="todayClose2">閉じる</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== 出し方 =====
      「？出し方」を押したときだけ出ます。普段は畳んであります。
      ★中身はここに直に書いてあります。変えたいときは、この下の文だけ
@@ -263,9 +290,9 @@
   </div>
 </div>
 
-<script src="../js/config.js?v=dba94b48"></script>
+<script src="../js/config.js?v=18f57647"></script>
 <!-- シフト表を絵に描くところ。ワークスの「JPEGで保存」と同じものです -->
-<script src="../js/shift-sheet.js?v=3d547089"></script>
-<script src="js/submit.js?v=1204543e"></script>
+<script src="../js/shift-sheet.js?v=49aeebb2"></script>
+<script src="js/submit.js?v=9c2452b8"></script>
 </body>
 </html>

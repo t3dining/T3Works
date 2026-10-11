@@ -13054,6 +13054,9 @@ function renderShiftRoster(組む) {
   }
 
   shiftRosterProbe();
+  // ★「高校生」の、アルバイトの画面へ渡す名前だけの写しが、正（番号ごとの印）とずれていたら、ここで合わせます
+  //   （ずれているときだけ書きます。名簿を書き換えて人が入れかわったあとなど → js/config.js の shiftHsPublish）
+  shiftHsPublish(state.storeId);
   if (shiftRosterNeedsAdmin() && shiftRosterAdmin === false) {
     // ★直せない端末。押しても消えるので、先に言います
     const 警告 = document.createElement('p');
@@ -13786,79 +13789,17 @@ function shiftLinkPicker(person) {
 /* -------- 今日のシフト（タイムテーブル。2026-10-11、ko-dai さんの指示） --------
  *
  *  名簿の欄の「シフトの使い方」の下の「今日のシフト」から開きます。その日のシフトを、**縦に名前・横に時刻**の表で出します。
- *  ★時刻の軸と、帯をどこからどこまで引くかは js/config.js の「今日のシフト」の節（shiftTableModel）。ここは描くだけです。
- *  ★描く所は **shiftTodayDraw(入れ物, 店舗id)** の1つです。**いま開いている店舗（state）を見ません。**
- *    本部が、店舗選択の画面からも同じ表を出すためです（2026-10-11、本部の願い。写すとずれるので、同じ関数を呼んでもらいます）。
- *    見た目も、この節の shiftTodayStyle が自分で入れます（親の class に頼りません。どの画面の中に置いても同じに見えます）。
+ *  ★時刻の軸と、帯をどこからどこまで引くか・色の分け方は js/config.js の「今日のシフト」の節（shiftTableModel）。
+ *  ★**表を描く部品は js/shift-sheet.js にあります**（shiftTodayRender・shiftTodayStyle・shiftTodayStr・shiftTodayToNow）。
+ *    アルバイトの提出ページ（shift/）でも同じ表を出すためです（2026-10-11、ko-dai さんの指示。提出ページは js/app.js を読みません）。
+ *    ここ（js/app.js）にあるのは、**端末の記録から今日の分を読んで、その部品に渡す所**（shiftTodayDraw）と、ボタン・小窓だけです。
+ *  ★読む所は **shiftTodayDraw(入れ物, 店舗id)** の1つです。**いま開いている店舗（state）を見ません。**
+ *    本部が、店舗選択の画面からも同じ表を出しています（写すとずれるので、同じ関数を呼んでもらっています）。
+ *    ★同じ名前の関数を、ここと js/shift-sheet.js の両方に書かないこと（後から読む方が黙って勝ちます。本部の試験が鳴ります）。
  *  ★「今日」は業務上の今日です（朝6時までは前の日。→ js/config.js の businessDate）。
  *  ★読むだけです。記録には何も書きません。
  *  ★検算は .claude/skills/t3works-shift/today-table.js。
  * ---------------------------------------------------------- */
-
-/** 業務上の今日（'YYYY-MM-DD'） */
-function shiftTodayStr() {
-  return dateToStr(businessDate());
-}
-
-/**
- * 名前の列の幅と、1時間の列のこれより狭くしない幅（px）
- *
- * ★iPad やパソコンでは、1日分が1画面に収まります。スマホの縦持ちでは収まらないので、表だけが横に動きます
- *   （名前の列は左に残ります）。開いたときは、いまの時刻の少し前から見える位置にします（→ shiftTodayToNow）。
- */
-const SHIFT_TODAY_WHO_W = 88;
-const SHIFT_TODAY_COL_W = 26;
-
-/** 表の見た目（1回だけ入れます。★全部 .shift-tt の中だけに効きます） */
-function shiftTodayStyle() {
-  if (document.getElementById('shiftTodayStyle')) return;
-  const 薄く = (向き) => {
-    const g = `linear-gradient(${向き})`;
-    return `-webkit-mask-image:${g};mask-image:${g}`;
-  };
-  const st = document.createElement('style');
-  st.id = 'shiftTodayStyle';
-  st.textContent = [
-    '.shift-tt{--tt-c:var(--accent);color:var(--text);font-size:13px;line-height:1.5;text-align:left}',
-    '.shift-tt__day{margin:0 0 6px;font-size:15px;font-weight:700}',
-    '.shift-tt__note{margin:0 0 8px;font-size:12.5px;line-height:1.6;color:var(--text-sub)}',
-    '.shift-tt__note--warn{font-weight:700;color:var(--ng)}',
-    '.shift-tt__scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px;background:var(--surface)}',
-    '.shift-tt__table{border-collapse:separate;border-spacing:0;table-layout:fixed;width:100%;margin:0}',
-    '.shift-tt__table th,.shift-tt__table td{margin:0;padding:0;border:0;font-weight:400;text-align:left;background:none}',
-    '.shift-tt__table .shift-tt__corner,.shift-tt__table .shift-tt__who{position:sticky;left:0;z-index:2;background:var(--surface);border-right:1px solid var(--line)}',
-    '.shift-tt__table .shift-tt__corner{background:var(--surface-2)}',
-    '.shift-tt__table .shift-tt__hour{padding:6px 0 5px;text-align:center;font-size:12px;font-weight:700;line-height:1.2;color:var(--text);'
-      + 'background:var(--surface-2);border-left:1px solid var(--line-2);white-space:nowrap;font-variant-numeric:tabular-nums}',
-    '.shift-tt__hour small{font-size:8.5px;font-weight:400;color:var(--text-sub)}',
-    '.shift-tt__table .shift-tt__hour--last{font-size:9.5px;letter-spacing:-.4px}',
-    '.shift-tt__table .shift-tt__lane{padding:4px 0;font-size:11.5px;font-weight:700;color:var(--text-sub);background:var(--surface-2);border-top:1px solid var(--line)}',
-    '.shift-tt__lane span{position:sticky;left:8px;display:inline-block}',
-    '.shift-tt__table .shift-tt__who{padding:5px 6px;border-top:1px solid var(--line-2);vertical-align:middle}',
-    '.shift-tt__name{display:block;font-size:13px;font-weight:700;line-height:1.3;overflow-wrap:anywhere}',
-    '.shift-tt__time{display:block;font-size:10.5px;line-height:1.35;color:var(--text-sub);font-variant-numeric:tabular-nums}',
-    '.shift-tt__time span{display:inline-block;white-space:nowrap;margin-right:.35em}',
-    // 縦の線は、1時間ごと（マスの背景に引きます。列の数は --tt-cols）
-    '.shift-tt__table .shift-tt__cell{border-top:1px solid var(--line-2);vertical-align:middle;'
-      + 'background-image:linear-gradient(to right,var(--line-2) 1px,transparent 1px);background-size:calc(100% / var(--tt-cols)) 100%}',
-    '.shift-tt__track{position:relative;height:36px}',
-    '.shift-tt__bar{position:absolute;top:8px;bottom:8px;border-radius:5px;background:var(--tt-c);box-sizing:border-box}',
-    // 帯の色は、組む画面の枠の色と同じです（立ち上げ＝茶・ランチ＝緑・ディナー＝青・ラスト＝青緑）
-    '.shift-tt__bar--open,.shift-tt__key--open{--tt-c:var(--shift-open,#b4631a)}',
-    '.shift-tt__bar--lunch,.shift-tt__key--lunch{--tt-c:var(--shift-lunch,#2d7a58)}',
-    '.shift-tt__bar--dinner,.shift-tt__key--dinner{--tt-c:var(--shift-dinner,#4a5fa8)}',
-    '.shift-tt__bar--last,.shift-tt__key--last{--tt-c:var(--shift-last,#1f7a8c)}',
-    // ★記録に時刻が入っていない側を、薄くします（退勤が空＝右、出勤が空＝左）
-    `.shift-tt__bar.is-no-to,.shift-tt__key.is-no-to{${薄く('to right,#000 20%,rgba(0,0,0,.16)')}}`,
-    `.shift-tt__bar.is-no-from{${薄く('to left,#000 20%,rgba(0,0,0,.16)')}}`,
-    `.shift-tt__bar.is-no-from.is-no-to{${薄く('to right,rgba(0,0,0,.16),#000 35%,#000 65%,rgba(0,0,0,.16)')}}`,
-    '.shift-tt__bar.is-early,.shift-tt__key.is-early{box-shadow:inset 0 0 0 2px #d98324}',
-    '.shift-tt__legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:8px 0 0;font-size:11.5px;line-height:1.6;color:var(--text-sub)}',
-    '.shift-tt__key{display:inline-block;width:20px;height:10px;margin-right:5px;border-radius:3px;vertical-align:-1px;background:var(--tt-c)}',
-    '.shift-tt__memo{margin:8px 0 0;font-size:12.5px;line-height:1.6;overflow-wrap:anywhere}',
-  ].join('');
-  document.head.appendChild(st);
-}
 
 /**
  * その店舗の、その日のシフトを、入れ物の中に描く
@@ -13873,174 +13814,29 @@ function shiftTodayStyle() {
  *   （シフトの画面の小窓は、描き直しのたびに shiftTodayRefresh が呼び直します）。
  */
 function shiftTodayDraw(box, storeId, dateStr) {
+  // ★表を描く部品（js/shift-sheet.js）が、端末に古いまま残っていることがあります（新しい js/app.js だけ先に届いたとき）。
+  //   そのまま進むと転ぶので、先にそう出します。読み込み直せば直ります
+  if (typeof shiftTodayRender !== 'function') {
+    box.textContent = '新しい版を読み込んでいる途中です。画面を読み込み直してください。';
+    return null;
+  }
   shiftExtraStyle();
-  shiftTodayStyle();
   const 日 = dateStr || shiftTodayStr();
   const [y, m, d] = 日.split('-').map(Number);
   const rec = Store.getDay(SHIFT_STORE, shiftKey(storeId, y, m, shiftHalfOf(d)));
   const day = (rec.items || {})[shiftDayKey(日)] || {};
-  const model = shiftTableModel(storeId, 日, day, shiftBuildNames(storeId));
   const store = getStore(storeId) || {};
-  const 部品 = (tag, cls, text) => {
-    const x = document.createElement(tag);
-    if (cls) x.className = cls;
-    if (text !== undefined) x.textContent = text;
-    return x;
-  };
-
-  const root = 部品('div', 'shift-tt');
-  root.dataset.store = storeId;
-  root.dataset.date = 日;
-  // 軸の初めの時と、列の数（→ shiftTodayToNow が、いまの時刻の位置を出すのに使います）
-  root.dataset.from = String(model.axis.from);
-  root.dataset.cols = String(model.axis.cols);
-  root.appendChild(部品('p', 'shift-tt__day', `${shiftDayLabel(日, DOW)}　${store.name || storeId}`));
-  if (Closed.isClosed(storeId, y, m, d)) {
-    root.appendChild(部品('p', 'shift-tt__note', 'この日は定休日です。'));
-  }
-  if (!model.rows.length) {
-    root.appendChild(部品('p', 'shift-tt__note', 'この日のシフトは、まだ入っていません。'));
-  } else {
-    if (shiftPhaseOf(rec) !== SHIFT_BUILT) {
-      root.appendChild(部品('p', 'shift-tt__note shift-tt__note--warn', '★このシフトは、まだ確定していません（組んでいる途中の表です）。'));
-    }
-    root.appendChild(shiftTodayTable(model));
-    root.appendChild(shiftTodayLegend(storeId, model));
-  }
-  const memo = day.memo || shiftDefaultMemo(日, storeId);
-  if (memo) root.appendChild(部品('p', 'shift-tt__memo', `メモ：${memo}`));
-
-  box.innerHTML = '';
-  box.appendChild(root);
-  return model;
-}
-
-/** 表（1行目が時刻、左の列が名前。持ち場ごとに区切ります） */
-function shiftTodayTable(model) {
-  const { axis, rows } = model;
-  const 部品 = (tag, cls, text) => {
-    const x = document.createElement(tag);
-    if (cls) x.className = cls;
-    if (text !== undefined) x.textContent = text;
-    return x;
-  };
-  const wrap = 部品('div', 'shift-tt__scroll');
-  const table = 部品('table', 'shift-tt__table');
-  table.style.setProperty('--tt-cols', String(axis.cols));
-  table.style.minWidth = `${SHIFT_TODAY_WHO_W + axis.cols * SHIFT_TODAY_COL_W}px`;
-
-  const cg = document.createElement('colgroup');
-  const 名前の列 = document.createElement('col');
-  名前の列.style.width = `${SHIFT_TODAY_WHO_W}px`;
-  const 時の列 = document.createElement('col');
-  時の列.span = axis.cols;
-  cg.append(名前の列, 時の列);
-  table.appendChild(cg);
-
-  const thead = document.createElement('thead');
-  const 見出し = document.createElement('tr');
-  見出し.appendChild(部品('th', 'shift-tt__corner'));
-  axis.hours.forEach((h) => {
-    const th = 部品('th', 'shift-tt__hour', String(h));
-    th.appendChild(部品('small', '', '時'));
-    見出し.appendChild(th);
+  return shiftTodayRender(box, {
+    storeId,
+    dateStr: 日,
+    day,
+    title: `${shiftDayLabel(日, DOW)}　${store.name || storeId}`,
+    notes: Closed.isClosed(storeId, y, m, d) ? [{ text: 'この日は定休日です。' }] : [],
+    // まだ確定していない半月は、表の上にそう出します（人が入っているときだけ）
+    draft: shiftPhaseOf(rec) !== SHIFT_BUILT,
+    memo: day.memo || shiftDefaultMemo(日, storeId),
+    名簿の順: shiftBuildNames(storeId),
   });
-  // ★最後の時の次の1列は「ラスト」（バグるなら、23時の代わり）
-  見出し.appendChild(部品('th', 'shift-tt__hour shift-tt__hour--last', SHIFT_END_LAST_NAME));
-  thead.appendChild(見出し);
-  table.appendChild(thead);
-
-  const tbody = document.createElement('tbody');
-  SHIFT_LANES.forEach((lane) => {
-    const 人 = rows.filter((r) => r.lane === lane.id);
-    if (!人.length) return;
-    const 区切り = document.createElement('tr');
-    const th = 部品('th', 'shift-tt__lane');
-    th.colSpan = axis.cols + 1;
-    th.appendChild(部品('span', '', `${lane.name}　${人.length}人`));
-    区切り.appendChild(th);
-    tbody.appendChild(区切り);
-
-    人.forEach((r) => {
-      const tr = document.createElement('tr');
-      const who = 部品('th', 'shift-tt__who');
-      who.scope = 'row';
-      who.appendChild(部品('span', 'shift-tt__name', r.n));
-      // ヘルプで来た人の「（店舗）」は、名前の下に小さく出します（名前の列が狭く、続けて書くと途中で折れるため）
-      if (r.label !== r.n) who.appendChild(部品('span', 'shift-tt__time', r.label.slice(r.n.length)));
-      const td = 部品('td', 'shift-tt__cell');
-      td.colSpan = axis.cols;
-      const track = 部品('div', 'shift-tt__track');
-      r.bars.forEach((b) => {
-        // ★「11:30 F 早上がり」は、空白の所でだけ折ります（時刻や「早上がり」の途中では折りません）
-        if (b.text) {
-          const 字 = 部品('span', 'shift-tt__time');
-          b.text.split(' ').filter(Boolean).forEach((w) => 字.append(部品('span', '', w), ' '));
-          who.appendChild(字);
-        }
-        const bar = 部品('span', `shift-tt__bar shift-tt__bar--${b.slot}`
-          + (b.noFrom ? ' is-no-from' : '') + (b.noTo ? ' is-no-to' : '') + (b.early ? ' is-early' : ''));
-        bar.style.left = `${(b.x0 * 100).toFixed(3)}%`;
-        bar.style.width = `${((b.x1 - b.x0) * 100).toFixed(3)}%`;
-        bar.title = `${r.label} ${b.text}`.trim();
-        track.appendChild(bar);
-      });
-      td.appendChild(track);
-      tr.append(who, td);
-      tbody.appendChild(tr);
-    });
-  });
-  table.appendChild(tbody);
-  wrap.appendChild(table);
-  return wrap;
-}
-
-/** 表の下の、色の説明（その日に出ているものだけ） */
-function shiftTodayLegend(storeId, model) {
-  const box = document.createElement('div');
-  box.className = 'shift-tt__legend';
-  const 足す = (cls, text) => {
-    const row = document.createElement('span');
-    const key = document.createElement('i');
-    key.className = `shift-tt__key ${cls}`;
-    row.append(key, document.createTextNode(text));
-    box.appendChild(row);
-  };
-  const bars = [];
-  model.rows.forEach((r) => r.bars.forEach((b) => bars.push(b)));
-  shiftSlotsOf(storeId).forEach((slot) => {
-    if (bars.some((b) => b.slot === slot.id)) 足す(`shift-tt__key--${slot.id}`, slot.name);
-  });
-  if (bars.some((b) => b.early)) 足す('shift-tt__key--dinner is-early', 'オレンジの枠は早上がり');
-  if (bars.some((b) => b.noFrom || b.noTo)) {
-    // ★退勤を持たない店舗（バグる）は、ランチだけの人が何時までかが記録にありません。どこまで出しているかを書きます
-    const 昼まで = shiftUsesEnd(storeId) ? ''
-      : `（何時までかを決めていない人は、${shiftTimeText(shiftTimeKey(shiftTableNoon(storeId)))}まで出しています）`;
-    足す('shift-tt__key--dinner is-no-to', `色が薄くなっていく側は、時刻が決まっていません${昼まで}`);
-  }
-  return box;
-}
-
-/** いまの時刻（時を小数で。★朝6時より前は、前の日の 24時〜 として数えます。businessDate と同じ境目） */
-function shiftTodayNowHour() {
-  const now = new Date();
-  const h = now.getHours() + now.getMinutes() / 60;
-  return now.getHours() < (APP.dayStartHour || 0) ? h + 24 : h;
-}
-
-/**
- * 表が横に動くとき（スマホの縦持ち）、いまの時刻の1時間前から見える位置にする
- *
- * ★box は shiftTodayDraw に渡した入れ物。**画面に出したあと**に呼びます（隠れているあいだは幅が測れません）。
- *   1画面に収まっているとき・表がないときは、何もしません。
- */
-function shiftTodayToNow(box) {
-  const root = box && box.querySelector('.shift-tt');
-  const sc = root && root.querySelector('.shift-tt__scroll');
-  if (!sc || sc.scrollWidth <= sc.clientWidth + 1) return;
-  const axis = { from: Number(root.dataset.from), cols: Number(root.dataset.cols) };
-  if (!isFinite(axis.from) || !(axis.cols > 0)) return;
-  sc.scrollLeft = Math.max(0, shiftTablePos(axis, shiftTodayNowHour() - 1) * (sc.scrollWidth - SHIFT_TODAY_WHO_W));
 }
 
 /** 名簿の欄に置く「今日のシフト」 */
@@ -14094,7 +13890,7 @@ function openShiftToday() {
   shiftTodayDraw(body, state.storeId);
   m.classList.remove('is-hidden');
   body.scrollTop = 0;
-  shiftTodayToNow(body);
+  if (typeof shiftTodayToNow === 'function') shiftTodayToNow(body);
 }
 
 /**
