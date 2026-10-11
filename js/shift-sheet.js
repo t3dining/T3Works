@@ -805,11 +805,22 @@ function shiftTodayStr() {
 /**
  * 名前の列の幅と、1時間の列のこれより狭くしない幅（px）
  *
- * ★iPad やパソコンでは、1日分が1画面に収まります。スマホの縦持ちでは収まらないので、表だけが横に動きます
- *   （名前の列は左に残ります）。開いたときは、いまの時刻の少し前から見える位置にします（→ shiftTodayToNow）。
+ * ★iPad やパソコン（幅が SHIFT_TODAY_NARROW より広い画面）の数です。1日分が1画面に収まります。
+ *   万一収まらないときは、表だけが横に動きます（名前の列は左に残ります。→ shiftTodayToNow）。
  */
 const SHIFT_TODAY_WHO_W = 88;
 const SHIFT_TODAY_COL_W = 26;
+/**
+ * スマホの幅（画面の幅がここまで）では、**横に動かさずに1画面に収めます**
+ *
+ * ★2026-10-11、ko-dai さん「スマホ画面で横スクロールなしで収めることはできますか？」。
+ *   名前の列を細く（SHIFT_TODAY_WHO_NARROW）、時刻は数字だけ（「時」を出さない）、「ラスト」は縦書きにして、
+ *   1時間の列を画面の幅に合わせて縮めます。列が多い日（popo の金・土は18列）は、時刻の数字も列の幅に合わせて小さくなります。
+ * ★見た目の決まり（shiftTodayStyle の @media）だけでやっています。描くときに幅を測りません
+ *   （小窓は、隠れているあいだに描くので、測れません）。
+ */
+const SHIFT_TODAY_NARROW = 640;
+const SHIFT_TODAY_WHO_NARROW = 62;
 
 /** 表の見た目（1回だけ入れます。★全部 .shift-tt の中だけに効きます） */
 function shiftTodayStyle() {
@@ -846,6 +857,8 @@ function shiftTodayStyle() {
     '.shift-tt__who.is-me .shift-tt__name{color:var(--accent)}',
     '.shift-tt__time{display:block;font-size:10.5px;line-height:1.35;color:var(--text-sub);font-variant-numeric:tabular-nums}',
     '.shift-tt__time span{display:inline-block;white-space:nowrap;margin-right:.35em}',
+    // 「17:00〜」と「22:00」は、くっつけて出します（狭い列では、「〜」のうしろでだけ折れます）
+    '.shift-tt__time span.shift-tt__t1{margin-right:0}',
     // 縦の線は、1時間ごと（マスの背景に引きます。列の数は --tt-cols）
     '.shift-tt__table .shift-tt__cell{border-top:1px solid var(--line-2);vertical-align:middle;'
       + 'background-image:linear-gradient(to right,var(--line-2) 1px,transparent 1px);background-size:calc(100% / var(--tt-cols)) 100%}',
@@ -867,6 +880,24 @@ function shiftTodayStyle() {
     '.shift-tt__legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:8px 0 0;font-size:11.5px;line-height:1.6;color:var(--text-sub)}',
     '.shift-tt__key{display:inline-block;width:20px;height:10px;margin-right:5px;border-radius:3px;vertical-align:-1px;background:var(--tt-c)}',
     '.shift-tt__memo{margin:8px 0 0;font-size:12.5px;line-height:1.6;overflow-wrap:anywhere}',
+    // ★スマホの幅では、横に動かさずに1画面に収めます（→ SHIFT_TODAY_NARROW）。
+    //   表のこれより狭くしない幅と、名前の列の幅は、部品に直に入れてあるので、ここで上書きします（!important）。
+    //   時刻の数字は、列の幅の7割ほどの大きさ（列が多い日は小さく。cqw の使えない端末では 9px のまま）
+    `@media (max-width: ${SHIFT_TODAY_NARROW}px){`
+      + '.shift-tt__scroll{container-type:inline-size}'
+      + '.shift-tt__table{min-width:0 !important}'
+      + `.shift-tt__table col:first-child{width:${SHIFT_TODAY_WHO_NARROW}px !important}`
+      + '.shift-tt__table .shift-tt__who{padding:4px 3px 4px 5px}'
+      + '.shift-tt__name{font-size:12px}'
+      + '.shift-tt__time{font-size:9px;letter-spacing:-.2px}'
+      + '.shift-tt__time span{margin-right:.2em}'
+      + '.shift-tt__table .shift-tt__hour{padding:5px 0 4px;letter-spacing:-.3px;font-size:9px;'
+        + `font-size:clamp(7px,calc((100cqw - ${SHIFT_TODAY_WHO_NARROW}px) / var(--tt-cols) * .68),10.5px)}`
+      + '.shift-tt__hour small{display:none}'
+      + '.shift-tt__table .shift-tt__hour--last{font-size:8px;letter-spacing:0;vertical-align:middle}'
+      + '.shift-tt__hour--last span{display:inline-block;writing-mode:vertical-rl;text-orientation:upright;line-height:1;letter-spacing:-1px}'
+      + '.shift-tt__lane span{left:5px}'
+      + '}',
   ].join('');
   document.head.appendChild(st);
 }
@@ -954,8 +985,10 @@ function shiftTodayTable(model, 自分) {
     th.appendChild(部品('small', '', '時'));
     見出し.appendChild(th);
   });
-  // ★最後の時の次の1列は「ラスト」（バグるなら、23時の代わり）
-  見出し.appendChild(部品('th', 'shift-tt__hour shift-tt__hour--last', SHIFT_END_LAST_NAME));
+  // ★最後の時の次の1列は「ラスト」（バグるなら、23時の代わり）。スマホの幅では縦書きにするので、字を部品で包みます
+  const ラスト = 部品('th', 'shift-tt__hour shift-tt__hour--last');
+  ラスト.appendChild(部品('span', '', SHIFT_END_LAST_NAME));
+  見出し.appendChild(ラスト);
   thead.appendChild(見出し);
   table.appendChild(thead);
 
@@ -984,7 +1017,12 @@ function shiftTodayTable(model, 自分) {
         // ★「11:30 F 早上がり」は、空白の所でだけ折ります（時刻や「早上がり」の途中では折りません）
         if (b.text) {
           const 字 = 部品('span', 'shift-tt__time');
-          b.text.split(' ').filter(Boolean).forEach((w) => 字.append(部品('span', '', w), ' '));
+          b.text.split(' ').filter(Boolean).forEach((w) => {
+            // 「17:00〜22:00」は、「〜」のうしろでだけ折れるように、前とうしろを別の部品にします（名前の列が狭いスマホの幅のため）
+            const i = w.indexOf('〜');
+            if (i > 0 && i < w.length - 1) 字.append(部品('span', 'shift-tt__t1', w.slice(0, i + 1)), 部品('span', '', w.slice(i + 1)), ' ');
+            else 字.append(部品('span', '', w), ' ');
+          });
           who.appendChild(字);
         }
         const bar = 部品('span', `shift-tt__bar shift-tt__bar--${b.kind || b.slot}`
