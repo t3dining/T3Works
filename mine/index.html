@@ -102,8 +102,8 @@
 <link rel="icon" type="image/png" sizes="512x512" href="../img/mine-icon-512.png?v=2dbb903e">
 <link rel="icon" type="image/png" sizes="64x64" href="../img/mine-icon-64.png?v=ea09f133">
 <title>T3 Works Mine｜T3Dining株式会社</title>
-<link rel="stylesheet" href="../css/style.css?v=1c41d5c8">
-<meta name="app-version" content="01351b95">
+<link rel="stylesheet" href="../css/style.css?v=41e8cdfe">
+<meta name="app-version" content="22028571">
 </head>
 <body data-mode="mine" data-assets="../">
 
@@ -177,6 +177,7 @@
            ・確認の記録       … 青             .stores-big-btn--check
            ・人のこと         … オレンジ       .stores-big-btn--people（面接マニュアル）
            ・渡すもの         … 灰色           .stores-big-btn--share（QRコード・URL）
+           ・シフトのこと     … 紫             .stores-big-btn--shift（今日のシフト）
 
          ★★「QRコード・URL」（storesShareBtn）は、この欄の**一番下**に置きます
            （ko-dai さんの指示・2026-09-18。指示がない限り動かしません）。
@@ -187,6 +188,18 @@
          ★並べる順番は「同じ仲間どうしを続けて」置くこと。
            仲間の途中に別の色を挟むと、色分けの意味がなくなります -->
     <h2 class="stores-sub">T3Dining</h2>
+    <!-- 今日のシフト（2026-10-11、ko-dai さんの指示）。「クローズの提出記録」の上に置きます。
+         押すと店舗を選ぶ画面（#/today）になり、選んだ店舗の今日のシフトが出ます（#/today/店舗）。
+         ★表を描くのは、シフトの部署の shiftTodayDraw です（js/app.js）。**本部は写しません**（写すと、必ずずれます）。
+         ★id は storesTodayBtn。シフトの画面の中の「今日のシフト」（shiftTodayBtn）とは、別のボタンです -->
+    <button type="button" class="stores-big-btn stores-big-btn--shift" id="storesTodayBtn">
+      <span class="stores-big-btn__icon" aria-hidden="true">🕒</span>
+      <span class="stores-big-btn__text">
+        <span class="stores-big-btn__name">今日のシフト</span>
+        <span class="stores-big-btn__sub">店舗を選んで、今日だれが何時に入るかを見る</span>
+      </span>
+      <span class="stores-big-btn__arrow" aria-hidden="true">›</span>
+    </button>
     <button type="button" class="stores-big-btn stores-big-btn--check" id="storesReportBtn">
       <span class="stores-big-btn__icon" aria-hidden="true">📋</span>
       <span class="stores-big-btn__text">
@@ -552,6 +565,29 @@
       <button type="button" class="linkbtn train-remove" id="trainRemove">この人を一覧から消す</button>
     </div>
 
+  </section>
+
+  <!-- ===== 今日のシフト（店舗に属さない画面。2026-10-11、ko-dai さんの指示） =====
+       店舗選択画面の T3Dining の欄の「今日のシフト」から開きます。まず店舗を選び、選ぶとその店舗の今日のシフトが出ます。
+       ★店舗を選ぶ所は、**アプリを開いたときの店舗選択と取りちがえないよう、見た目を変えてあります**
+         （あちらは四角いカードを2〜3列。こちらは紫の帯の下に、横長の行を縦に並べます）。
+       ★表（#todayBody の中）は、シフトの部署の shiftTodayDraw が描きます。ここには何も書きません -->
+  <section class="view view--today is-hidden" id="viewToday">
+    <div class="report-head today-head">
+      <div class="report-head__row">
+        <h2 class="report-head__title"><span aria-hidden="true">🕒</span> 今日のシフト</h2>
+        <button type="button" class="btn" id="todayBack">店舗一覧に戻る</button>
+      </div>
+      <p class="today-head__date" id="todayDate"></p>
+    </div>
+    <div class="today-pick" id="todayPick">
+      <p class="today-pick__lead">どの店舗のシフトを見ますか</p>
+      <ul class="today-pick__list" id="todayStores"></ul>
+    </div>
+    <div class="today-table is-hidden" id="todayTable">
+      <button type="button" class="btn today-table__back" id="todayPickBack">‹ 店舗を選び直す</button>
+      <div id="todayBody"></div>
+    </div>
   </section>
 
   <!-- ===== 全店舗提出記録 =====
@@ -1737,7 +1773,7 @@
 <!-- 会議資料の中身。スプレッドシートから取り込んだ数字と議事メモです -->
 <!-- シフト表を絵に描くところ。提出ページ（shift/）でも同じものを使います -->
 <script src="../js/shift-sheet.js?v=3d547089"></script>
-<script src="../js/app.js?v=cb5903fc"></script>
+<script src="../js/app.js?v=2cd4f0a7"></script>
 <script src="../js/interview.js?v=1f652c4a"></script>
 <script src="../js/share.js?v=4d2bf95f"></script>
 <script src="../js/voice.js?v=45cf2f80"></script>

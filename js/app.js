@@ -50,6 +50,8 @@ const el = {
   taskBarName: $('taskBarName'),
   viewStores: $('viewStores'), storeGrid: $('storeGrid'), storesDate: $('storesDate'),
   viewReport: $('viewReport'), storeHead: $('storeHead'),
+  viewToday: $('viewToday'), todayDate: $('todayDate'), todayPick: $('todayPick'),
+  todayStores: $('todayStores'), todayTable: $('todayTable'), todayBody: $('todayBody'),
   reportMonth: $('reportMonth'), reportMonthSummary: $('reportMonthSummary'),
   calHead: $('calHead'), calGrid: $('calGrid'),
   missModal: $('missModal'), missFormTitle: $('missFormTitle'),
@@ -219,8 +221,13 @@ const el = {
  *   #/{店舗}/{業務}/{YYYY-MM-DD} 日付つき
  *   #/report/{YYYY-MM-DD}       全店舗の提出記録（店舗に属さない）
  *   #/weekall/{YYYY-MM-DD}      全店舗の週間掃除 達成状況
+ *   #/today                     今日のシフト：店舗を選ぶ（店舗に属さない）
+ *   #/today/{店舗}              今日のシフト：その店舗の表（★2つ目は日付ではなく店舗です。日付はいつも「今日」）
  */
 const ALL_STORE_VIEWS = ['report', 'weekall', 'expense', 'catch', 'settle', 'meeting'];
+
+/** 「今日のシフト」（下の renderToday）で選んだ店舗。'' ＝ まだ選んでいない（店舗を選ぶ画面） */
+let todayShiftStore = '';
 
 /**
  * いま出さない画面。URLを直に叩かれても入れないようにします
@@ -243,6 +250,14 @@ function readHash() {
     state.m = m;
     state.d = Math.min(Math.max(d, 1), daysInMonth(y, m));
   };
+
+  /* 今日のシフト（店舗に属さない。2つ目は、選んだ店舗） */
+  if (first === 'today') {
+    state.storeId = '';
+    state.view = 'today';
+    todayShiftStore = todayShiftStores().some((s) => s.id === second) ? second : '';
+    return;
+  }
 
   /* 全店舗の画面（店舗に属さない） */
   if (ALL_STORE_VIEWS.includes(first)) {
@@ -285,7 +300,9 @@ function readHash() {
 
 function writeHash(replace = false) {
   let hash = '#/';
-  if (ALL_STORE_VIEWS.includes(state.view)) {
+  if (state.view === 'today') {
+    hash = todayShiftStore ? `#/today/${todayShiftStore}` : '#/today';
+  } else if (ALL_STORE_VIEWS.includes(state.view)) {
     hash = `#/${state.view}/${ymd(state.y, state.m, state.d)}`;
   } else if (state.storeId && state.view === 'tasks') {
     hash = `#/${state.storeId}`;
@@ -7768,6 +7785,99 @@ function goTasks() {
   writeHash();
   render();
   window.scrollTo(0, 0);
+}
+
+/* ------------------------------------------------------------
+ *  今日のシフト（店舗選択画面の T3Dining の欄から開く。2026-10-11、ko-dai さんの指示）
+ *
+ *  「店舗選択画面のクローズの提出記録の上に今日のシフトというボタンを作成してください。
+ *    そのボタンを押すと各店舗の選択画面になり、そこから店舗を選択するとその店舗の今日のシフトが見れるように」
+ *
+ *  ★**表は、シフトの部署の shiftTodayDraw(入れ物, 店舗id) が描きます。本部は写しません。**
+ *    「表示の仕方はシフト部署が作成したものを全く同じように」という指示です。写すと、片方だけ直した日にずれます。
+ *    見た目（.shift-tt…）も、あちらの shiftTodayStyle が自分で入れます。css/style.css には書いていません。
+ *  ★「今日」は、あちらの shiftTodayStr()（業務上の今日。朝6時までは前の日）。本部で別に決めません。
+ *  ★店舗を選ぶ所は、アプリを開いたときの店舗選択（renderStorePicker）と**わざと形を変えてあります**
+ *    （ko-dai さん「混同しないよう、店舗選択のデザインは少し変えて」。決まりは css/style.css の .today-…）。
+ *  ★読むだけです。記録には何も書きません。開いたときに、最新を取りに行くだけです（Sync.scheduleFlush）。
+ *  ★検算は .claude/skills/t3works-zentai/test_today_shift.py。
+ * ---------------------------------------------------------- */
+
+/** 「今日のシフト」に出す店舗（シフトを組む店舗だけ。名簿だけの店舗には、出す表がありません） */
+function todayShiftStores() {
+  return STORES.filter((s) => shiftBuilds(s.id));
+}
+
+/** 今日のシフトを開く。店舗を渡さなければ、店舗を選ぶ画面 */
+function openTodayShift(storeId) {
+  state.storeId = '';
+  state.view = 'today';
+  todayShiftStore = storeId || '';
+  todayShiftDrawn = '';
+  writeHash();
+  render();
+  window.scrollTo(0, 0);
+  // ★店舗を開いたら、その場で最新を取りに行きます（届いたら、同期の描き直しが表を描き直します）
+  if (todayShiftStore && Sync.enabled() && Sync.pin()) Sync.scheduleFlush(200);
+}
+
+/** さっき描いた「店舗/日付」。同じ表の描き直し（同期）では、見ていた横の位置を戻します */
+let todayShiftDrawn = '';
+
+function renderToday() {
+  const 今日 = shiftTodayStr();
+  const [y, m, d] = 今日.split('-').map(Number);
+  el.todayDate.textContent = `${y}年${m}月${d}日（${DOW[new Date(y, m - 1, d).getDay()]}）`;
+
+  const 店 = todayShiftStores().find((s) => s.id === todayShiftStore);
+  el.todayPick.classList.toggle('is-hidden', !!店);
+  el.todayTable.classList.toggle('is-hidden', !店);
+
+  /* ---- 店舗を選ぶ ---- */
+  if (!店) {
+    todayShiftDrawn = '';
+    el.todayStores.innerHTML = '';
+    todayShiftStores().forEach((s) => {
+      const li = document.createElement('li');
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'today-store';
+      b.style.setProperty('--card-color', s.color);
+
+      const chip = document.createElement('span');
+      chip.className = 'logo-chip';
+      fillLogo(chip, s);
+      const name = document.createElement('span');
+      name.className = 'today-store__name';
+      name.textContent = s.name;
+      b.append(chip, name);
+      if (Closed.isClosed(s.id, y, m, d)) {
+        const 休 = document.createElement('span');
+        休.className = 'today-store__closed';
+        休.textContent = '定休日';
+        b.appendChild(休);
+      }
+      const go = document.createElement('span');
+      go.className = 'today-store__go';
+      go.textContent = 'シフトを見る ›';
+      b.appendChild(go);
+
+      b.addEventListener('click', () => openTodayShift(s.id));
+      li.appendChild(b);
+      el.todayStores.appendChild(li);
+    });
+    return;
+  }
+
+  /* ---- その店舗の今日のシフト（描くのはシフトの部署の関数） ---- */
+  const 横の入れ物 = () => el.todayBody.querySelector('.shift-tt__scroll');
+  const これ = `${店.id}/${今日}`;
+  const 同じ表 = todayShiftDrawn === これ;
+  const 横 = 同じ表 && 横の入れ物() ? 横の入れ物().scrollLeft : null;
+  shiftTodayDraw(el.todayBody, 店.id);
+  todayShiftDrawn = これ;
+  if (横 !== null && 横の入れ物()) 横の入れ物().scrollLeft = 横;   // 同期の描き直し：見ていた横の位置のまま
+  else shiftTodayToNow(el.todayBody);                             // 開いたとき：いまの時刻の少し前から
 }
 
 /* ------------------------------------------------------------
@@ -17457,6 +17567,7 @@ function render中身() {
   const isShift = state.view === 'shift';
   const isCash = state.view === 'cash';
   const isTrain = state.view === 'train';
+  const isToday = state.view === 'today';
 
   /* お金の画面にいるあいだは body に印を付けます。
      入力画面や確認ダイアログは画面をまたいで使い回しているので、
@@ -17464,6 +17575,27 @@ function render中身() {
   document.body.classList.toggle('is-money', isExpense || isCatch || isSettle || isMeeting);
   /* 会議資料は横に長い表を出すので、そのあいだだけページの幅をひろげます */
   document.body.classList.toggle('is-wide', isMeeting);
+
+  /* ---- 今日のシフト（店舗に属さない画面）。出し入れは、この1行だけで決めます ----
+     ★下の3つの道（業務選択・店舗選択・その他の画面）のどれを通っても、ここで隠れます */
+  if (el.viewToday) el.viewToday.classList.toggle('is-hidden', !isToday);
+  if (isToday && el.viewToday) {
+    document.documentElement.style.setProperty('--store', APP.accent || '#2b7fd4');
+    document.title = `今日のシフト｜${APP_NAME}`;
+    el.storeTabs.classList.add('is-hidden');
+    el.storeHead.classList.add('is-hidden');
+    el.dayTabs.classList.add('is-hidden');
+    document.body.classList.add('no-daytabs');
+    // ★シフトの小窓と同じ幅（1100px まで）で出します。シフトの画面の「幅を広げる印」が残っていたら外します
+    document.body.classList.remove('is-shift-wide');
+    // ★他の画面は、名前を書き並べずに全部隠します（画面が増えたとき、ここに足し忘れると2つ重なって出るため）
+    document.querySelectorAll('main > section.view').forEach((v) => {
+      if (v !== el.viewToday) v.classList.add('is-hidden');
+    });
+    renderToday();
+    renderSyncStatus();
+    return;
+  }
 
   /* ---- 業務選択画面：店舗の見出しだけ出して、業務の中身は出さない ---- */
   if (isTasks) {
@@ -18067,6 +18199,14 @@ function bindEvents() {
   $('reportBack').addEventListener('click', goHome);
   $('homeBtn').addEventListener('click', goHome);
   $('storesReportBtn').addEventListener('click', () => openAllStores('report'));
+
+  /* 今日のシフト（店舗選択画面 → 店舗を選ぶ → その店舗の今日のシフト） */
+  /* ★部品が無ければ、何もしません。端末に古い index.html が残ったまま、新しい js/app.js だけが届くことがあります
+       （版の印 ?v= はサーバーが見ないため）。そのとき、ここで転ぶとアプリ全体が開かなくなります。
+       読み込み直せば新しい index.html が届き、ボタンが出ます */
+  const 今日のシフトの口 = [['storesTodayBtn', () => openTodayShift('')], ['todayBack', goHome],
+    ['todayPickBack', () => openTodayShift('')]];
+  今日のシフトの口.forEach(([id, する]) => { const b = $(id); if (b) b.addEventListener('click', する); });
 
   /* 立替金 */
   $('storesExpenseBtn').addEventListener('click', () => openAllStores('expense'));
