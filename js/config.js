@@ -7502,6 +7502,192 @@ function shiftSubmitUrl(code) {
   return u.href;
 }
 
+/* -------- 今日のシフト（タイムテーブル。2026-10-11、ko-dai さんの指示） --------
+ *
+ *  「シフトの使い方」の下の「今日のシフト」を押すと、その日のシフトを、**縦に名前・横に時刻**の表で出します
+ *  （描くのは js/app.js の shiftTodayDraw）。ここには、**時刻の軸**と、**1人分の帯をどこからどこまで引くか**を置きます。
+ *
+ *  ★軸は1時間ごと。**最後の時の次の1列は「ラスト」**と書きます（バグるなら、22時の次は23時の代わりにラスト）。
+ *      バグる                    …  9時〜22時・ラスト
+ *      popo                      … 10時〜23時・ラスト（金・土は 10時〜26時・ラスト）
+ *      おいでんテラス             … 12時〜22時・ラスト
+ *      こじゃれ・炭まろ・ちゃこる … 12時〜23時・ラスト
+ *  ★初めの時刻より前から入っている人がいる日は、**軸がその時刻から始まります**
+ *    （ko-dai さん「12時より前から組まれていた場合は、その時間から表示されるように自動で」）。
+ *    指示は4店舗ですが、バグる・popo も同じにしてあります（軸の外の人が、黙って切れないように）。
+ *  ★「ラスト」の列より後の退勤（popo の 25時 など）は、ラストの列の右端で止めます。
+ *
+ *  ★帯の引き方（記録に入っている時刻だけを濃く出します。**入っていない側は、薄くします**）
+ *      出勤 … entry.t。空なら、その枠の一番早い時刻から、左を薄くして出します（4店舗の、時刻を選ばずに入れた人）
+ *      退勤 … 退勤を持つ店舗（popo と4店舗）は entry.e。空なら、ラストまで、右を薄くして出します
+ *             バグる（退勤を持たない）は、枠の意味で決めます
+ *               ディナー・F（通し） … ラストまで
+ *               立ち上げ・ランチだけ … ディナーの一番早い時刻まで（★何時に上がるかは記録にないので、右を薄くします）
+ *               早上がり            … 何時に上がるかは記録にないので、右を薄くして、橙のふちを付けます
+ *  ★同じ人が同じ日に2つの枠に入っていたら、**1行に帯を2本**出します（前の帯は、次の帯の始まりで止めます）。
+ *  ★見本（テスト用）の人は出しません。ヘルプで来た人は、名前のうしろに「（店舗）」が付きます。
+ *  ★検算は .claude/skills/t3works-shift/today-table.js。
+ */
+const SHIFT_TABLE_AXIS = {
+  baguru:   { from: 9,  to: 22 },
+  // toByDow … 曜日ごとの「最後の時」（0＝日 … 5＝金・6＝土）。書いていない曜日は to
+  popo:     { from: 10, to: 23, toByDow: { 5: 26, 6: 26 } },
+  oiden:    { from: 12, to: 22 },
+  kojare:   { from: 12, to: 23 },
+  sumimaro: { from: 12, to: 23 },
+  chacoru:  { from: 12, to: 23 },
+};
+/** 上に書いていない店舗の軸（★店舗を足したら、上に1行足してください。検算が、書いていない店舗を数えます） */
+const SHIFT_TABLE_AXIS_OTHER = { from: 12, to: 23 };
+
+/** 時刻として読めるか（'' や null は「入っていない」。★Number('') は 0 なので、先に空を見ます） */
+function shiftTableNum(v) {
+  if (v === '' || v === undefined || v === null) return null;
+  const n = Number(v);
+  return isFinite(n) ? n : null;
+}
+
+/**
+ * その店舗・その日の軸
+ *
+ *   一番早い出勤 … その日に入っている人の、一番早い出勤（いなければ null）。軸の初めより早ければ、そこから始めます
+ *   返すもの     … { from, to, hours: [9, 10, …, 22], cols }。cols は「ラスト」の1列を足した列の数です
+ */
+function shiftTableAxis(storeId, dateStr, 一番早い出勤) {
+  const a = SHIFT_TABLE_AXIS[storeId] || SHIFT_TABLE_AXIS_OTHER;
+  const dow = new Date(String(dateStr).replace(/-/g, '/')).getDay();
+  const to = (a.toByDow && a.toByDow[dow]) || a.to;
+  let from = a.from;
+  const 早 = shiftTableNum(一番早い出勤);
+  if (早 !== null && 早 < from) from = Math.max(0, Math.floor(早));
+  const hours = [];
+  for (let h = from; h <= to; h += 1) hours.push(h);
+  return { from, to, hours, cols: hours.length + 1 };
+}
+
+/**
+ * その時刻が、軸の左から何割の所か（0〜1）
+ *
+ * ★「ラスト」の印（SHIFT_END_LAST）は右端です。ラストの列より後の時刻も、右端で止めます。
+ */
+function shiftTablePos(axis, t) {
+  if (t === SHIFT_END_LAST) return 1;
+  const n = shiftTableNum(t);
+  if (n === null) return 0;
+  const v = Math.min(Math.max(n, axis.from), axis.from + axis.cols);
+  return (v - axis.from) / axis.cols;
+}
+
+/** バグるのような「退勤を持たない店舗」で、立ち上げ・ランチだけの人の帯を止める時刻（ディナーの一番早い時刻） */
+function shiftTableNoon(storeId) {
+  const 夜 = shiftSlotsOf(storeId).find((s) => s.id === 'dinner');
+  const 時刻 = ((夜 && 夜.times) || []).map(shiftTableNum).filter((n) => n !== null && n > 0);
+  return 時刻.length ? Math.min.apply(null, 時刻) : shiftTimeBounds(storeId).夜;
+}
+
+/**
+ * 1人・1つの枠分の帯
+ *
+ *   from … 帯の始まり（時刻）。出勤が空で、枠にも時刻がなければ null（軸の左端から出します）
+ *   to   … 帯の終わり（時刻か、ラストの印）
+ *   noFrom／noTo … 記録にその時刻が入っていない（薄くする側）
+ *   text … 名前の下に出す字（「17:00〜22:00」「11:00 F」「仕込み」など）
+ */
+function shiftTableBar(storeId, slotId, entry) {
+  const slot = shiftSlotsOf(storeId).find((s) => s.id === slotId) || null;
+  let from = shiftTableNum(entry.t);
+  const noFrom = from === null;
+  if (noFrom) from = slot && slot.times && slot.times.length ? shiftTableNum(slot.times[0]) : null;
+
+  let to = SHIFT_END_LAST;
+  let noTo = false;
+  const 通し = shiftIsFull(storeId, entry);
+  if (shiftUsesEnd(storeId)) {
+    const 退勤 = shiftTableNum(entry.e);
+    if (entry.e === SHIFT_END_LAST) to = SHIFT_END_LAST;
+    else if (退勤 !== null && (from === null || 退勤 > from)) to = 退勤;
+    else noTo = true;   // 決めていない（または出勤より前）。ラストまで、薄く
+  } else if (slotId !== 'dinner' && !通し) {
+    // 立ち上げ・ランチだけ。何時に上がるかは記録にないので、ディナーの始まりまでを、薄く
+    const 昼まで = shiftTableNoon(storeId);
+    if (from === null || 昼まで > from) to = 昼まで;
+    noTo = true;
+  }
+  const early = !!entry.early && shiftUsesEarly(storeId);
+  if (early) noTo = true;
+
+  let text = shiftTimeSpan(storeId, slotId, entry) || (slot ? slot.name : '');
+  if (通し && shiftShowsFullMark(storeId)) text += ' F';
+  if (early) text += ' 早上がり';
+  return { slot: slotId, from, to, noFrom, noTo, early, text };
+}
+
+/**
+ * その日の表の中身（軸と、1人1行）
+ *
+ *   day      … 記録のままの1日（{ open, lunch, dinner }。なければ空として読みます）
+ *   名簿の順 … 名前の並び（同じ時刻の人を、名簿の順に並べるため。渡さなくても動きます）
+ *   返すもの … { axis, rows: [{ n, label, lane, bars: [{ slot, from, to, noFrom, noTo, early, text, x0, x1 }] }] }
+ *              x0・x1 は、帯の左端・右端が軸の左から何割か（0〜1）です
+ *
+ * ★行は持ち場（キッチン → ホール）ごと、その中は出勤の早い順です。
+ * ★店舗の id を渡せば、どの画面からでも呼べます（いま開いている店舗を見ません）。
+ */
+function shiftTableModel(storeId, dateStr, day, 名簿の順) {
+  const order = Array.isArray(名簿の順) ? 名簿の順 : [];
+  const rows = [];
+  const 行の = {};
+  shiftSlotsOf(storeId).forEach((slot) => {
+    shiftRowList(storeId, day, slot.id).forEach((raw) => {
+      if (!raw || !raw.n || isShiftTester(raw.n)) return;
+      // ★時刻の入っていない人は、その枠の普段の時刻として読みます（組む画面の shiftDayOf と同じ）
+      const e = shiftTableNum(raw.t) === null ? { ...raw, t: shiftDefaultTime(storeId, slot.id) } : raw;
+      const key = `${e.n}|${e[HELP_FROM_KEY] || ''}`;
+      if (!行の[key]) {
+        行の[key] = { n: String(e.n), label: String(e.n) + helpFromLabel(e), lane: shiftLaneOf(e), bars: [] };
+        rows.push(行の[key]);
+      }
+      行の[key].bars.push(shiftTableBar(storeId, slot.id, e));
+    });
+  });
+
+  // 並べるときの「始まり」。帯は、始まりの分からないものを前に／行は、分からない人を一番下に置きます
+  const 始まり = (b, 空なら) => (b.from === null ? 空なら : b.from);
+  let 早 = null;
+  rows.forEach((r) => {
+    r.bars.sort((a, b) => 始まり(a, -1) - 始まり(b, -1));
+    r.bars.forEach((b, i) => {
+      if (!b.noFrom && b.from !== null && (早 === null || b.from < 早)) 早 = b.from;
+      // ★次の帯に重なるなら、そこで止めます（続けて入っているので、つなぎ目は薄くしません）
+      const 次 = r.bars[i + 1];
+      if (!次 || 次.from === null) return;
+      if (b.to === SHIFT_END_LAST || b.to > 次.from) {
+        b.to = 次.from;
+        if (!b.early) b.noTo = false;
+        次.noFrom = false;
+      }
+    });
+  });
+
+  const axis = shiftTableAxis(storeId, dateStr, 早);
+  const 最小 = 0.25 / axis.cols;   // 15分の幅。これより細い帯は見えないので、ここまでは出します
+  rows.forEach((r) => r.bars.forEach((b) => {
+    let x0 = shiftTablePos(axis, b.from === null ? axis.from : b.from);
+    let x1 = shiftTablePos(axis, b.to);
+    if (x0 > 1 - 最小) x0 = 1 - 最小;
+    if (x1 < x0 + 最小) x1 = x0 + 最小;
+    b.x0 = x0;
+    b.x1 = x1;
+  }));
+
+  const 持ち場の順 = SHIFT_LANES.map((l) => l.id);
+  const 名簿で = (n) => { const i = order.indexOf(n); return i < 0 ? 9999 : i; };
+  rows.sort((a, b) => (持ち場の順.indexOf(a.lane) - 持ち場の順.indexOf(b.lane))
+    || (始まり(a.bars[0], 99) - 始まり(b.bars[0], 99))
+    || (名簿で(a.n) - 名簿で(b.n)));
+  return { axis, rows };
+}
+
 /* -------- ヘルプ要請・人員過多（店舗どうしで人を貸し借りする） --------
  *
  * ★2026-09-18、ko-dai さんの指示。**こじゃれ・炭まろ・ちゃこる・おいでんテラスの4店舗だけ**。
