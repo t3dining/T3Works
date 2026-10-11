@@ -7825,6 +7825,18 @@ function openTodayShift(storeId) {
 let todayShiftDrawn = '';
 
 function renderToday() {
+  /* ★「今日」を決める部品と表を描く部品は、js/shift-sheet.js にあります（2026-10-11、シフトの部署が移しました）。
+       端末に古い js/shift-sheet.js が残ったまま、新しい js/app.js だけが届くと、ここに無いことがあります。
+       転ばずに、そう出します（あちらの shiftTodayDraw と同じ文です）。読み込み直せば直ります。
+     ★無いときに、本部で「今日」を決め直しません（決め方が2か所になるため） */
+  if (typeof shiftTodayStr !== 'function') {
+    el.todayDate.textContent = '';
+    el.todayPick.classList.add('is-hidden');
+    el.todayTable.classList.remove('is-hidden');
+    el.todayBody.textContent = '新しい版を読み込んでいる途中です。画面を読み込み直してください。';
+    todayShiftDrawn = '';
+    return;
+  }
   const 今日 = shiftTodayStr();
   const [y, m, d] = 今日.split('-').map(Number);
   el.todayDate.textContent = `${y}年${m}月${d}日（${DOW[new Date(y, m - 1, d).getDay()]}）`;
@@ -7877,7 +7889,7 @@ function renderToday() {
   shiftTodayDraw(el.todayBody, 店.id);
   todayShiftDrawn = これ;
   if (横 !== null && 横の入れ物()) 横の入れ物().scrollLeft = 横;   // 同期の描き直し：見ていた横の位置のまま
-  else shiftTodayToNow(el.todayBody);                             // 開いたとき：いまの時刻の少し前から
+  else if (typeof shiftTodayToNow === 'function') shiftTodayToNow(el.todayBody);   // 開いたとき：いまの時刻の少し前から
 }
 
 /* ------------------------------------------------------------
