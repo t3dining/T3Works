@@ -887,10 +887,11 @@ function shiftTodayStyle() {
     '.shift-tt__list{display:grid;grid-template-columns:repeat(var(--tt-lanes,2),minmax(0,1fr));gap:10px 14px;align-items:start;max-width:600px}',
     '.shift-tt__group{border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden}',
     '.shift-tt__ghead{margin:0;padding:5px 12px;font-size:11.5px;font-weight:700;color:var(--text-sub);background:var(--surface-2)}',
-    '.shift-tt__row{display:flex;align-items:baseline;justify-content:space-between;gap:14px;padding:8px 12px;border-top:1px solid var(--line-2)}',
-    '.shift-tt__rname{flex:1 1 auto;min-width:0;font-size:14px;font-weight:700;line-height:1.35;overflow-wrap:anywhere}',
+    // ★名前と時刻が1行に収まらないとき（スマホの幅で「仕込み〜22:00」など）は、時刻が下の段に回ります（名前の途中では折りません）
+    '.shift-tt__row{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 14px;padding:8px 12px;border-top:1px solid var(--line-2)}',
+    '.shift-tt__rname{flex:0 1 auto;min-width:0;font-size:14px;font-weight:700;line-height:1.35;overflow-wrap:anywhere}',
     '.shift-tt__rfrom{font-size:11px;font-weight:400;color:var(--text-sub)}',
-    '.shift-tt__rtime{flex:0 0 auto;font-size:14px;line-height:1.35;white-space:nowrap;font-variant-numeric:tabular-nums}',
+    '.shift-tt__rtime{flex:0 0 auto;margin-left:auto;font-size:14px;line-height:1.35;white-space:nowrap;font-variant-numeric:tabular-nums}',
     // 出勤の時刻が入っていない人（枠の名前を出します）
     '.shift-tt__rtime.is-none{font-size:12px;color:var(--text-sub)}',
     '.shift-tt__row.is-me .shift-tt__rname{color:var(--accent)}',
@@ -914,8 +915,9 @@ function shiftTodayStyle() {
       // 一覧：横に2つ並べるので、箱の中の空きと字を少し詰めます（長い名前は箱の中で折れます）
       + '.shift-tt__list{gap:8px}'
       + '.shift-tt__ghead{padding:5px 8px}'
-      + '.shift-tt__row{gap:6px;padding:7px 8px}'
-      + '.shift-tt__rname,.shift-tt__rtime{font-size:13px}'
+      + '.shift-tt__row{gap:1px 6px;padding:7px 8px}'
+      + '.shift-tt__rname{font-size:13px}'
+      + '.shift-tt__rtime{font-size:12.5px;letter-spacing:-.2px}'
       + '.shift-tt__rfrom{display:block;font-size:10px}'
       + '.shift-tt__rtime.is-none{font-size:11px}'
       + '}',
@@ -985,7 +987,7 @@ function shiftTodayRender(box, 中身) {
 /**
  * 名前と出勤時刻だけの一覧（時刻の表を出さない店舗。持ち場ごとに分けます）
  *
- * ★出すのは名前と出勤時刻だけです（退勤・帯・色の説明は出しません）。何を出すかは js/config.js の shiftTodayList が決めます。
+ * ★出すのは名前と出勤時刻です（退勤は、決まっている人だけ。帯・色の説明は出しません）。何を出すかは js/config.js の shiftTodayList が決めます。
  * ★持ち場（キッチン／ホール）ごとの箱に分けて、**いつも横に並べます**（左がキッチン・右がホール。スマホの幅でも横）。
  *   場所を動かさないように、誰もいない持ち場の箱も出します（「キッチン　0人」。中は空）。
  */
@@ -1009,7 +1011,9 @@ function shiftTodayListBox(storeId, model, 自分) {
       const 名前 = 部品('span', 'shift-tt__rname', r.n);
       // ヘルプで来た人の「（店舗）」は、名前のうしろに小さく出します
       if (r.label !== r.n) 名前.appendChild(部品('span', 'shift-tt__rfrom', r.label.slice(r.n.length)));
-      行.append(名前, 部品('span', 'shift-tt__rtime' + (r.noTime ? ' is-none' : ''), r.time));
+      // ★退勤が決まっている人は「17:00〜21:00」「仕込み〜22:00」。決まっていない人は出勤だけ（→ js/config.js の shiftTodayList）
+      //   出勤の時刻も退勤も入っていない人（「仕込み」とだけ出る人）は、小さく薄い字にします
+      行.append(名前, 部品('span', 'shift-tt__rtime' + (r.noTime && !r.end ? ' is-none' : ''), r.time + (r.end ? `〜${r.end}` : '')));
       組.appendChild(行);
     });
     box.appendChild(組);

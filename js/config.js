@@ -7791,7 +7791,8 @@ const SHIFT_TABLE_LUNCH_OUT = {
  *
  * ko-dai さん「バグるとpopo以外の店舗の今日のシフトの表記を変更してください」
  * 「タイムテーブルはなしでアルバイトの名前と出勤時間のみのリスト表示にしてください」。
- * ★ここに載っていない店舗（こじゃれ・炭まろ・ちゃこる・おいでんテラス）は、**名前と出勤時刻だけの一覧**で出します（→ shiftTodayList）。
+ * ★ここに載っていない店舗（こじゃれ・炭まろ・ちゃこる・おいでんテラス）は、**名前と出勤時刻の一覧**で出します（→ shiftTodayList。
+ *   退勤が決まっている人は、退勤も出します）。
  *   ワークス・マイン・店舗選択の画面・アルバイトの提出ページの全部で同じです（描く部品が同じため → js/shift-sheet.js の shiftTodayRender）。
  * ★一覧の店舗では、上の軸（SHIFT_TABLE_AXIS）と下の色の分け方（仕込みだけの人の色）は、いまは画面に出ません。
  *   並び（持ち場ごと・出勤の早い順）は、表と同じ shiftTableModel から取っています。表に戻すときは、ここに店舗を足すだけです。
@@ -7807,11 +7808,14 @@ function shiftTodayUsesTable(storeId) {
  * 名前と出勤時刻だけの一覧（時刻の表を出さない店舗）
  *
  *   model    … shiftTableModel の返したもの（並びは表と同じ：持ち場ごと・出勤の早い順）
- *   返すもの … [{ n, label, lane, time, noTime }]
+ *   返すもの … [{ n, label, lane, time, end, noTime }]
  *              time は「14:00」。出勤の時刻が記録に入っていない人は、入っている枠の名前（「仕込み」「営業」）で、noTime が true
+ *              end  は「22:00」か「ラスト」。**退勤が決まっている人だけ**入ります（決まっていなければ空）
  *
- * ★退勤は出しません（ko-dai さん「出勤時間のみ」）。
- * ★同じ日に2つの枠に入っている人は、早い方の1つだけ出します（出勤の時刻は1つ）。
+ * ★退勤は、**決まっている人だけ**出します（2026-10-12、ko-dai さん「退勤時間が決まっている人は退勤時間も入れてください」。
+ *   はじめは「出勤時間のみ」でした）。画面には「17:00〜21:00」「18:00〜ラスト」「仕込み〜22:00」と出ます（→ js/shift-sheet.js の shiftTodayListBox）。
+ *   ★決まっていない人に「〜ラスト」を出さないこと（時刻の表では、決まっていない人をラストまで薄く引いていますが、一覧では出勤だけです）。
+ * ★同じ日に2つの枠に入っている人は、出勤は早い方・退勤は遅い方の枠のものを出します（1人1行）。
  * ★時刻の入っていない人に、枠の一番早い時刻（12:00 など）を出さないこと。入っていない時刻を、決まっているように見せてしまいます
  */
 function shiftTodayList(storeId, model) {
@@ -7819,11 +7823,15 @@ function shiftTodayList(storeId, model) {
   return ((model && model.rows) || []).map((r) => {
     const b = r.bars[0];
     const 時刻あり = !!b && !b.noFrom && b.from !== null;
+    // 退勤：一番あとの帯で、記録に退勤が入っているときだけ（noTo＝決めていない）
+    const 最後 = r.bars[r.bars.length - 1];
+    const 退勤あり = !!最後 && !最後.noTo && (最後.to === SHIFT_END_LAST || shiftTableNum(最後.to) !== null);
     return {
       n: r.n,
       label: r.label,
       lane: r.lane,
       time: 時刻あり ? shiftTimeText(shiftTimeKey(b.from)) : (b ? 枠の名前(b.slot) : ''),
+      end: 退勤あり ? (最後.to === SHIFT_END_LAST ? SHIFT_END_LAST_NAME : shiftTimeText(shiftTimeKey(最後.to))) : '',
       noTime: !時刻あり,
     };
   });
