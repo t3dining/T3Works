@@ -789,6 +789,7 @@ function makePdf(jpegs, w, h) {
  *    shiftTodayRender(入れ物, { storeId, dateStr, day, title, … }) で、入れ物の中に描きます。
  *    **どこから記録を持ってくるかは、呼ぶ側の都合です**（ワークスは端末の記録、提出ページはサーバーからもらった確定の表）。
  *    時刻の軸・帯の引き方・色の分け方は js/config.js の「今日のシフト」の節（shiftTableModel）が決めます。ここは描くだけです。
+ *    ★時刻の表で出すのはバグると popo だけです。他の4店舗は、名前と出勤時刻だけの一覧（shiftTodayListBox。2026-10-12）。
  *
  *  ★見た目は shiftTodayStyle が自分で入れます。**決まりは全部 .shift-tt の中だけに効きます**
  *    （親の class に頼りません。ワークス・マイン・本部の画面・提出ページの、どこに置いても同じに見えます）。
@@ -880,6 +881,17 @@ function shiftTodayStyle() {
     '.shift-tt__legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:8px 0 0;font-size:11.5px;line-height:1.6;color:var(--text-sub)}',
     '.shift-tt__key{display:inline-block;width:20px;height:10px;margin-right:5px;border-radius:3px;vertical-align:-1px;background:var(--tt-c)}',
     '.shift-tt__memo{margin:8px 0 0;font-size:12.5px;line-height:1.6;overflow-wrap:anywhere}',
+    // ★名前と出勤時刻だけの一覧（時刻の表を出さない店舗）。持ち場ごとの箱を、広い画面では横に・スマホの幅では縦に並べます
+    '.shift-tt__list{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 14px;align-items:start;max-width:600px}',
+    '.shift-tt__group{border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden}',
+    '.shift-tt__ghead{margin:0;padding:5px 12px;font-size:11.5px;font-weight:700;color:var(--text-sub);background:var(--surface-2)}',
+    '.shift-tt__row{display:flex;align-items:baseline;justify-content:space-between;gap:14px;padding:8px 12px;border-top:1px solid var(--line-2)}',
+    '.shift-tt__rname{font-size:14px;font-weight:700;line-height:1.35;overflow-wrap:anywhere}',
+    '.shift-tt__rfrom{font-size:11px;font-weight:400;color:var(--text-sub)}',
+    '.shift-tt__rtime{flex:0 0 auto;font-size:14px;line-height:1.35;white-space:nowrap;font-variant-numeric:tabular-nums}',
+    // 出勤の時刻が入っていない人（枠の名前を出します）
+    '.shift-tt__rtime.is-none{font-size:12px;color:var(--text-sub)}',
+    '.shift-tt__row.is-me .shift-tt__rname{color:var(--accent)}',
     // ★スマホの幅では、横に動かさずに1画面に収めます（→ SHIFT_TODAY_NARROW）。
     //   表のこれより狭くしない幅と、名前の列の幅は、部品に直に入れてあるので、ここで上書きします（!important）。
     //   時刻の数字は、列の幅の7割ほどの大きさ（列が多い日は小さく。cqw の使えない端末では 9px のまま）
@@ -945,14 +957,53 @@ function shiftTodayRender(box, 中身) {
     if (v.draft) {
       root.appendChild(部品('p', 'shift-tt__note shift-tt__note--warn', '★このシフトは、まだ確定していません（組んでいる途中の表です）。'));
     }
-    root.appendChild(shiftTodayTable(model, v.me));
-    root.appendChild(shiftTodayLegend(v.storeId, model));
+    if (shiftTodayUsesTable(v.storeId)) {
+      root.appendChild(shiftTodayTable(model, v.me));
+      root.appendChild(shiftTodayLegend(v.storeId, model));
+    } else {
+      // ★時刻の表を出さない店舗（こじゃれ・炭まろ・ちゃこる・おいでんテラス）は、名前と出勤時刻だけの一覧
+      //   （2026-10-12、ko-dai さんの指示 → js/config.js の SHIFT_TODAY_TABLE_STORES）
+      root.appendChild(shiftTodayListBox(v.storeId, model, v.me));
+    }
   }
   if (v.memo) root.appendChild(部品('p', 'shift-tt__memo', `メモ：${v.memo}`));
 
   box.innerHTML = '';
   box.appendChild(root);
   return model;
+}
+
+/**
+ * 名前と出勤時刻だけの一覧（時刻の表を出さない店舗。持ち場ごとに分けます）
+ *
+ * ★出すのは名前と出勤時刻だけです（退勤・帯・色の説明は出しません）。何を出すかは js/config.js の shiftTodayList が決めます。
+ * ★持ち場（キッチン／ホール）ごとの箱に分けます。広い画面では横に並び、スマホの幅では縦に並びます。
+ */
+function shiftTodayListBox(storeId, model, 自分) {
+  const 部品 = (tag, cls, text) => {
+    const x = document.createElement(tag);
+    if (cls) x.className = cls;
+    if (text !== undefined) x.textContent = text;
+    return x;
+  };
+  const box = 部品('div', 'shift-tt__list');
+  const 行たち = shiftTodayList(storeId, model);
+  SHIFT_LANES.forEach((lane) => {
+    const 人 = 行たち.filter((r) => r.lane === lane.id);
+    if (!人.length) return;
+    const 組 = 部品('div', 'shift-tt__group');
+    組.appendChild(部品('p', 'shift-tt__ghead', `${lane.name}　${人.length}人`));
+    人.forEach((r) => {
+      const 行 = 部品('div', 'shift-tt__row' + (自分 && r.n === 自分 && r.label === r.n ? ' is-me' : ''));
+      const 名前 = 部品('span', 'shift-tt__rname', r.n);
+      // ヘルプで来た人の「（店舗）」は、名前のうしろに小さく出します
+      if (r.label !== r.n) 名前.appendChild(部品('span', 'shift-tt__rfrom', r.label.slice(r.n.length)));
+      行.append(名前, 部品('span', 'shift-tt__rtime' + (r.noTime ? ' is-none' : ''), r.time));
+      組.appendChild(行);
+    });
+    box.appendChild(組);
+  });
+  return box;
 }
 
 /** 表（1行目が時刻、左の列が名前。持ち場ごとに区切ります） */

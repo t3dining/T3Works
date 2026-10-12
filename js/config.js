@@ -4440,6 +4440,50 @@ function journal読み直しの頼み(storeId) {
 }
 
 /* ------------------------------------------------------------
+ *  仕入明細に出さない仕入先（マネージで店ごとに決める。ko-dai さんの指示・2026-10-12）
+ *
+ *  「バグるの仕入れ明細で（4つの仕入先）をアプリ上では非表示に。スプレッドシートには何もせず、バグる以外は変えない」
+ *  ★**仕入先の名前を、このファイルにも js/app.js にも書きません。**実在の取引先の名前で、ここは GitHub Pages で
+ *    誰でも読めます。名前はマネージの欄で入れ、記録（合言葉の内側）に置きます。
+ *  ★置き場は記録 _nippougrid/<店舗> の hide（値は名前の並び）。「読み直してほしい」の印（reload）と同じ行です。
+ *  ★アプリは、日報から読んだ仕入先の並びから、この名前の行を**出さないだけ**です。
+ *      ・欄を出さない  ・その行は日報に書かない（打ちかけが残っていても送らない）
+ *      ・日報（スプレッドシート）には何もしません。行も数もそのままです
+ *      ・人件費の行は絞りません（仕入明細だけ）
+ *  ★名前は、空白を取り、全角と半角をそろえてから比べます（日報の名前と1字でも違えば、消えません）。
+ * ---------------------------------------------------------- */
+/** 仕入先の名前を、比べる形にします（空白を取り、全角の英数字を半角に） */
+function journal仕入先の名(name) {
+  return toHalfWidth(String(name === null || name === undefined ? '' : name)).replace(/[\s　]/g, '');
+}
+
+/** 欄の文字（「、」「,」改行で区切る）→ 名前の並び（前後の空白を取り、重なりを除く） */
+function journal出さない仕入先を読む(文) {
+  const 見た = {};
+  return String(文 === null || 文 === undefined ? '' : 文).split(/[、，,\n\r]+/)
+    .map((x) => x.trim())
+    .filter((x) => {
+      const k = journal仕入先の名(x);
+      if (!k || 見た[k]) return false;
+      見た[k] = true;
+      return true;
+    });
+}
+
+/** その店舗の、仕入明細に出さない仕入先（名前の並び。なければ空） */
+function journal出さない仕入先(storeId) {
+  const rec = Store.getDay(NIPPOU_GRID_RELOAD_STORE, storeId);
+  const v = rec && rec.items && rec.items.hide ? rec.items.hide.value : null;
+  return Array.isArray(v) ? v.filter((x) => typeof x === 'string' && journal仕入先の名(x)) : [];
+}
+
+/** その仕入先を、その店舗の仕入明細に出さないか */
+function journal出さない仕入先か(storeId, name) {
+  const k = journal仕入先の名(name);
+  return !!k && journal出さない仕入先(storeId).some((x) => journal仕入先の名(x) === k);
+}
+
+/* ------------------------------------------------------------
  *  大将へのLINEをコピー（ジャーナル。ko-dai さんの指示・2026-10-01）
  *
  *  「記録する」と「この月の現金売上」の間に、その日の税抜売上を書いた文をコピーするボタンを出す店舗。
@@ -7686,6 +7730,9 @@ function shiftMarkMove(前の番号, 新しい番号) {
  *  「シフトの使い方」の下の「今日のシフト」を押すと、その日のシフトを、**縦に名前・横に時刻**の表で出します
  *  （描くのは js/app.js の shiftTodayDraw）。ここには、**時刻の軸**と、**1人分の帯をどこからどこまで引くか**を置きます。
  *
+ *  ★★時刻の表で出すのは、**バグると popo だけ**です（2026-10-12、ko-dai さんの指示 → 下の SHIFT_TODAY_TABLE_STORES）。
+ *    こじゃれ・炭まろ・ちゃこる・おいでんテラスは、名前と出勤時刻だけの一覧で出します。下の4店舗の軸・色は、いまは画面に出ません。
+ *
  *  ★軸は1時間ごと。**最後の時の次の1列は「ラスト」**と書きます（バグるなら、22時の次は23時の代わりにラスト）。
  *      バグる                    …  9時〜22時・ラスト
  *      popo                      … 10時〜23時・ラスト（金・土は 10時〜26時・ラスト）
@@ -7738,6 +7785,49 @@ const SHIFT_TABLE_AXIS_OTHER = { from: 12, to: 23 };
 const SHIFT_TABLE_LUNCH_OUT = {
   baguru: { from: 14, to: 16 },
 };
+
+/**
+ * 今日のシフトを「時刻の表」で出す店舗（2026-10-12、ko-dai さんの指示）
+ *
+ * ko-dai さん「バグるとpopo以外の店舗の今日のシフトの表記を変更してください」
+ * 「タイムテーブルはなしでアルバイトの名前と出勤時間のみのリスト表示にしてください」。
+ * ★ここに載っていない店舗（こじゃれ・炭まろ・ちゃこる・おいでんテラス）は、**名前と出勤時刻だけの一覧**で出します（→ shiftTodayList）。
+ *   ワークス・マイン・店舗選択の画面・アルバイトの提出ページの全部で同じです（描く部品が同じため → js/shift-sheet.js の shiftTodayRender）。
+ * ★一覧の店舗では、上の軸（SHIFT_TABLE_AXIS）と下の色の分け方（仕込みだけの人の色）は、いまは画面に出ません。
+ *   並び（持ち場ごと・出勤の早い順）は、表と同じ shiftTableModel から取っています。表に戻すときは、ここに店舗を足すだけです。
+ */
+const SHIFT_TODAY_TABLE_STORES = ['baguru', 'popo'];
+
+/** その店舗の今日のシフトを、時刻の表で出すか（出さない店舗は、名前と出勤時刻の一覧） */
+function shiftTodayUsesTable(storeId) {
+  return SHIFT_TODAY_TABLE_STORES.includes(storeId);
+}
+
+/**
+ * 名前と出勤時刻だけの一覧（時刻の表を出さない店舗）
+ *
+ *   model    … shiftTableModel の返したもの（並びは表と同じ：持ち場ごと・出勤の早い順）
+ *   返すもの … [{ n, label, lane, time, noTime }]
+ *              time は「14:00」。出勤の時刻が記録に入っていない人は、入っている枠の名前（「仕込み」「営業」）で、noTime が true
+ *
+ * ★退勤は出しません（ko-dai さん「出勤時間のみ」）。
+ * ★同じ日に2つの枠に入っている人は、早い方の1つだけ出します（出勤の時刻は1つ）。
+ * ★時刻の入っていない人に、枠の一番早い時刻（12:00 など）を出さないこと。入っていない時刻を、決まっているように見せてしまいます
+ */
+function shiftTodayList(storeId, model) {
+  const 枠の名前 = (id) => (shiftSlotsOf(storeId).find((s) => s.id === id) || {}).name || '';
+  return ((model && model.rows) || []).map((r) => {
+    const b = r.bars[0];
+    const 時刻あり = !!b && !b.noFrom && b.from !== null;
+    return {
+      n: r.n,
+      label: r.label,
+      lane: r.lane,
+      time: 時刻あり ? shiftTimeText(shiftTimeKey(b.from)) : (b ? 枠の名前(b.slot) : ''),
+      noTime: !時刻あり,
+    };
+  });
+}
 
 /** 帯の色の種類（この順に、表の下の説明に並べます） */
 const SHIFT_TABLE_KINDS = ['open', 'lunch', 'dinner', 'full', 'last'];

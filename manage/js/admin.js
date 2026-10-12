@@ -2997,6 +2997,93 @@ function renderNippouGridReload() {
     row.append(名, b, 時, 済);
     行たち.appendChild(row);
   });
+  // ★ジャーナルのマネージの欄は、ここから続けて描きます（renderAll の1行を増やさないため）
+  renderNippouGridHide();
+}
+
+/* -------- 仕入明細に出さない仕入先（ジャーナルの持ち物・ko-dai さん・2026-10-12） --------
+ *
+ *  「バグるの仕入れ明細で（4つの仕入先）をアプリ上では非表示に。スプレッドシートには何もせず、バグる以外は変えない」
+ *  ★仕入先の名前は実在の取引先です。**このファイルにも js/ にも書きません**（公開されます）。ここの欄で入れてもらい、
+ *    記録 _nippougrid/<店舗> の hide に置きます（同期で店の端末に届きます）。
+ *  ★読み方・比べ方は js/config.js（journal出さない仕入先を読む・journal出さない仕入先・journal仕入先の名）。ワークスと同じものを呼びます。
+ *  ★店の端末は、日報から読んだ仕入先の並びから、ここに入れた名前の行を出さないだけです。日報には何もしません。
+ *  ★欄は1回だけ作って使い回します（renderAll は同期のたびに呼ばれます）。保存するのは変わった店舗だけです。
+ */
+function renderNippouGridHide() {
+  let sec = document.getElementById('nippouGridHide');
+  if (!sec) {
+    const 前 = document.getElementById('nippouGridReload');
+    if (!前) return;
+    sec = document.createElement('section');
+    sec.className = 'admin-block';
+    sec.id = 'nippouGridHide';
+    sec.innerHTML = `
+      <div class="admin-block__head">
+        <h2 class="admin-block__title">仕入明細に出さない仕入先</h2>
+      </div>
+      <p class="admin-note">
+        ワークス・マインのジャーナルの<b>④仕入明細</b>に<b>出したくない仕入先</b>を、店ごとに入れてください。
+        名前は<b>日報と同じ字</b>で、「、」で区切ります（空白は気にしません）。<br>
+        <b>日報（スプレッドシート）は何も変わりません。</b>アプリの画面に欄を出さず、その行を日報に書かないだけです。
+        空にして保存すると、全部の仕入先が出ます。
+      </p>
+      <div class="admin-fields" data-gh="fields"></div>
+      <div class="admin-actions">
+        <button type="button" class="btn btn--primary" data-gh="save">出さない仕入先を保存</button>
+        <span class="admin-saved is-hidden" data-gh="saved">保存しました</span>
+      </div>`;
+    sec.addEventListener('click', (e) => {
+      const b = e.target && e.target.closest ? e.target.closest('button[data-gh="save"]') : null;
+      if (b) saveNippouGridHide();
+    });
+    前.insertAdjacentElement('afterend', sec);
+  }
+  /* ★描き直すのは、保存してある中身が変わったときだけです。「読み直してもらう」を押したときにも
+       ここを通るので、毎回作り直すと、保存していない打ちかけが消えます */
+  const 店たち = STORES.filter((s) => JOURNAL_STORES.indexOf(s.id) >= 0);
+  const 印 = JSON.stringify(店たち.map((s) => [s.id, journal出さない仕入先(s.id)]));
+  const 欄たち = sec.querySelector('[data-gh="fields"]');
+  if (欄たち.dataset.sign === 印) return;
+  欄たち.dataset.sign = 印;
+  欄たち.innerHTML = '';
+  店たち.forEach((s) => {
+    const wrap = document.createElement('label');
+    wrap.className = 'field';
+    const label = document.createElement('span');
+    label.className = 'field__label';
+    const 今 = journal出さない仕入先(s.id);
+    label.textContent = 今.length ? `${s.name}（いま ${今.length}件）` : s.name;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'field__input';
+    input.dataset.store = s.id;
+    input.autocomplete = 'off';
+    // ★入力例に本当の仕入先の名前を書かないこと。ここは公開されるファイルです
+    input.placeholder = '例：◯◯商店、△△水産';
+    input.value = 今.join('、');
+    wrap.append(label, input);
+    欄たち.appendChild(wrap);
+  });
+}
+
+function saveNippouGridHide() {
+  const sec = document.getElementById('nippouGridHide');
+  if (!sec) return;
+  let 数 = 0;
+  [...sec.querySelectorAll('input[data-store]')].forEach((i) => {
+    const 次 = journal出さない仕入先を読む(i.value);
+    const 今 = journal出さない仕入先(i.dataset.store);
+    // ★変わった店舗だけ書きます（同期とシートの版履歴を増やさない）。並びの順が違うだけでも、打ったとおりに残します
+    if (JSON.stringify(次) === JSON.stringify(今)) return;
+    Store.setItem(NIPPOU_GRID_RELOAD_STORE, i.dataset.store, 'hide', { value: 次 });
+    数 += 1;
+  });
+  renderNippouGridHide();
+  const 出た = sec.querySelector('[data-gh="saved"]');
+  出た.textContent = 数 ? `保存しました（${数}店舗）` : '変わったところはありません';
+  出た.classList.remove('is-hidden');
+  setTimeout(() => 出た.classList.add('is-hidden'), 2500);
 }
 
 /* -------- 日報フォルダ --------

@@ -2875,8 +2875,15 @@ const GridCache = {
  *   新しく増えた仕入先を出したいときは「読み直す」を押してもらいます。
  */
 function cashGridNow() {
+  /* ★マネージで「仕入明細に出さない」と決めた仕入先を、ここで外します（ko-dai さんの指示・2026-10-12）。
+       画面に出す並びは必ずここを通るので、欄が出ません。日報（スプレッドシート）には何もしません。
+       人件費の行は絞りません。外した件数は 隠した に入れます（画面に「出していない仕入先：◯件」と出すため） */
+  const 絞る = (w) => {
+    const 残す = w.shiire.filter((r) => !journal出さない仕入先か(state.storeId, r.name));
+    return { ...w, shiire: 残す, 隠した: w.shiire.length - 残す.length };
+  };
   const g = GridCache.get(state.storeId, state.y, state.m);
-  if (g) return nippouGridSplit(g);
+  if (g) return 絞る(nippouGridSplit(g));
   // 前の月をさかのぼって探します（12か月分まで）
   let y = state.y;
   let m = state.m;
@@ -2884,7 +2891,7 @@ function cashGridNow() {
     m -= 1;
     if (m < 1) { m = 12; y -= 1; }
     const old = GridCache.get(state.storeId, y, m);
-    if (old) return nippouGridSplit(old);
+    if (old) return 絞る(nippouGridSplit(old));
   }
   return null;
 }
@@ -4291,7 +4298,8 @@ function renderGridBox() {
      出前館の欄が平気なのは、そちらが作り直していないからです。 */
   const 印 = !w ? 'なし'
     : `${state.storeId}/${ymd(state.y, state.m, state.d)}/`
-      + w.shiire.map((r) => r.name).join(',') + '|' + w.jinken.map((r) => r.name).join(',') + '|' + 社員の印;
+      + w.shiire.map((r) => r.name).join(',') + '|' + w.jinken.map((r) => r.name).join(',') + '|' + 社員の印
+      + '|' + (w.隠した || 0);
   if (el.cashGrid.dataset.sign === 印) { renderGridFill(); cashGridAuto(); return; }
   /* ★打っている最中は作り直しません（キーボードが閉じます）。
        印を覚えないので、欄から離れたときに作り直されます。
@@ -4426,6 +4434,14 @@ function renderGridBox() {
       wrap.appendChild(row);
     });
     sec.appendChild(wrap);
+    // ★出していない仕入先があることを、ひとこと出します（黙って消さない。戻すのはマネージ）
+    if (入れ先 === 'shiire' && w.隠した) {
+      const 注 = document.createElement('p');
+      注.dataset.gridHidden = String(w.隠した);
+      注.style.cssText = 'margin:-6px 0 14px;font-size:12px;color:var(--text-weak)';
+      注.textContent = `出していない仕入先：${w.隠した}件（マネージの「仕入明細に出さない仕入先」で決めています）`;
+      sec.appendChild(注);
+    }
     el.cashGrid.appendChild(sec);
   };
 
@@ -4558,6 +4574,7 @@ function cashGridBad(だけ) {
   const out = [];
   (だけ ? [だけ] : ['shiire', 'jinken']).forEach((入れ先) => {
     Object.keys(cashEdit[入れ先] || {}).forEach((name) => {
+      if (入れ先 === 'shiire' && journal出さない仕入先か(state.storeId, name)) return;   // ★出していない仕入先は見ません
       ['f', 'g'].forEach((c) => {
         const v = (cashEdit[入れ先][name] || {})[c];
         if (v === undefined || v === null || String(v).trim() === '') return;
@@ -4574,6 +4591,9 @@ function cashGridSend(だけ) {
   const 列 = { f: 'F', g: 'G' };
   (だけ ? [だけ] : ['shiire', 'jinken']).forEach((入れ先) => {
     Object.keys(cashEdit[入れ先] || {}).forEach((name) => {
+      /* ★マネージで「出さない」と決めた仕入先は、日報に送りません（ko-dai さんの指示・2026-10-12
+           「スプレッドシートには何もせず」）。欄が見えないのに、前に打った数だけが書かれるのを防ぎます */
+      if (入れ先 === 'shiire' && journal出さない仕入先か(state.storeId, name)) return;
       ['f', 'g'].forEach((c) => {
         const v = (cashEdit[入れ先][name] || {})[c];
         if (v === undefined || v === null || String(v).trim() === '') return;
