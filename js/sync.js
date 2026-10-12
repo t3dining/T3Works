@@ -24,6 +24,7 @@ function 設定の呼び名(n) {
     staffAccounts: '社員のアカウント',
     shiftMemoTags: 'メモの決まり文句',
     interviewManual: '面接マニュアル',
+    driveLinkNames: 'ワークスに配達記録を出す人',
   };
   return 表[n] || n;
 }
@@ -1083,6 +1084,10 @@ const Sync = {
         salesTargets: SalesTargets._key,
         shiftMemoTags: ShiftMemoTags._key,
         interviewManual: InterviewManual._key,
+        /* ★置き場（js/storage.js の DriveLink）が無ければ、この1つだけ飛ばします。
+             端末に古い js/storage.js が残ったまま、新しいこのファイルだけ届くことがあります。
+             名指しのまま書くと、ここで転んで**設定が1つも入らなくなります**（下の catch が「保存できませんでした」に変えてしまう） */
+        ...(typeof DriveLink !== 'undefined' ? { driveLinkNames: DriveLink._key } : {}),
         closedDows: Closed._dowsKey,
         closedExceptions: Closed._exKey,
       };
@@ -1485,6 +1490,16 @@ function summaryFor(key) {
     Sync.enqueue({ t: 'setting', n: 'interviewManual', v: clean });
     return clean;
   };
+
+  // ★ワークスに配達記録の入口を出す人。人の名前なので、公開物には書かずにここから同期に乗せます（2026-10-12）
+  if (typeof DriveLink !== 'undefined') {
+    const _saveDriveLink = DriveLink.save.bind(DriveLink);
+    DriveLink.save = function (names) {
+      const clean = _saveDriveLink(names);
+      Sync.enqueue({ t: 'setting', n: 'driveLinkNames', v: clean });
+      return clean;
+    };
+  }
 
   const _setDows = Closed.setDows.bind(Closed);
   Closed.setDows = function (storeId, dows) {

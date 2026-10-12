@@ -2082,6 +2082,27 @@ function renderAccounts() {
     adm.appendChild(box);
     adm.appendChild(document.createTextNode('管理'));
 
+    /* ★ワークスに「配達記録」の入口を出す人（2026-10-12、ko-dai さんの指示）。
+         チェックを入れた人のワークスにだけ、バグるの業務一覧に「配達記録」が出ます（マインには、もとから入口があります）。
+         ★**誰に出すかは、ここで押した結果だけで決まります。**名前も番号も、コードには書きません
+         ★持つのは名前の一覧です（js/storage.js の DriveLink。番号は現場の端末に配らないため）。
+           同じ名前の人が2人いると、両方に付きます
+         ★使えなくした人・消した人の名前は、保存のたびに一覧から外します
+         ★これは入口を出すかどうかだけです。配達記録そのものは、合言葉を知っていれば開けます */
+    const drv = document.createElement('label');
+    drv.className = 'acct-row__admin';
+    drv.title = 'この人のワークスに、バグるの「配達記録」を出します';
+    const dbox = document.createElement('input');
+    dbox.type = 'checkbox'; dbox.checked = DriveLink.has(v.n); dbox.disabled = !!v.off;
+    dbox.addEventListener('change', () => {
+      const いる人 = StaffAccounts.live().map((a) => a.n);
+      const 他の人 = DriveLink.names().filter((n) => n !== v.n && いる人.includes(n));
+      DriveLink.save(dbox.checked ? [...他の人, v.n] : 他の人);
+      renderAccounts(); 保存しました();
+    });
+    drv.appendChild(dbox);
+    drv.appendChild(document.createTextNode('配達記録'));
+
     /* ★並べ替えは**長押ししてドラッグ**です（2026-09-11、ko-dai さんの希望で
          ▲▼ のボタンからこちらに変えました）。仕組みはクローズ・週間掃除と
          **同じもの**を使っています（`並べ替えの型`）。
@@ -2124,7 +2145,7 @@ function renderAccounts() {
       renderAccounts(); 保存しました();
     });
 
-    [name, num, copy, adm, off, 消す].forEach((n) => li.appendChild(n));
+    [name, num, copy, adm, drv, off, 消す].forEach((n) => li.appendChild(n));
     el.acctList.appendChild(li);
   });
 }

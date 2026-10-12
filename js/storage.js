@@ -1372,6 +1372,51 @@ const InterviewManual = {
 };
 
 /**
+ * ワークスに「配達記録」の入口を出す人（マネージの「社員のアカウント」でチェックを入れた人。2026-10-12、ko-dai さんの指示）
+ *
+ * ★**人の名前も番号も、ここにもコードにも書きません。**このファイルは公開されています（誰でも読めます）。
+ *   「この人にだけ出す」は、マネージでチェックを入れると、スプレッドシート側（合言葉の内側）に入ります。
+ * ★持つのは**名前の一覧**です（番号ではありません）。番号は合言葉なので、現場の端末には配りません
+ *   （社員のアカウントは、マネージにしか入りません）。端末は、サーバーが返す自分の名前（Sync.myName）と見くらべます。
+ *   同じ名前のアカウントが2つあると、両方に出ます。
+ * ★`{ names, at }` の形で持ちます。一覧を空にしても**値そのものは空になりません。**
+ *   同期の取り込み（`_applyPulled`）は空の値を飛ばすので、配列のままだと「全員外した」が他の端末に届かないためです
+ *   （面接マニュアルと同じわけ）。
+ * ★**これは入口を出すかどうかだけ**です。配達記録そのものは、合言葉を知っていれば誰でも開けます（店舗のタブレット用の別アプリ）。
+ */
+const DriveLink = {
+  _key: APP.storageKey + ':driveLinkNames',
+
+  /** 名前の一覧（届いていなければ空） */
+  names() {
+    try {
+      const v = JSON.parse(localStorage.getItem(this._key) || 'null');
+      if (v && typeof v === 'object' && Array.isArray(v.names)) {
+        return v.names.map((n) => String(n || '').trim()).filter(Boolean);
+      }
+    } catch (e) {
+      /* 壊れていたら「誰にも出さない」と同じに扱います */
+    }
+    return [];
+  },
+
+  /** その名前の人に出すか（名前が空なら出しません） */
+  has(name) {
+    const n = String(name || '').trim();
+    return !!n && this.names().includes(n);
+  },
+
+  save(names) {
+    const clean = {
+      names: [...new Set((Array.isArray(names) ? names : []).map((n) => String(n || '').trim()).filter(Boolean))],
+      at: new Date().toISOString(),
+    };
+    localStorage.setItem(this._key, JSON.stringify(clean));
+    return clean;
+  },
+};
+
+/**
  * 年間の売上目標（店舗ごと。マネージで登録します）
  *
  * ★もとは js/config.js に金額が直書きされていて、GitHub Pages で

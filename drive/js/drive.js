@@ -1134,6 +1134,27 @@ function bindEvents() {
   try { cameFromHub = sessionStorage.getItem(FROM_HUB) === '1'; } catch (e) { /* 同上 */ }
   if (cameFromHub) el.toOwnerBtn.classList.remove('is-hidden');
 
+  /* ワークスから来たとき（?from=works）は、同じボタンを「ワークスに戻る」に変えて出します
+     （2026-10-12・本部が足した。ko-dai さんの指示で、マネージで決めた人のワークスに、配達記録の入口を出したため）。
+     戻り先は、ワークスのバグるの業務一覧です。
+     ★管理側の印（fromMine）とは別に覚えます。URL に印が付いている方（いま来た方）に合わせます */
+  const FROM_WORKS = 'fromWorks';
+  try {
+    if (/(^|[?&])from=works([&#]|$)/.test(location.search)) {
+      sessionStorage.setItem(FROM_WORKS, '1');
+      sessionStorage.removeItem(FROM_HUB);
+    } else if (/(^|[?&])from=(mine|owner)([&#]|$)/.test(location.search)) {
+      sessionStorage.removeItem(FROM_WORKS);
+    }
+    if (sessionStorage.getItem(FROM_WORKS) === '1') {
+      el.toOwnerBtn.href = '../#/baguru';
+      el.toOwnerBtn.title = 'ワークスに戻る';
+      const 字 = el.toOwnerBtn.querySelectorAll('span');
+      if (字.length >= 2) { 字[0].textContent = '←'; 字[1].textContent = 'ワークス'; }
+      el.toOwnerBtn.classList.remove('is-hidden');
+    }
+  } catch (e) { /* 使えない端末もあります（そのときは、戻るボタンが出ないだけです） */ }
+
   bindEvents();
   render();
 

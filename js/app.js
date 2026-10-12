@@ -8128,6 +8128,61 @@ function renderTaskPicker() {
     li.appendChild(b);
     el.taskGrid.appendChild(li);
   });
+
+  // 配達記録の入口（バグるだけ・マネージで決めた人だけ）
+  if (driveLinkShows(store.id)) el.taskGrid.appendChild(driveLinkCard(store));
+}
+
+/* ------------------------------------------------------------
+ *  ワークスの業務一覧に出す、配達記録の入口（2026-10-12、ko-dai さんの指示）
+ *
+ *  決めた人のアカウントにだけ、ワークスのバグるの業務一覧に「配達記録」を出します。
+ *  ★**誰に出すかは、コードに書きません。**このファイルは公開されています（誰でも読めます）。
+ *    マネージの「社員のアカウント」で「配達記録」にチェックを入れた人だけです（置き場は js/storage.js の DriveLink）。
+ *    端末は、サーバーが返した自分の名前（Sync.myName。ヘッダーに出ている名前）と見くらべます。
+ *    番号を入れていない端末・名前が出ていない端末には、出ません。
+ *  ★マインには出しません。T3Dining の欄に、もとから入口があります（ko-dai さん「オーナーは何も変えないで」）。
+ *  ★配達記録は別のアプリ（drive/）なので、業務（TASKS）には足しません。押すと、そちらへ移ります。
+ *    `?from=works` を付けるので、あちらに「ワークスに戻る」が出ます（drive/js/drive.js）。
+ *    ★枠（ptFrame）の中では開きません。配達記録も同期をするので、同じ端末で2つ同時に動かすと、
+ *      片方が取り込んだ記録を、もう片方の画面が知らないままになります
+ *  ★これは入口を出すかどうかだけです。配達記録そのものは、合言葉を知っていれば開けます（店舗のタブレット用のアプリ）。
+ *  ★検算は .claude/skills/t3works-zentai/test_drive_link.py。
+ * ---------------------------------------------------------- */
+const DRIVE_LINK_STORE = 'baguru';
+
+function driveLinkShows(storeId) {
+  return storeId === DRIVE_LINK_STORE && !isMine()
+    && typeof DriveLink !== 'undefined' && DriveLink.has(Sync.myName());
+}
+
+function driveLinkCard(store) {
+  const li = document.createElement('li');
+  const a = document.createElement('a');
+  a.className = 'task-card task-card--none';
+  a.id = 'taskDriveLink';
+  a.href = 'drive/?from=works';
+  a.style.setProperty('--card-color', store.color);
+
+  const icon = document.createElement('span');
+  icon.className = 'task-card__icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = '🛵';
+  const main = document.createElement('span');
+  main.className = 'task-card__main';
+  const name = document.createElement('span');
+  name.className = 'task-card__name';
+  name.textContent = '配達記録';
+  const sub = document.createElement('span');
+  sub.className = 'task-card__sub';
+  sub.textContent = 'アルバイトの交通費';
+  main.append(name, sub);
+  const status = document.createElement('span');
+  status.className = 'task-card__status';
+  status.textContent = '開く ›';
+  a.append(icon, main, status);
+  li.appendChild(a);
+  return li;
 }
 
 /* ------------------------------------------------------------

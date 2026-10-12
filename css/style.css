@@ -329,6 +329,8 @@ body.is-shift-wide .page { max-width: 1900px; }
   font: inherit; color: var(--text); cursor: pointer; text-align: center;
 }
 .task-card:active { transform: scale(.98); }
+/* 業務カードがリンクのとき（配達記録の入口。別のアプリへ移ります）。ボタンと同じ見た目にします */
+a.task-card { text-decoration: none; box-sizing: border-box; }
 /* 店舗のロゴにあたる場所。業務には絵文字を置きます */
 .task-card__icon {
   flex: 0 0 auto;
