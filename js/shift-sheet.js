@@ -881,12 +881,14 @@ function shiftTodayStyle() {
     '.shift-tt__legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:8px 0 0;font-size:11.5px;line-height:1.6;color:var(--text-sub)}',
     '.shift-tt__key{display:inline-block;width:20px;height:10px;margin-right:5px;border-radius:3px;vertical-align:-1px;background:var(--tt-c)}',
     '.shift-tt__memo{margin:8px 0 0;font-size:12.5px;line-height:1.6;overflow-wrap:anywhere}',
-    // ★名前と出勤時刻だけの一覧（時刻の表を出さない店舗）。持ち場ごとの箱を、広い画面では横に・スマホの幅では縦に並べます
-    '.shift-tt__list{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px 14px;align-items:start;max-width:600px}',
+    // ★名前と出勤時刻だけの一覧（時刻の表を出さない店舗）。持ち場ごとの箱を、**いつも横に並べます**（キッチンが左・ホールが右）。
+    //   2026-10-12、ko-dai さん「キッチンとホールを横並びにできますか？」。前は、スマホの幅では縦に並んでいました。
+    //   列の数は持ち場の数（--tt-lanes。shiftTodayListBox が入れます）。minmax(0,…) で、長い名前が箱を押し広げないようにします
+    '.shift-tt__list{display:grid;grid-template-columns:repeat(var(--tt-lanes,2),minmax(0,1fr));gap:10px 14px;align-items:start;max-width:600px}',
     '.shift-tt__group{border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden}',
     '.shift-tt__ghead{margin:0;padding:5px 12px;font-size:11.5px;font-weight:700;color:var(--text-sub);background:var(--surface-2)}',
     '.shift-tt__row{display:flex;align-items:baseline;justify-content:space-between;gap:14px;padding:8px 12px;border-top:1px solid var(--line-2)}',
-    '.shift-tt__rname{font-size:14px;font-weight:700;line-height:1.35;overflow-wrap:anywhere}',
+    '.shift-tt__rname{flex:1 1 auto;min-width:0;font-size:14px;font-weight:700;line-height:1.35;overflow-wrap:anywhere}',
     '.shift-tt__rfrom{font-size:11px;font-weight:400;color:var(--text-sub)}',
     '.shift-tt__rtime{flex:0 0 auto;font-size:14px;line-height:1.35;white-space:nowrap;font-variant-numeric:tabular-nums}',
     // 出勤の時刻が入っていない人（枠の名前を出します）
@@ -909,6 +911,13 @@ function shiftTodayStyle() {
       + '.shift-tt__table .shift-tt__hour--last{font-size:8px;letter-spacing:0;vertical-align:middle}'
       + '.shift-tt__hour--last span{display:inline-block;writing-mode:vertical-rl;text-orientation:upright;line-height:1;letter-spacing:-1px}'
       + '.shift-tt__lane span{left:5px}'
+      // 一覧：横に2つ並べるので、箱の中の空きと字を少し詰めます（長い名前は箱の中で折れます）
+      + '.shift-tt__list{gap:8px}'
+      + '.shift-tt__ghead{padding:5px 8px}'
+      + '.shift-tt__row{gap:6px;padding:7px 8px}'
+      + '.shift-tt__rname,.shift-tt__rtime{font-size:13px}'
+      + '.shift-tt__rfrom{display:block;font-size:10px}'
+      + '.shift-tt__rtime.is-none{font-size:11px}'
       + '}',
   ].join('');
   document.head.appendChild(st);
@@ -977,7 +986,8 @@ function shiftTodayRender(box, 中身) {
  * 名前と出勤時刻だけの一覧（時刻の表を出さない店舗。持ち場ごとに分けます）
  *
  * ★出すのは名前と出勤時刻だけです（退勤・帯・色の説明は出しません）。何を出すかは js/config.js の shiftTodayList が決めます。
- * ★持ち場（キッチン／ホール）ごとの箱に分けます。広い画面では横に並び、スマホの幅では縦に並びます。
+ * ★持ち場（キッチン／ホール）ごとの箱に分けて、**いつも横に並べます**（左がキッチン・右がホール。スマホの幅でも横）。
+ *   場所を動かさないように、誰もいない持ち場の箱も出します（「キッチン　0人」。中は空）。
  */
 function shiftTodayListBox(storeId, model, 自分) {
   const 部品 = (tag, cls, text) => {
@@ -987,10 +997,11 @@ function shiftTodayListBox(storeId, model, 自分) {
     return x;
   };
   const box = 部品('div', 'shift-tt__list');
+  box.style.setProperty('--tt-lanes', String(SHIFT_LANES.length));
   const 行たち = shiftTodayList(storeId, model);
   SHIFT_LANES.forEach((lane) => {
     const 人 = 行たち.filter((r) => r.lane === lane.id);
-    if (!人.length) return;
+    // ★誰もいない持ち場の箱も出します（飛ばすと、ホールの箱が左に来て、場所が日によって変わります）
     const 組 = 部品('div', 'shift-tt__group');
     組.appendChild(部品('p', 'shift-tt__ghead', `${lane.name}　${人.length}人`));
     人.forEach((r) => {
