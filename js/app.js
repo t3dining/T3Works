@@ -2359,7 +2359,9 @@ function renderCash() {
 
   renderNippouBox(done);
   renderKabusoku();          // ★レジ金の過不足（「ジャーナルの5つを日報に書く」の上。アプリに残すだけ）
-  renderTaishoLine();        // ★大将へのLINEをコピー（バグるだけ。「記録する」と「この月の現金売上」の間）
+  journal担当者を置く();      // ★担当者の欄は、レジ金の過不足のすぐ下（2026-10-13）
+  journal記録の箱を整える(done);   // ★「記録する」は出しません。記録は「ジャーナルの5つを日報に書く」から（2026-10-13）
+  renderTaishoLine();        // ★大将へのLINEをコピー（バグるだけ。現金売上の箱と「この月の現金売上」の間）
   renderCashList();
   renderCashWeek();
   日報の待ちを出す();        // ★預けた日報の書き込みが途中なら、知らせます（J2）
@@ -2426,7 +2428,7 @@ function renderKabusoku() {
                style="flex:1 1 auto;width:auto;min-width:0;font-size:18px" placeholder="0">
         <span class="cash-line__unit">円</span>
         ${JOURNAL_過不足の向き.map((向き) => `<button type="button" class="btn" data-kabusoku="${向き}" aria-pressed="false"
-               style="min-height:44px;padding:8px 14px;font-weight:800">${向き}</button>`).join('')}
+               style="flex:0 0 auto;white-space:nowrap;min-height:44px;padding:8px 14px;font-weight:800">${向き}</button>`).join('')}
       </div>
       <p data-kabusoku-note style="margin:7px 0 0;font-size:12px;line-height:1.5;color:var(--text-sub)"></p>`;
     const input = box.querySelector('input');
@@ -2447,8 +2449,9 @@ function renderKabusoku() {
     });
     el.cashKabusoku = box;
   }
-  // ★「ジャーナルの5つを日報に書く」の上。赤い札（合計が合わない）があれば、その上に置きます
-  const 次 = document.getElementById('cashNippouStop') || el.cashToNippou;
+  // ★「ジャーナルの5つを日報に書く」の上。札（書けないわけ）があれば、その上に置きます。
+  //   担当者の欄がこの箱に来ていれば、さらにその上です（並びは 過不足 → 担当者 → 札 → ボタン）
+  const 次 = journal担当者は日報の箱か() || document.getElementById('cashNippouStop') || el.cashToNippou;
   if (el.cashKabusoku.nextElementSibling !== 次 && 次.parentNode) 次.parentNode.insertBefore(el.cashKabusoku, 次);
 
   const storeId = state.storeId;
@@ -2493,6 +2496,116 @@ function journal過不足の印(v) {
   const 色 = v.向き === '不足' ? 'is-ng' : '';
   const 多い色 = v.向き === '多い' ? ';color:color-mix(in srgb, var(--accent) 85%, var(--text));font-weight:700' : '';
   return `<span class="cash-item__mark ${色}" style="display:block;font-size:11.5px;line-height:1.3${多い色}">${journal過不足の文(v)}</span>`;
+}
+
+/* ------------------------------------------------------------
+ *  記録は「ジャーナルの5つを日報に書く」から（ko-dai さんの指示・2026-10-13）
+ *
+ *  「現金売上の記録するボタンを非表示。アプリ内の現金売上の数字の保存も日報への書き込みも
+ *    全てジャーナルの5つを日報に書き込むボタンから行う」
+ *  「担当者の選択ボタンをレジ金の過不足の下に移動」
+ *  「写真が読み取れなかったり、数字が合わなかったら日報に書き込むボタンを押せない仕様にして、
+ *    読み取りエラーにすぐ気付けるように」
+ *
+ *  ★前は、読み取りが通らない日でも「記録する」だけは押せました。押すと「記録済み」になり、
+ *    日報に書いていないことに気づかないまま終われました。それで「記録する」をなくします。
+ *  ★記録そのもの（saveCash）は前と同じ中身です。「ジャーナルの5つを日報に書く」が、
+ *    前から「① 現金売上を記録 → ② 日報に書く」の順でやっています（nippouSendNow）。
+ *  ★入れ物（index.html）は本部のものなので、動かす・隠すは、ここ（描くとき）でやります。
+ *  ★日報に書かない店舗（JOURNAL_STORES にない店）は、前のままです（今は6店舗とも入っています）。
+ * ---------------------------------------------------------- */
+
+/** 担当者の欄の行（ラベルと選ぶ欄のひとまとまり） */
+function journal担当者の行() {
+  return el.cashStaff && el.cashStaff.closest ? el.cashStaff.closest('.cash-line') : null;
+}
+
+/** 担当者の行が「日報に入れる」の箱に来ていれば、その行（来ていなければ null） */
+function journal担当者は日報の箱か() {
+  const 行 = journal担当者の行();
+  return 行 && el.cashToNippou && 行.parentNode === el.cashToNippou.parentNode ? 行 : null;
+}
+
+let journal担当者の元 = null;   // 入れ物（index.html）での元の場所。日報に書かない店舗では、ここへ戻します
+
+/**
+ * 担当者の欄を、レジ金の過不足のすぐ下に置きます
+ *
+ * ★並びは 過不足 → 担当者 → 札（書けないわけ）→「ジャーナルの5つを日報に書く」。
+ *   もうその並びなら動かしません（動かすと、選んでいる途中の欄から指が外れます）。
+ */
+function journal担当者を置く() {
+  const 行 = journal担当者の行();
+  if (!行 || !el.cashToNippou || !el.cashToNippou.parentNode) return;
+  if (!journal担当者の元) journal担当者の元 = { 親: 行.parentNode, 次: 行.nextElementSibling };
+  if (!JOURNAL_STORES.includes(state.storeId)) {
+    const 元 = journal担当者の元;
+    if (行.parentNode !== 元.親) {
+      元.親.insertBefore(行, 元.次 && 元.次.parentNode === 元.親 ? 元.次 : 元.親.firstChild);
+    }
+    return;
+  }
+  const 次 = document.getElementById('cashNippouStop') || el.cashToNippou;
+  if (行.parentNode !== 次.parentNode || 行.nextElementSibling !== 次) 次.parentNode.insertBefore(行, 次);
+}
+
+/**
+ * 現金売上の箱：「記録する」は出しません（日報に書く店舗では）
+ *
+ * ★is-hidden の付け外しは、あちこち（撮り直したとき・記録し直すとき）でやっています。
+ *   そこを1つずつ直す代わりに、ここで見た目（display）を止めます。付け外しがあっても出ません。
+ * ★ボタンがあった場所に、どこから記録するのかを一言出します（前の流れに慣れた人が探すため）。
+ *   記録が済んだ日は「✓ 記録済み」が出るので、出しません。
+ */
+function journal記録の箱を整える(done) {
+  if (!el.cashSave) return;
+  const on = JOURNAL_STORES.includes(state.storeId);
+  el.cashSave.style.display = on ? 'none' : '';
+  // ★「記録し直す」は、記録が済んだ日だけ出します。is-hidden を付けても、見た目の決まり
+  //   （.cash-box .linkbtn の display:block）の方が強く、記録していない日にも出ていました
+  if (el.cashRedo) el.cashRedo.style.display = (on && !done) ? 'none' : '';
+  let 注 = document.getElementById('cashSaveNote');
+  if (!on || done) { if (注) 注.style.display = 'none'; return; }
+  if (!注) {
+    注 = document.createElement('p');
+    注.id = 'cashSaveNote';
+    注.style.cssText = 'margin:2px 0 0;font-size:12.5px;line-height:1.6;color:var(--text-sub)';
+    注.textContent = '上の「ジャーナルの5つを日報に書く」を押すと、現金売上も一緒に記録されます';
+    if (el.cashSave.parentNode) el.cashSave.parentNode.insertBefore(注, el.cashSave);
+  }
+  注.style.display = '';
+}
+
+/**
+ * 「ジャーナルの5つを日報に書く」を押せないわけ（押せるなら null）
+ *
+ * 返り: { 色: '赤' | '灰', 種, 行: [頭, …下] }
+ *   灰 … まだ撮っていない・読み取っている途中（まちがいではありません）
+ *   赤 … 読み取れていない・支払いの合計が税込売上と合わない（★ここで気づいてもらいます）
+ *
+ * ★ボタンを出すか・押した瞬間に止めるか・札に何を書くかを、ここ1か所で決めます
+ *   （ボタンだけ隠して、押した先で止め忘れる、を作らないため）。
+ * ★読み取っている途中は、前の読み取りの数が残っていても書かせません（撮り直しの途中で、前の数を書かないように）。
+ */
+function journal書けないわけ(storeId) {
+  if (cashEdit.busy) {
+    return { 色: '灰', 種: '読み取り中', 行: ['写真を読み取っています。終わると、ここに書くボタンが出ます'] };
+  }
+  const 写真 = !!(cashEdit.pending || cashEdit.photo || cashEdit.photoJob);
+  if (!cashEdit.j && !journal手あり() && !写真) {
+    return { 色: '灰', 種: '写真まだ', 行: ['ジャーナルの写真を撮ると、ここに「ジャーナルの5つを日報に書く」が出ます'] };
+  }
+  if (!journal書ける(storeId)) {
+    return {
+      色: '赤', 種: '読めない',
+      行: ['★ジャーナルを読み取れていないので、日報に書けません',
+        cashEdit.jwhy || '',
+        '写真を撮り直すか、紙を見て、上の表の左の欄に数を打ってください'].filter(Boolean),
+    };
+  }
+  const 合 = journal支払の合計(storeId);
+  if (!合.ok) return { 色: '赤', 種: '合計', 行: journal合計の文(合), 合 };
+  return null;
 }
 
 /* ------------------------------------------------------------
@@ -2677,6 +2790,7 @@ function renderNippouBox(done) {
     el.cashChecks.textContent = '';
     el.cashCheckMark.textContent = '';
     setNippouMsg('');
+    journal書けない札(null);
     renderNippouWhere();     // ★書かない店舗では、行き先の札も消します
     return;
   }
@@ -2770,6 +2884,8 @@ function renderNippouBox(done) {
     el.cashChecks.textContent = '';
     el.cashCheckMark.textContent = '';
     el.cashToNippou.classList.add('is-hidden');
+    // ★ボタンの場所に、なぜまだ出ていないかを出します（まだ撮っていない・読み取っている途中）
+    journal書けない札(journal書けないわけ(state.storeId));
     setNippouMsg('');
     return;
   }
@@ -2785,12 +2901,13 @@ function renderNippouBox(done) {
  */
 function renderNippouGate() {
   const 書ける = journal書ける(state.storeId);
-  // ★そのうえで、支払いの合計が税込売上と合わなければ書かせません（2026-09-27）
-  const 合 = 書ける ? journal支払の合計(state.storeId) : null;
-  const 合わない = !!合 && !合.ok;
-  // 5つとも使えるとき（または、手で直して埋まったとき）だけ、日報へ書けます
-  el.cashToNippou.classList.toggle('is-hidden', !書ける || 合わない);
-  journal合計の札(合わない ? 合 : null);
+  // ★押せないわけ（読み取っている途中・読み取れていない・支払いの合計が税込売上と合わない）。なければ null
+  const わけ = journal書けないわけ(state.storeId);
+  const 合わない = !!わけ && わけ.種 === '合計';
+  // 5つとも使えて（または、手で直して埋まって）、合計も合うときだけ、日報へ書けます
+  el.cashToNippou.classList.toggle('is-hidden', !!わけ);
+  // ★押せないときは、ボタンの場所にわけを出します（読み取れていない・合わない は赤。2026-10-13）
+  journal書けない札(わけ);
   // ★テスト用の書き先が入っているときは、ひと目で分かるようにします。
   //   本番に書いたつもりでテストに入っていた、が一番こわいためです
   const test = nippouTestFor(state.storeId);
@@ -5192,13 +5309,21 @@ async function nippouWritePart(part, btn) {
     記録も: 組.some((x) => NIPPOU_PARTS[x].記録も),
   };
   if (!決) return;
-  if (組.indexOf('journal') >= 0 && !journal書ける(state.storeId)) return;
-  // ★支払いの合計 ＝ 税込売上 でなければ書きません（ko-dai さんの指示・2026-09-27）。ボタンは隠していますが、ここでも止めます
+  // ★読み取れていない・読み取っている途中・支払いの合計が税込売上と合わない、なら書きません
+  //   （ko-dai さんの指示・2026-09-27、2026-10-13）。ボタンは隠していますが、ここでも止めます
   if (組.indexOf('journal') >= 0) {
-    const 合 = journal支払の合計(state.storeId);
-    if (!合.ok) {
-      先の知らせ(journal合計の文(合).join('　'), 'warn');
+    const わけ = journal書けないわけ(state.storeId);
+    if (わけ) {
+      先の知らせ(わけ.行.join('　'), わけ.色 === '赤' ? 'warn' : '');
       renderNippouGate();
+      return;
+    }
+    // ★担当者は、確かめの画面を出す前に見ます（前は、確かめたあとの記録のところで止まっていました）
+    if (el.cashStaff && !el.cashStaff.value) {
+      // ★記録ずみで欄が固まっているのに空のとき（記録した人が、もう一覧にいない）は、選べるようにほどきます
+      if (el.cashStaff.disabled) { cashUnlocked = true; render(); }
+      先の知らせ('担当者を選んでください（このボタンのすぐ上です）', 'warn');
+      el.cashStaff.focus();
       return;
     }
   }
@@ -6188,22 +6313,41 @@ function journal合計の文(合) {
   return 行;
 }
 
-/** 合わないとき、書くボタンの代わりに出す赤い札（null なら消します） */
-function journal合計の札(合) {
+/**
+ * 書くボタンの代わりに出す札（押せないわけ。null なら消します）
+ *
+ * ★赤 … 読み取れていない・合計が合わない（目立たせます）。灰 … まだ撮っていない・読み取っている途中。
+ * ★入れ物は1つです（id は前のまま cashNippouStop。レジ金の過不足と担当者の欄が、この上に並びます）。
+ */
+const JOURNAL_札の見た目 = {
+  赤: 'margin:10px 0 0;padding:12px 14px;border:2px solid var(--ng);border-radius:12px;'
+    + 'background:var(--surface);background:color-mix(in srgb,var(--ng) 10%,var(--surface));'
+    + 'color:var(--ng);font-size:14px;line-height:1.6',
+  灰: 'margin:10px 0 0;padding:10px 12px;border:1px dashed var(--line-2);border-radius:12px;'
+    + 'color:var(--text-sub);font-size:13px;line-height:1.6;text-align:center',
+};
+function journal書けない札(わけ) {
   let b = document.getElementById('cashNippouStop');
-  if (!合) { if (b) b.remove(); return; }
+  if (!わけ) { if (b) b.remove(); return; }
   if (!b) {
     b = document.createElement('div');
     b.id = 'cashNippouStop';
-    b.setAttribute('role', 'alert');
-    b.style.cssText = 'margin:10px 0 0;padding:12px 14px;border:2px solid var(--ng);border-radius:12px;'
-      + 'background:var(--surface);background:color-mix(in srgb,var(--ng) 10%,var(--surface));'
-      + 'color:var(--ng);font-size:14px;line-height:1.6';
     el.cashToNippou.parentNode.insertBefore(b, el.cashToNippou);
   }
-  const [頭, ...下] = journal合計の文(合);
-  b.innerHTML = `<div style="font-size:16px;font-weight:800">${journalEsc(頭)}</div>`
-    + 下.map((t) => `<div style="font-weight:700">${journalEsc(t)}</div>`).join('');
+  const 赤 = わけ.色 === '赤';
+  b.setAttribute('role', 赤 ? 'alert' : 'status');
+  b.dataset.kind = わけ.種 || '';
+  b.style.cssText = JOURNAL_札の見た目[赤 ? '赤' : '灰'];
+  const [頭, ...下] = わけ.行;
+  b.innerHTML = 赤
+    ? `<div style="font-size:16px;font-weight:800">${journalEsc(頭)}</div>`
+      + 下.map((t) => `<div style="font-weight:700">${journalEsc(t)}</div>`).join('')
+    : [頭, ...下].map((t) => `<div>${journalEsc(t)}</div>`).join('');
+}
+
+/** 合計が合わないときの赤い札（null なら消します） */
+function journal合計の札(合) {
+  journal書けない札(合 ? { 色: '赤', 種: '合計', 行: journal合計の文(合), 合 } : null);
 }
 
 function journal書ける(storeId) {
@@ -6616,6 +6760,11 @@ async function onCashFile(e) {
   el.cashRedo.classList.add('is-hidden');
   el.cashSave.classList.remove('is-hidden');
   cashEdit.busy = true;
+  // ★読み取っているあいだは、前の読み取りの数で日報に書けないようにします（ボタンを下ろして、わけを出します）
+  if (JOURNAL_STORES.includes(state.storeId)) {
+    el.cashToNippou.classList.add('is-hidden');
+    journal書けない札(journal書けないわけ(state.storeId));
+  }
   setCashWait('写真を送っています…');
   el.cashTake.classList.add('is-busy');
 
@@ -7245,7 +7394,7 @@ async function saveCash() {
     if (!res.ok || !res.fileId) {
       // 写真を残せていないのに記録してしまうと、あとで見返せません
       setCashMsg(`写真を残せませんでした（${res.error || '通信できません'}）。`
-        + 'もう一度「記録する」を押してください', 'warn');
+        + `もう一度「${JOURNAL_STORES.includes(state.storeId) ? 'ジャーナルの5つを日報に書く' : '記録する'}」を押してください`, 'warn');
       return false;
     }
     cashEdit.photo = res.fileId;
