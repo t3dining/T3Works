@@ -636,7 +636,7 @@ function renderForm() {
       ? (t.multi
         ? `${t.legs.length}区間 ／ 合計 ${kmText(km)}`
         : `往復 ${kmText(km)}（入れた ${kmText(t.legs[0])} の2倍）`)
-      : t.multi ? '区間の距離をすべて入れてください'
+      : t.multi ? '区間の距離を全て入れてください'
         : t.形 === '一部だけ' ? '0より大きい数を入れてください' : '';
     row.querySelector('.drive-trip__total').classList.toggle('is-on', ok);
   });

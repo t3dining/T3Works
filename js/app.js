@@ -7671,7 +7671,7 @@ function renderSubmit(closed, showList, dateStr, rec, items, done) {
   } else if (remain > 0) {
     el.submitStatus.innerHTML =
       `<span class="submit-card__remain">未チェックが残り ${remain} 項目あります</span>` +
-      `<span class="submit-card__meta">すべてチェックして担当者を選ぶと提出できます</span>`;
+      `<span class="submit-card__meta">全てチェックして担当者を選ぶと提出できます</span>`;
   } else {
     el.submitStatus.innerHTML =
       '<span class="submit-card__remain">担当者が選ばれていません</span>' +
@@ -7697,7 +7697,7 @@ function submitDay() {
 
   askConfirm({
     item: `${state.m}月${state.d}日の確認作業`,
-    message: `${items.length}項目すべてのチェックが終わりました。担当者は ${rec.staff} さんです。提出しますか？`,
+    message: `${items.length}項目全てのチェックが終わりました。担当者は ${rec.staff} さんです。提出しますか？`,
     okLabel: '提出する',
   }).then(async (ok) => {
     if (!ok) return;
@@ -8794,12 +8794,12 @@ function catchByStore() {
  *  キャッチの記録に入っている who です。
  * ---------------------------------------------------------- */
 
-/** ランキングを「この月」で見るか「すべて」で見るか */
+/** ランキングを「この月」で見るか「全て」で見るか */
 let rankRange = 'near';
 /** 店舗でしぼる（空なら全店舗＝会社全部） */
 let rankFilter = '';
 
-/** キャッチの記録を集めます（すべてのときは、入っている月を全部読みます） */
+/** キャッチの記録を集めます（全てのときは、入っている月を全部読みます） */
 function catchEntriesFor(range) {
   if (range !== 'all') {
     return expenseEntries(expenseRec()).filter((e) => e.kind === 'catch');
@@ -10417,7 +10417,7 @@ function renderMeetingMove() {
  *   いつの写しかを画面に出して、古いことに気づけるようにします。
  * ★時刻は、取り込みのとき `num:店舗id` の `at` に入れます（`pullNippou`）。
  *   スプレッドシートへ書く道具（gas/会議資料に書く.gs）も同じ `at` を読み、古い写しは書きません。
- *   **名前を変えるときは2か所いっしょに**（検算 test_nippou_stamp.py が、両方を同じ記録で動かして見ています）。
+ *   **名前を変えるときは2か所一緒に**（検算 test_nippou_stamp.py が、両方を同じ記録で動かして見ています）。
  *
  * 返すもの … null（取り込んだ数字がない）
  *            { at: 一番古い時刻 }（店舗で時刻が違えば、古い方）
@@ -11102,7 +11102,7 @@ const MISS_UI = {
   },
 };
 
-/** 画面ごとの「この月／この期」と「すべて」、店舗のしぼり */
+/** 画面ごとの「この月／この期」と「全て」、店舗のしぼり */
 const missView = {
   close: { range: 'near', filter: '' },
   week: { range: 'near', filter: '' },
@@ -11111,7 +11111,7 @@ const missView = {
 /**
  * 入っているミスを全部（新しい順）
  *
- * 保存データを1回だけ読み、_miss/ で始まる入れ物をすべて集めます。
+ * 保存データを1回だけ読み、_miss/ で始まる入れ物を全て集めます。
  */
 function missAll(kind) {
   const dump = Store.adapter.dump();
@@ -11161,7 +11161,7 @@ function missCountByPeriod() {
   return out;
 }
 
-/** ミスの一覧（この月・この期／すべて、店舗でしぼれます） */
+/** ミスの一覧（この月・この期／全て、店舗でしぼれます） */
 function renderMissList(kind) {
   const ui = MISS_UI[kind];
   const view = missView[kind];
@@ -11215,7 +11215,7 @@ function renderMissList(kind) {
     btn.type = 'button';
     btn.className = 'miss-item__btn';
     const [yy, mm, dd] = (e.d || '').split('-');
-    // すべてを見ているときは、何年かも分かるようにします
+    // 全てを見ているときは、何年かも分かるようにします
     const date = mm ? ((view.range === 'all' ? `${yy}/` : '') + `${+mm}/${+dd}`) : '—';
     btn.innerHTML =
       `<span class="miss-item__date">${date}</span>` +
@@ -11366,7 +11366,7 @@ async function removeMiss() {
   renderSyncStatus();
 }
 
-/** 「この月／この期」と「すべて」の切り替えを取り付けます */
+/** 「この月／この期」と「全て」の切り替えを取り付けます */
 function bindMissRange(kind, id) {
   $(id).addEventListener('click', (e) => {
     const b = e.target.closest('.seg__btn');
@@ -11895,7 +11895,7 @@ function renderPeriodCard(storeId, period) {
 
   const remain = st.total - st.done;
   el.periodCount.textContent = `${st.done} / ${st.total} マス` +
-    (st.total === 0 ? '' : remain === 0 ? '　すべて済んでいます' : `　残り ${remain} マス`);
+    (st.total === 0 ? '' : remain === 0 ? '　全て済んでいます' : `　残り ${remain} マス`);
 
   el.periodCard.classList.toggle('is-submitted', submitted);
 
@@ -12054,7 +12054,7 @@ function submitPeriod() {
   askConfirm({
     item: `週間掃除　${periodRangeLabel(period)}`,
     message: (remain === 0
-      ? `${st.total}マスすべてが済んでいます（達成率 100%）。`
+      ? `${st.total}マス全てが済んでいます（達成率 100%）。`
       : `達成率 ${st.rate}%（${st.done} / ${st.total} マス）で提出します。`
         + `未実施が ${remain} マスありますが、このまま提出しますか？`)
       + `\n提出する人は ${name} さんです。`,

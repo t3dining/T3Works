@@ -440,7 +440,7 @@ function dragHandle(row) {
   return grip;
 }
 
-/** 「28日だけ」「金土のみ」「休止中」など、その項目に付いている条件をすべて返す */
+/** 「28日だけ」「金土のみ」「休止中」など、その項目に付いている条件を全て返す */
 function specialTags(item) {
   const tags = [];
   if (item.onlyDays) tags.push(item.onlyDays.join('・') + '日だけ');
@@ -1793,12 +1793,12 @@ function renderShiftCodes() {
     again.className = 'btn btn--small';
     again.textContent = '作り直す';
     again.addEventListener('click', () => {
-      // ★他店舗にも所属している人は、向こうの名簿の番号も**いっしょに**替わります
+      // ★他店舗にも所属している人は、向こうの名簿の番号も**一緒に**替わります
       //   （→ shiftReissue。2026-09-18、本部の残り③の②）
       const よその店 = shiftLinkedStores(p.c).filter((id) => id !== storeId)
         .map((id) => (getStore(id) || {}).name || id);
       if (!window.confirm(`${p.n}さんの番号を作り直します。\n前の番号では入れなくなります。`
-        + (よその店.length ? `\n\n${よその店.join('・')}の名簿の番号も、いっしょに新しい番号に変わります。` : ''))) return;
+        + (よその店.length ? `\n\n${よその店.join('・')}の名簿の番号も、一緒に新しい番号に変わります。` : ''))) return;
       shiftReissue(storeId, p.n);
       renderShiftStaff();
     });
@@ -1942,7 +1942,7 @@ function shiftLinkPicker(storeId, person) {
 /**
  * 配る番号をコピーする
  *
- * ★番号だけをコピーします。前は案内の文もいっしょに入れていましたが、
+ * ★番号だけをコピーします。前は案内の文も一緒に入れていましたが、
  *   その人のLINEに貼るときに要らない文まで付いてくるので、番号だけにしました。
  */
 function copyShiftCode(p, btn) {
