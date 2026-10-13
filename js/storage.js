@@ -37,7 +37,7 @@
  *       はじめて元を消します。途中で閉じられても、元がそのまま残ります。
  *    2. 「どこまで同期したか」の印を、記録と同じ場所に置きます。
  *       別々の場所にあると、片方だけ消えたときに
- *       「記録は無いのに、印は進んだまま」になり、サーバーから戻ってこなくなります。
+ *       「記録はないのに、印は進んだまま」になり、サーバーから戻ってこなくなります。
  *    3. 記録が0件なのに印だけ残っていたら、印を消します（全部取り直させます）。
  *       2 をすり抜けた場合の、最後の受け止めです。
  *    4. IndexedDB が使えない端末では、いままでどおり localStorage を使います。
@@ -130,7 +130,7 @@ const LocalAdapter = {
  *  記録は records、覚え書き（同期の印など）は meta に入れます。
  *  ★2つを同じデータベースに置くのが肝心です。
  *    端末がデータを捨てるときは、まとめて捨てられます。
- *    片方だけ残ると「記録は無いのに、印は進んだまま」になり、
+ *    片方だけ残ると「記録はないのに、印は進んだまま」になり、
  *    サーバーは「変わったものだけ」しか返さないので、記録が戻ってきません。
  * ---------------------------------------------------------- */
 const IDB = { name: `${APP.storageKey}-db`, ver: 1, recs: 'records', meta: 'meta' };
@@ -384,7 +384,7 @@ const Store = {
     }
 
     // ---- 最後の受け止め ----
-    // 記録が1件も無いのに印だけ進んでいたら、サーバーは何も返してくれません。
+    // 記録が1件もないのに印だけ進んでいたら、サーバーは何も返してくれません。
     // 印を消して、次の同期で全部取り直させます
     if (!Object.keys(IdbAdapter._mem).length && IdbAdapter.meta('since')) {
       IdbAdapter.setMeta('since', '');
@@ -425,7 +425,7 @@ const Store = {
     return `${storeId}/${dateStr}`;
   },
 
-  /** 1日分のレコードを取得（無ければ空レコード） */
+  /** 1日分のレコードを取得（なければ空レコード） */
   getDay(storeId, dateStr) {
     const rec = this.adapter.get(this.key(storeId, dateStr));
     if (!rec) {
@@ -517,7 +517,7 @@ const Store = {
       .map((k) => k.slice(prefix.length));
   },
 
-  /** その店舗で最初に記録がある日付（'YYYY-MM-DD'）。無ければ null
+  /** その店舗で最初に記録がある日付（'YYYY-MM-DD'）。なければ null
    *  週間掃除の記録（storeId/W2026-08-02）は日付ではないので除きます */
   firstDate(storeId) {
     const prefix = `${storeId}/`;
@@ -1014,7 +1014,7 @@ const StaffAccounts = {
     const all = this.all();
     return Object.keys(all)
       .map((c) => ({ code: c, ...all[c] }))
-      // ★at が無いもの（この欄より前に登録した人）は、**先に**置きます
+      // ★at がないもの（この欄より前に登録した人）は、**先に**置きます
       .sort((a, b) => {
         if (a.at && b.at) return a.at < b.at ? -1 : (a.at > b.at ? 1 : 0);
         if (a.at) return 1;
@@ -1289,7 +1289,7 @@ const NippouTest = {
  *   ★このコメントに**実際の名前を書かないでください。**
  *   **config.js には書き戻さないでください。**
  * ★**空の配列も残します。**「ボタンを出さない」という登録だからです。
- *   「まだ登録していない」（キーが無い）とは別のものとして扱います。
+ *   「まだ登録していない」（キーがない）とは別のものとして扱います。
  * ★all() は**登録した分だけ**返します。コードに書いてある分をここで重ねると、
  *   「登録した」と「まだ登録していない」が見分けられなくなります。
  *   重ねるのは config.js の shiftMemoTagsOf() の役目です。
@@ -1307,7 +1307,7 @@ const ShiftMemoTags = {
     return {};
   },
 
-  /** その店舗の決まり文句。**登録が無ければ null**（空の配列とは別です） */
+  /** その店舗の決まり文句。**登録がなければ null**（空の配列とは別です） */
   get(storeId) {
     const v = this.all()[storeId];
     return Array.isArray(v) ? v : null;
@@ -1354,7 +1354,7 @@ const InterviewManual = {
       const v = JSON.parse(localStorage.getItem(this._key) || 'null');
       if (v && typeof v === 'object' && typeof v.text === 'string') return v;
     } catch (e) {
-      /* 壊れていたら「まだ無い」と同じに扱います */
+      /* 壊れていたら「まだない」と同じに扱います */
     }
     return null;
   },
@@ -1441,7 +1441,7 @@ const SalesTargets = {
 
   get(storeId) { return Number(this.all()[storeId]) || 0; },
 
-  /** 登録が1つでもあるか。無ければ画面に「まだ登録されていません」と出します */
+  /** 登録が1つでもあるか。なければ画面に「まだ登録されていません」と出します */
   any() { return Object.keys(this.all()).length > 0; },
 
   save(map) {

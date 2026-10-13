@@ -691,9 +691,9 @@ const VoiceView = (() => {
         ${選んだ行.map(([k, v]) => `<p class="voice-reply__body"><strong>${文字(k)}</strong>：${文字(v)}</p>`).join('')}
       </div>
 
-      <label class="voice-label" for="voiceText">ひとこと（無くても出せます）</label>
+      <label class="voice-label" for="voiceText">ひとこと（なくても出せます）</label>
       <textarea class="voice-text" id="voiceText" rows="4" maxlength="${本文の上限}"
-        placeholder="くわしく書けることがあれば。無ければ、このまま出してください"></textarea>
+        placeholder="くわしく書けることがあれば。なければ、このまま出してください"></textarea>
 
       <label class="voice-label">写真・動画（${添付の数}つまで。動画は${動画の秒}秒まで）</label>
       <p class="voice-note">
@@ -702,7 +702,7 @@ const VoiceView = (() => {
         受け取れたら、ここに大きさが出ます。
       </p>
       <!-- ★capture は付けません。付けるとカメラだけが開き、**保存した写真を選べなくなります**
-           （2026-09-23、ko-dai さんの指摘）。無しなら「撮る／選ぶ」の両方が出ます -->
+           （2026-09-23、ko-dai さんの指摘）。なしなら「撮る／選ぶ」の両方が出ます -->
       <input type="file" id="voiceFile" accept="image/*,video/*" multiple class="voice-file">
       <div class="voice-files" id="voiceFiles"></div>
 
@@ -829,7 +829,7 @@ const VoiceView = (() => {
       しらせ.textContent = '★あなたの番号が入っていません。設定で番号を入れてから出してください';
       return;
     }
-    // ★添付があるときは、その場でドライブへ送ります。電波が無いと送れません
+    // ★添付があるときは、その場でドライブへ送ります。電波がないと送れません
     if (選んだもの.length && typeof navigator !== 'undefined' && navigator.onLine === false) {
       しらせ.textContent = '★電波が届いていません。写真や動画を付けるときは、つながってから出してください';
       return;
@@ -847,7 +847,7 @@ const VoiceView = (() => {
           voiceId: 印, kind: x.kind, seq: i + 1, data,
         }, { ms: 120000 });
         if (!res || !res.ok) {
-          // ★ここで止めます。記録だけ先に作ると、写真の無い投稿が残ります
+          // ★ここで止めます。記録だけ先に作ると、写真のない投稿が残ります
           しらせ.textContent = `★${(res && res.error) || '送れませんでした'}`;
           送っている = false;
           return;
@@ -948,7 +948,7 @@ const VoiceView = (() => {
     /* ★`state` という名前を使いません。`js/app.js` の `state`（画面の状態）を覆い隠すためです。
          いまは中で `.textContent` しか使っていないので無害ですが、**あとから誰かが中に
          `state.storeId` と書いた瞬間、落ちない壊れ方に戻ります**（本部の指摘・2026-09-23）。
-       ★欄が無いときにも落ちないようにします。ここで落ちると**記録はもう消えているのに**、
+       ★欄がないときにも落ちないようにします。ここで落ちると**記録はもう消えているのに**、
          人には「押したのに何も言わない」に見えます */
     const 欄 = document.getElementById('voiceDropState');
     const しらせる = (文) => { if (欄) 欄.textContent = 文; };
@@ -1026,7 +1026,7 @@ const VoiceView = (() => {
     const panel = document.getElementById('voicePanel');
     const header = document.querySelector('.app-header');
     if (!panel) return;
-    if (!header) {   // ヘッダーが無い画面では、今までどおり全面（バーがノッチを払うのが正しい）
+    if (!header) {   // ヘッダーがない画面では、今までどおり全面（バーがノッチを払うのが正しい）
       panel.style.top = '';
       ノッチを二重に払わない(panel, null);
       return;
@@ -1051,7 +1051,7 @@ const VoiceView = (() => {
    *   **二重**になり、iPhone ではノッチの高さ（50〜60pt）の暗い余白が出ていました
    *   （2026-09-24、ko-dai さんの指摘。**最新版なのに直っていない**、で分かりました）。
    * ★**机のブラウザでは再現しません。**`env(safe-area-inset-top)` が 0 だからです。
-   *   前の日に「余白 0px」と測ったのは、**ノッチの無い所で測っていた**だけでした。
+   *   前の日に「余白 0px」と測ったのは、**ノッチのない所で測っていた**だけでした。
    *   ヘッダーとバーに作り物のノッチ（59px）を入れて、**同じ余白を出してから**直しています。
    * ★引く量は、**ヘッダーが実際に払った分**（`.app-header` の `padding-top`）をそのまま使います。
    *   CSS の式をここに書き写さないためです（書き写すと、2か所がずれたときに黙って余白が戻ります）。
@@ -1064,7 +1064,7 @@ const VoiceView = (() => {
     bar.style.paddingTop = '';   // ★先に外します。外さずに測ると、前に当てた値から**もう一度**引いてしまいます
     if (!header) return;         // ヘッダーの下に置かないときは、バーがノッチを払うのが正しい
     const ノッチ = parseFloat(getComputedStyle(header).paddingTop) || 0;
-    if (ノッチ <= 0) return;     // ノッチが無い端末では、何もしません
+    if (ノッチ <= 0) return;     // ノッチがない端末では、何もしません
     const いま = parseFloat(getComputedStyle(bar).paddingTop) || 0;
     bar.style.paddingTop = `${Math.max(0, Math.round(いま - ノッチ))}px`;
   }

@@ -444,7 +444,7 @@ function fillLogo(chip, store) {
   const img = document.createElement('img');
   img.alt = store.name;
   img.addEventListener('error', () => {
-    // img フォルダに画像が無い／読めない場合
+    // img フォルダに画像がない／読めない場合
     chip.classList.add('is-fallback');
     img.remove();
   });
@@ -629,7 +629,7 @@ function renderDayView() {
  *
  *  ★読み取りはいつも当たるとは限りません（感熱紙のOCRは完璧ではありません）。
  *    だから「読み取った金額をそのまま記録する」のではなく、
- *    かならず人が見て確定する作りにしてあります。
+ *    必ず人が見て確定する作りにしてあります。
  *  ★記録はその日のクローズと同じ場所（項目 __cash）に入れているので、
  *    Apps Script 側を直さなくても、いつもの同期でそのまま配られます。
  * ============================================================ */
@@ -682,7 +682,7 @@ const CASH_JOB = 'cashJob';
 const ASK_静かな間 = [3000, 6000, 12000];
 
 /**
- * 返事を待つ上限（ms）。`Sync.ask` の3つ目に渡します（本部が 2026-09-19 に足す口。無い版では 60秒のまま）
+ * 返事を待つ上限（ms）。`Sync.ask` の3つ目に渡します（本部が 2026-09-19 に足す口。ない版では 60秒のまま）
  *
  * ★本部の測り（2026-09-18 23:09〜23:14、17回）：通った返事でも合計 12〜23秒が 5回ありました。
  *   20秒にすると、通る返事を 3〜5回に1回捨てます。端末があきらめても Apps Script は走り続けるので、
@@ -712,7 +712,7 @@ const ASK_聞き直す間 = [2000, 4000, 6000, 8000, 10000];
  * ★ここを通すのは、**やり直しても同じ答えになる頼みごと**だけです
  *   （見るだけ・同じ値を同じマスに書く・同じ日の写真を残す・写真を読む）。
  *   ★404のときスクリプトは1回目でもう終わっているので、送り直しても二重にはなりません。
- * ★電波が無いとき、PINや権限で断られたときは送り直しません。同じ答えになるだけです。
+ * ★電波がないとき、PINや権限で断られたときは送り直しません。同じ答えになるだけです。
  *
  * ★★**時間切れ（返事なし）は、404とは別ものです**（2026-09-16、入れた日の夕方に気づきました）。
  *
@@ -732,7 +732,7 @@ async function askAgain(action, extra, 決め) {
   const 時間切れか = (r) => r.kind === '返事なし' || /返事をしません/.test(String(r.error || ''));
   const 送らない = !!(決め && 決め.時間切れは送らない);
   /* ★待つ上限（ms）と、重ねて送るか（hedge）。渡さなければ Sync.ask の決まり（60秒・重ねない）です。
-       hedge は本部が 2026-09-19 に足した口：8秒たっても返事が無ければ同じ体をもう1本送り、先に返った方を取ります。
+       hedge は本部が 2026-09-19 に足した口：8秒たっても返事がなければ同じ体をもう1本送り、先に返った方を取ります。
        ★付けるのは日報の**見るだけ**です。書き込みには付けません（遅れた片割れが、直したあとの値を古い値で上書きしうるため）。
          写真にも付けません（Vision が2枚になります） */
   const 上限 = 決め && (決め.ms || 決め.hedge) ? { ms: 決め.ms, hedge: !!決め.hedge } : undefined;
@@ -786,7 +786,7 @@ async function journal送る(req, ms) {
     const r = await Sync.ask('journal', { mode: 'result', of, id: req.id }, { ms: ASK_上限.聞く });
     // ★again … 置いてあった返事（うまくいったものも、途中で落ちたものも）。これで決まりです
     if (r.again) { r.聞き直した = 回 + 1; r.送り直した = 送り直した; return r; }
-    // ★印を知らないサーバー（貼り直し前）は、code も kind も無い断りを返します。聞いても無駄なのでやめます
+    // ★印を知らないサーバー（貼り直し前）は、code も kind もない断りを返します。聞いても無駄なのでやめます
     if (!r.code && !r.kind) return 出;
     if (r.code === 'none' && !送り直した) {
       送り直した = 1;
@@ -858,7 +858,7 @@ async function worker頼む(本文, ms) {
   }
 }
 
-/** journalRead の本文（写真が無ければ1行目だけ＝聞き直し） */
+/** journalRead の本文（写真がなければ1行目だけ＝聞き直し） */
 function journalRead本文(頭, image) {
   const 印 = JSON.stringify({ pin: Sync.pin(), code: Sync.code(), action: 'journalRead', ...頭 });
   return image === undefined ? 印 : `${印}\n${image}`;
@@ -933,7 +933,7 @@ async function journal読む(req) {
 
   if (r.ok && r.vision) {
     const 読 = journalVisionを読む(r.vision);
-    // ★Worker は、預けなかったときは job を空にして keepError に理由を入れます（約束）。job が無い古い形のときだけ id を使います
+    // ★Worker は、預けなかったときは job を空にして keepError に理由を入れます（約束）。job がない古い形のときだけ id を使います
     const job = keep && !r.keepError ? (r.job === undefined ? req.id : String(r.job || '')) : '';
     const 共通 = {
       w: r.w, 枚: r.枚 || 0, job,
@@ -974,9 +974,9 @@ function journal記録の写真を埋める(店, 日, job, fileId) {
 /**
  * 「記録する」の前に、預けた写真の様子を見て、写真の欄を決めます
  *
- *   済み                 → photo に fileId を入れる（送るものは無い）
+ *   済み                 → photo に fileId を入れる（送るものはない）
  *   受け付け・つかんだ・聞けない → photoJob のまま記録する（見るときに埋めます）
- *   失敗・捨てた・無い      → 手元に写真があれば今の道（GAS）で送る。無ければ photoJob のまま（「もう一度残す」を出します）
+ *   失敗・捨てた・ない      → 手元に写真があれば今の道（GAS）で送る。なければ photoJob のまま（「もう一度残す」を出します）
  */
 async function journal記録の写真を決める() {
   if (!cashEdit.photoJob) return;
@@ -1036,7 +1036,7 @@ function nippou秒(部) {
   const 外 = [];
   const 内 = [];
   let 送り直し = 0;
-  // ★「見る」は 2026-09-19 に無くなりました（往復1回）。古い控えのために残してあります
+  // ★「見る」は 2026-09-19 になくなりました（往復1回）。古い控えのために残してあります
   if (部.見) {
     外.push(`見る ${秒(部.見.ms)}`); 内.push(中(部.見.res));
     送り直し += ((部.見.res || {}).送り直した || 0);
@@ -1116,7 +1116,7 @@ function cashWakeOff() {
 let cashResuming = false;
 async function cashResume() {
   if (cashResuming || cashEdit.busy) return;
-  日報の様子を見る();        // ★預けた日報の書き込み（J2）。控えが無くても見ます
+  日報の様子を見る();        // ★預けた日報の書き込み（J2）。控えがなくても見ます
   const job = cashJobLoad();
   if (!job || !job.kind) return;
   // ★続きをするのは控えの店舗・日です。知らせもその画面の分として出します（よその画面の欄に出さない。2026-09-26）
@@ -1219,7 +1219,7 @@ async function cashResume() {
  *
  *    そこで **システムのキーボードを出さず**（inputmode="none"）、
  *    数字も記号も入ったテンキーを自分で出します。
- *    重なるものが無く、どの端末でも同じものが出ます。
+ *    重なるものがなく、どの端末でも同じものが出ます。
  *
  *  ★指で使う端末だけです。パソコンは本物のキーボードで打てるので、
  *    そのままにします。
@@ -1663,7 +1663,7 @@ function calcPad写す() {
  *
  * ★窓を触っているなら**窓**、そうでなければ入力欄です。
  *   窓の途中にカーソルを置いてからキーを押すと、**そこに入ります。**
- *   これが無いと、途中を直そうとしても末尾に付いてしまいます。
+ *   これがないと、途中を直そうとしても末尾に付いてしまいます。
  */
 function calcPad打つ先() {
   const 窓 = calcPad窓();
@@ -1790,7 +1790,7 @@ function calcPadNext(i) {
  * 打っている欄が、テンキーに隠れないようにします
  *
  * ★ページの下に、テンキーの分だけ余白を足します。
- *   これが無いと、**一番下の欄はもう送れません**（送る先が無いため）。
+ *   これがないと、**一番下の欄はもう送れません**（送る先がないため）。
  *   実際、人件費の最後の欄が隠れたままになりました。
  */
 function calcPadShow(input) {
@@ -2003,7 +2003,7 @@ function calcPadBind(input) {
       if (Date.now() - calcPadHold < 1500) {
         /* ★★キーボードの上の窓を触っているときは、**取り返しません。**
 
-             窓は式を直すところなので、カーソルは窓に無いと困ります。
+             窓は式を直すところなので、カーソルは窓にないと困ります。
              ここで入力欄へ取り返すと、**窓を触った瞬間にカーソルが戻り、
              窓では何も打てません。**
 
@@ -2029,7 +2029,7 @@ function calcPadBind(input) {
   });
 }
 
-/** その日の書きかけ（無ければ空） */
+/** その日の書きかけ（なければ空） */
 function cashHandOf(storeId, dateStr) {
   const v = (Store.getDay(storeId, dateStr).items || {})[CASH_HAND];
   return (v && v.value && typeof v.value === 'object') ? v.value : {};
@@ -2218,7 +2218,7 @@ function cashPullAuto() {
   cashPullFromNippou(true);
 }
 
-/** その日の現金売上の記録（無ければ null） */
+/** その日の現金売上の記録（なければ null） */
 function cashOf(storeId, dateStr) {
   const v = (Store.getDay(storeId, dateStr).items || {})[CASH_ITEM];
   return v && v.value && typeof v.value === 'object' ? v.value : null;
@@ -2289,7 +2289,7 @@ function renderCash() {
     // ★書きかけがあれば、そちらを出します。
     //   記録した中身を先に見ていたころは、**記録したあとに直しても
     //   次に開くと元に戻って**いました。書きかけの方が新しいので、こちらが正です。
-    //   （書きかけが無い古い日は、記録した中身から出します）
+    //   （書きかけがない古い日は、記録した中身から出します）
     cashEdit.m = (書きかけ.m && Object.keys(書きかけ.m).length)
       ? { ...書きかけ.m }
       : { ...((saved && saved.m) || {}) };
@@ -2681,7 +2681,7 @@ function renderNippouBox(done) {
     return;
   }
 
-  // 手で入れる分（無い日は空のまま）
+  // 手で入れる分（ない日は空のまま）
   if (el.cashMinus.childElementCount !== CASH_MINUS_ROWS.length) {
     el.cashMinus.innerHTML = '';
     CASH_MINUS_ROWS.forEach((k) => {
@@ -2868,11 +2868,11 @@ const GridCache = {
 /**
  * いま見ている日の、仕入先と人件費の並び
  *
- * ★その月のものが無ければ、**前の月のものを使います。**
+ * ★その月のものがなければ、**前の月のものを使います。**
  *   仕入先は月をまたいでもほとんど変わらないので、
  *   月が替わるたびに6店舗分押してもらうのは手間だからです。
  *   ずれていても危なくありません。書くときはA列・E列の**名前で探す**ので、
- *   無い名前は「行が見つかりません」と出て**書かれません**。
+ *   ない名前は「行が見つかりません」と出て**書かれません**。
  *   新しく増えた仕入先を出したいときは「読み直す」を押してもらいます。
  */
 function cashGridNow() {
@@ -2974,7 +2974,7 @@ function journal日ごとAuto() {
   const test = nippouTestFor(state.storeId);
   if (!test && !NippouFolders.get(state.storeId)) return;
   const 覚え = NippouDays.get(state.storeId, state.y, state.m);
-  // ★社員の行の無い古い形は、時間にかかわらず読み直します（開くたびに1回だけ）
+  // ★社員の行のない古い形は、時間にかかわらず読み直します（開くたびに1回だけ）
   if (覚え && 覚え.at && !journal日報の古い形(覚え)
       && (Date.now() - new Date(覚え.at).getTime()) < 日ごとの読み直し) return;
   日ごとAuto[key] = true;
@@ -3187,7 +3187,7 @@ async function journal社員Load(store) {
     const res = await askAgain('nippouWrite', {
       mode: '社員', file: test, folder, store, storeName: 店 ? 店.name : '',
     }, { ms: ASK_上限.聞く, hedge: true });
-    /* ★断られた・古い GAS（返事に 社員 が無い）ときは、覚えている月額を消しません。
+    /* ★断られた・古い GAS（返事に 社員 がない）ときは、覚えている月額を消しません。
          ★ただし**黙りません。**理由を覚えて、欄に「月額を聞けません」と出します（理由は欄の title）。
            最初の公開はここで黙っていて、ko-dai さんの画面からは何も分かりませんでした */
     if (!res || !res.ok || !('社員' in res)) {
@@ -3213,7 +3213,7 @@ async function journal社員Load(store) {
  *    （`meetingCostRate`）。同じ式をここに書き写すと、**片方だけ直ります**。
  *
  *      原価率   ＝ 原価（仕入・税込）÷ 税込売上   ← 原価が税込なので、割る相手も税込
- *      人件費率 ＝ 人件費 ÷ 税抜売上             ← 人件費に税が無いので税抜
+ *      人件費率 ＝ 人件費 ÷ 税抜売上             ← 人件費に税がないので税抜
  *      F/L      ＝ その2つの足し算
  *
  *  ★出どころは**アプリに入れた数**です（日報からは読み直しません。ko-dai さんの決め・2026-09-23）。
@@ -3228,7 +3228,7 @@ async function journal社員Load(store) {
  *  日報から読んだ「日ごとの数」（★端末ごとに覚えます。共有の記録には入れません）
  *
  *  ★アプリの記録に混ぜません。混ぜると、月の一覧に「記録した日」が勝手に増え、
- *    写真の無い記録ができます。**見るための数**なので、端末に置けば足ります。
+ *    写真のない記録ができます。**見るための数**なので、端末に置けば足ります。
  *  ★仕入先の一覧（GridCache）と同じ置き方です。
  * ---------------------------------------------------------- */
 const NippouDays = {
@@ -3245,7 +3245,7 @@ const NippouDays = {
   },
 };
 
-/** その日の、日報の数（無ければ null） */
+/** その日の、日報の数（なければ null） */
 function journal日報の日(storeId, dateStr) {
   const hit = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || ''));
   if (!hit) return null;
@@ -3260,7 +3260,7 @@ function journal日報の日(storeId, dateStr) {
   return { 原価: 取る('cost'), 人件費: 取る('labor'), 社員: 取る('staff'), 税込: 取る('inc'), 税抜: 取る('ex') };
 }
 
-/** その月の覚えに、社員の行の無い古い形が混ざっているか */
+/** その月の覚えに、社員の行のない古い形が混ざっているか */
 function journal日報の古い形(覚え) {
   const days = (覚え && 覚え.days) || {};
   return Object.keys(days).some((k) => !(days[k] && 'staff' in days[k]));
@@ -3317,7 +3317,7 @@ function journal率の1日(storeId, dateStr, いまの日) {
   /* ★どちらを使うか
        開いている日 … **アプリの数**（打っている最中に変わらないように）。
                        まだ何も入れていなければ、日報の数を使います
-       過ぎた日     … **日報の数**（そちらが正です）。無ければアプリの数 */
+       過ぎた日     … **日報の数**（そちらが正です）。なければアプリの数 */
   const 日報 = journal日報の日(storeId, dateStr);
   if (いまの日) {
     const 自分 = {
@@ -3469,7 +3469,7 @@ function journal率まとめ(storeId, y, m, d) {
     累計.税込 += 分.税込 || 0;
     累計.税抜 += 分.税抜 || 0;
   }
-  /* ★1日も無いときは 0 ではなく「分からない」にします。
+  /* ★1日もないときは 0 ではなく「分からない」にします。
        0 にすると「売上0円の月」と見分けがつきません */
   if (!累計.日数) {
     累計.原価 = null; 累計.総合計 = null; 累計.アルバイト = null; 累計.税込 = null; 累計.税抜 = null;
@@ -4375,7 +4375,7 @@ function renderGridBox() {
         // ★16px 未満だと、iOS が触ったときに画面を勝手に拡大します
         i.style.fontSize = '16px';
         i.placeholder = ラベル;
-        // ★min-width:0 が肝心です。これが無いと、入力欄が縮まずに
+        // ★min-width:0 が肝心です。これがないと、入力欄が縮まずに
         //   親からはみ出します（flex の初期値は min-width:auto のため）
         i.style.flex = '1 1 0';
         i.style.minWidth = '0';
@@ -4452,7 +4452,7 @@ function renderGridBox() {
   /* ★「日報から読み直す（仕入先が増えたとき）」は、現場の画面から外しました（ko-dai さんの指示・2026-09-27。
        現場で押されないように）。仕入先が増えたときは、マネージの「日報の仕入先の読み直し」で頼みます。
        頼まれた店の端末は、次にジャーナルを開いたとき、日報から静かに読み直します（cashGridAuto）。
-       ★これが無いと、増えた業者が**いつまでも出てきません**（月が替われば、その月分は自動で読みます） */
+       ★これがないと、増えた業者が**いつまでも出てきません**（月が替われば、その月分は自動で読みます） */
 
   // ★日報側で直された数を、手でも取り込めるようにします
   const 取 = document.createElement('button');
@@ -4499,9 +4499,9 @@ function renderGridFill() {
 function nippouPartButton(親, part, 文) {
   if (!親) return;
   let b = 親.querySelector(`.nippou-go[data-part="${part}"]`);
-  /* ★★ボタンは**いつも出します。**入れたものが無いときは、押せない見た目にします。
+  /* ★★ボタンは**いつも出します。**入れたものがないときは、押せない見た目にします。
 
-       それまでは、入れたものが無いとボタンごと消していました。
+       それまでは、入れたものがないとボタンごと消していました。
        そのせいで「仕入れを書くボタンが消えている」と言われました
        （ko-dai さん・2026-09-13）。**消えたのか、まだ出ていないのかが
        見分けられません。**押せないボタンが見えている方が、
@@ -4524,7 +4524,7 @@ function nippouPartButton(親, part, 文) {
   if (b.dataset.busy) b.dataset.label = 字;
   else b.textContent = 字;
   b.classList.toggle('btn--danger', !!test && 中身);
-  // ★入れたものが無いときは押せません（見えてはいます）
+  // ★入れたものがないときは押せません（見えてはいます）
   if (!b.dataset.busy) {
     b.disabled = !中身;
     b.style.opacity = 中身 ? '' : '0.45';
@@ -4671,7 +4671,7 @@ function renderNippouMinusNote() {
 /* ------------------------------------------------------------
  *  日報へ書く
  *
- *  ★かならず「見る → 確かめる → 書く → 検算」の順に通します。
+ *  ★必ず「見る → 確かめる → 書く → 検算」の順に通します。
  *    書き込みは戻せないので、先に今の中身を見て、並べて確かめてもらいます。
  *  ★書いたあと、日報の「当日総合計」がジャーナルの売上（税込）と
  *    合うかを見ます。出前館・ウーバー・ロケットナウも書くので、
@@ -4861,7 +4861,7 @@ function gasAppMark() {
 /** 古いのはどちらか … 'アプリ' ／ 'GAS' ／ ''（分からない） */
 async function gasWhichOld() {
   const いま = gasAppMark();
-  if (!いま) return '';                       // 印が無い（手元で開いている）
+  if (!いま) return '';                       // 印がない（手元で開いている）
   try {
     const res = await fetch('version.json', { cache: 'no-store' });
     if (!res.ok) return '';
@@ -4878,7 +4878,7 @@ async function gasWhichOld() {
  *   そこで GAS に「1つ前の版」を返してもらいます（`res.prev`、新しい順・多くて5つ）。
  *   自分の待っている版がそこにあれば、**GAS が先に進んだ＝こちらが古い**と言い切れます。
  *
- * ★2026-09-22、これが無いために「デプロイしてください」と**逆の案内**を出し、
+ * ★2026-09-22、これがないために「デプロイしてください」と**逆の案内**を出し、
  *   ko-dai さんを貼り直しに行かせました。GAS はもう新しく、貼っても直りませんでした。
  * ★古い GAS は prev を返しません。そのときは今までどおりの案内に落ちます。
  */
@@ -4950,7 +4950,7 @@ function gasChigauText(なに, サーバー, アプリ, どっち) {
  * ★追い越されているときは、GASを貼る案内を絶対に出しません。
  *   `gasWhichOld()` の 'GAS'（＝この端末は公開ずみのものと同じ）は、
  *   追い越されている場面では「**公開されているアプリの控えが古い**」という意味になります。
- *   2026-09-22 は、ここが無かったので「デプロイしてください」と出しました。
+ *   2026-09-22 は、ここがなかったので「デプロイしてください」と出しました。
  */
 function gas向きを決める(追い越し, どっち) {
   if (!追い越し) return どっち;
@@ -5057,9 +5057,9 @@ const NIPPOU_PARTS = {
  *
  *  ★ただし次の3つは、0でも書きます（ko-dai さんの決め・2026-09-13）。
  *      現金売上 … その日の現金が0なら、0と入っていた方がはっきりします
- *      純売上   … 0なら売上の無かった日です。空欄だと「入れ忘れ」に見えます
+ *      純売上   … 0なら売上のなかった日です。空欄だと「入れ忘れ」に見えます
  *      当日客数 … 0人なら何かおかしいので、空欄にして気づけなくするより 0 と入れます
- *    おいでんテラスには**売上が1円も無い日**があり、その日は
+ *    おいでんテラスには**売上が1円もない日**があり、その日は
  *    この3つが0で並びます。空欄だと、休んだ日か入れ忘れた日か分かりません。
  *  ★クレジット・電子マネーは、これまでどおり0なら書きません。
  * ---------------------------------------------------------- */
@@ -5462,7 +5462,7 @@ async function writeNippou() {
  * ★日報にすでに**ちがう数**が入っているマスがあれば、サーバーは何も書かずに clash を返します。
  *   ここで人に見せて（赤いボタン）、「上書きして書く」なら force を付けて送り直します。
  *   ★これは前の「見る → 確かめる → 書く」と同じ守りです。ちがうのは、日報が空の普段の日に
- *     見に行く往復が無いことだけです。
+ *     見に行く往復がないことだけです。
  * ★やり直しても同じ値を同じマスに書くだけなので、返事が来なかったときは askAgain が静かに送り直します。
  * ★★書き込みには hedge（8秒で同じ頼みを重ねる）を**付けません**（本部の注意・2026-09-19）。
  *   先に返った方を取ると、遅れた片割れは Google 側で走り続けます。悪い晩はスクリプトが動き出すまで
@@ -5486,7 +5486,7 @@ async function 日報確かめて書く(req, 名) {
   if (!nippouGasOk(res)) return { ok: false, error: '', 版ちがい: true };
   /* ★★古い日報に書く.gs（'確かめて書く' を知らない版）への逃げ道（2026-09-19）。
        古い版は '確かめて書く' を「見る」と読んで**書かず**、rows を返し、返事に clash の欄がありません
-       （新しい版は、書かなかったときも clash を入れます。無ければ null）。
+       （新しい版は、書かなかったときも clash を入れます。なければ null）。
        版の印が合っていてこの形なら、前の「見る → 確かめる → 書く」で続けます。
        ★貼り直しの順番がずれても日報が止まらないための道です。普段は通りません。 */
   if (res.wrote === false && res.clash === undefined) {
@@ -5528,7 +5528,7 @@ async function 日報確かめて書く(req, 名) {
     res.聞き返した = 1;
   }
   if (!res.wrote) {
-    // ★新しいサーバーは、書いたときだけ wrote:true を返します。ここに来るのは、書くものが無かったときです
+    // ★新しいサーバーは、書いたときだけ wrote:true を返します。ここに来るのは、書くものがなかったときです
     return { ok: false, error: '日報に書くものがありませんでした' + gasNakami(res) };
   }
   return res;
@@ -5607,7 +5607,7 @@ function 日報の古い頼みを落とす() {
  * ★Worker の口があること（J1 と同じ）と、**日報に書く.gs が今の版だと分かっていること**の2つです。
  *   版が分かっていない端末（入れ替えたばかり・貼り直した直後）は、1回目だけ今までどおり待って書きます。
  *   その返事で版を覚えるので、2回目からは預けられます。
- *   ★これが無いと、journalWriteJob_ を知らない GAS に頼みを渡して、
+ *   ★これがないと、journalWriteJob_ を知らない GAS に頼みを渡して、
  *     人が待っていないところで黙って失敗します。
  */
 function 日報を預けられる() {
@@ -5667,7 +5667,7 @@ async function 日報を頼む(req, 名, group, 足す) {
         if (st.state !== '捨てた') 日報の頼みを足す({ ...頼み, state: st.state });
         return { ok: true, 預けた: true, 頼み, 捨てた: st.state === '捨てた' };
       }
-      break;        // 預かっていません（無い）。今までの道で書きます
+      break;        // 預かっていません（'無い'）。今までの道で書きます
     }
   }
   // Worker が知らない頼み・その他の断り → 今までどおり、待って書きます
@@ -5678,7 +5678,7 @@ async function 日報を頼む(req, 名, group, 足す) {
  *  預けた頼みの答えを受け取ります
  * ---------------------------------------------------------- */
 
-/** 同期の頼みに乗せる番号（本部の sync.js が呼びます。無ければ何も乗りません） */
+/** 同期の頼みに乗せる番号（本部の sync.js が呼びます。なければ何も乗りません） */
 function journal待っている頼み() {
   return 日報の頼みたち().filter((x) => x.state === '受け付け' || x.state === 'つかんだ').map((x) => x.id).slice(0, 5);
 }
@@ -5726,7 +5726,7 @@ function 日報の返事を次に聞く() {
 /**
  * 1つの頼みの様子を受け取って、画面と記録に入れます
  *
- *   済み    → 書けた（wrote）／食いちがい（clash）／書くものが無かった
+ *   済み    → 書けた（wrote）／食いちがい（clash）／書くものがなかった
  *   失敗    → 「もう一度書く」を出します
  *   捨てた  → 新しい頼みで書いたので、黙って忘れます
  *   受け付け・つかんだ → まだ待ちます（10分すぎたら知らせます）
@@ -5743,7 +5743,7 @@ function 日報の返事を受ける(頼み, st) {
 
   /* ★「捨てた」＝もっと新しい頼みに追い越された、です。
        追い越したのが**同じ組**なら、同じ欄を新しい数で書くので、黙って忘れてよいものです。
-       ★この端末に新しい頼みが無いときは、**別の端末か、別の組に追い越された**かもしれません。
+       ★この端末に新しい頼みがないときは、**別の端末か、別の組に追い越された**かもしれません。
          別の組（ジャーナルと仕入）に追い越されていたら、こちらの数は日報に入りません。
          黙って消すと「書いたつもりで入っていない」になるので、声をかけます。
          もう一度押しても、同じ数を同じマスに書くだけです。 */
@@ -5906,7 +5906,7 @@ async function 日報をもう一度頼む(id) {
 /**
  * 預けた書き込みの様子を見に行きます（アプリを開いたとき・画面に戻ってきたとき）
  *
- * ★同期の返事に相乗りして届く道もありますが、それがまだ無い版でも困らないように、
+ * ★同期の返事に相乗りして届く道もありますが、それがまだない版でも困らないように、
  *   開いたときは端末からも1度見に行きます。
  */
 function 日報の様子を見る() {
@@ -6084,7 +6084,7 @@ function cashNippouRowsFor(storeId) {
  *   検算が通らなくても、5つがそろえば書かれていました。
  *   同じ決まりを2か所に書くと、片方だけ直し忘れます（→ journalまとめ）。
  *
- *   紙       … 手で直した数があればそれ。無ければ、検算に守られた読み取り。どちらも無ければ null
+ *   紙       … 手で直した数があればそれ。なければ、検算に守られた読み取り。どちらもなければ null
  *   入れる   … 紙 − 引き算（出前館など。こじゃれは引きません）
  *   引く     … 日報に計算式で入れる行なら、引く行の並び
  *   書かない … 0円なので日報に入れない行。
@@ -6326,7 +6326,7 @@ function journal現金を記録へ写す(前の手) {
 function journal記録の現金を表へ写す() {
   if (!JOURNAL_STORES.includes(state.storeId)) return;
   if (!el.cashSales || el.cashSales.readOnly) return;
-  // ★写真を撮る前は写しません。表がまだ無く、あとで読んだ数を「手で直した数」で隠してしまうためです
+  // ★写真を撮る前は写しません。表がまだなく、あとで読んだ数を「手で直した数」で隠してしまうためです
   if (!(cashEdit.j || cashEdit.pending || cashEdit.photo || cashEdit.photoJob)) return;
   const x = journal行の数(state.storeId).find((r) => r.row.key === 'cash');
   if (!x) return;
@@ -6907,7 +6907,7 @@ async function cashReadPhoto(dataUrl, dateStr, file, id) {
 
     // ★小さくして送ったせいで読み取れなかったのかもしれません。
     //   そのときだけ、元の画質でもう一度送り直します（普段は1回で終わります）
-    // ★file が無いのは、続きからやり直しているときです。控えには小さくした
+    // ★file がないのは、続きからやり直しているときです。控えには小さくした
     //   写真しか残っていないので、送り直しても同じ結果にしかなりません。
     //   ここで file を見ずに送り直そうとして、画面に
     //   「file is not defined」と出していました（2026-09-05 に直しました）
@@ -6968,7 +6968,7 @@ async function cashReadPhoto(dataUrl, dateStr, file, id) {
         + '　紙と見くらべて、違っていれば直してください', 'ok');
     } else if (got.how === 'none') {
       el.cashSales.value = '0';
-      setCashMsg('現金の行が見当たりませんでした。現金の会計が無かった日は 0円 です。'
+      setCashMsg('現金の行が見当たりませんでした。現金の会計がなかった日は 0円 です。'
         + '紙に現金の行があるのに 0円 になっているときは、手で直してください', 'warn');
     } else {
       setCashMsg('金額を読み取れませんでした。金額は手で入れてください。'
@@ -7027,7 +7027,7 @@ async function showCashPhoto() {
  *
  * ★預けた写真は、Cloudflare が裏で GAS を起こしてドライブに残します。夜は数十秒かかることがあり、
  *   起こせなかった分は5分ごとの写しのついでに拾われます。
- * ★受け付けから10分たっても済んでいない・失敗・捨てた・無い → 「もう一度残す」を出します。
+ * ★受け付けから10分たっても済んでいない・失敗・捨てた・ない → 「もう一度残す」を出します。
  */
 async function journal写真を待つ() {
   const job = cashEdit.photoJob;
@@ -7082,8 +7082,8 @@ function journal写真の手(押したら) {
  * 「もう一度残す」
  *
  * ★手元に写真があれば、今の GAS の道（save）で送ります。
- * ★無ければ（開き直したあと）、Cloudflare に預けた写真を「受け付け」に戻してもらいます（retry）。
- *   預け先にも写真が無ければ（済んで消えた・3日たった）、撮り直してもらいます。
+ * ★なければ（開き直したあと）、Cloudflare に預けた写真を「受け付け」に戻してもらいます（retry）。
+ *   預け先にも写真がなければ（済んで消えた・3日たった）、撮り直してもらいます。
  */
 async function journal写真を残し直す(job) {
   const b = document.getElementById('cashPhotoRetry');
@@ -7847,9 +7847,9 @@ let todayShiftDrawn = '';
 
 function renderToday() {
   /* ★「今日」を決める部品と表を描く部品は、js/shift-sheet.js にあります（2026-10-11、シフトの部署が移しました）。
-       端末に古い js/shift-sheet.js が残ったまま、新しい js/app.js だけが届くと、ここに無いことがあります。
+       端末に古い js/shift-sheet.js が残ったまま、新しい js/app.js だけが届くと、ここにないことがあります。
        転ばずに、そう出します（あちらの shiftTodayDraw と同じ文です）。読み込み直せば直ります。
-     ★無いときに、本部で「今日」を決め直しません（決め方が2か所になるため） */
+     ★ないときに、本部で「今日」を決め直しません（決め方が2か所になるため） */
   if (typeof shiftTodayStr !== 'function') {
     el.todayDate.textContent = '';
     el.todayPick.classList.add('is-hidden');
@@ -7922,7 +7922,7 @@ function renderToday() {
  *  ★**提出ページ（shift/）は、1文字も変えていません。**ここは、その外側に付ける枠です（中は iframe）。
  *    アルバイトが自分で開く提出ページには、何も付きません。
  *  ★マイン   … ヘッダー（同期の印・ホーム・Manage・提出記録・設定）を残して、その下に出します。**右上は本物のまま**です
- *              （提出ページに同期の印を描き足すと、中身の無い飾りになります。本物を残す方を選びました）
+ *              （提出ページに同期の印を描き足すと、中身のない飾りになります。本物を残す方を選びました）
  *    ワークス … 全面に出して、閉じるボタンだけ
  *    オーナー … カードが、マインの `?open=parttime` を開きます。閉じると、オーナーに戻ります
  *  ★開いているあいだにヘッダーから別の画面へ移ったら、枠はしまいます（下の画面と食いちがわないように）。
@@ -7954,7 +7954,7 @@ function ptFrameLoad(url) {
  *   from … 'owner' なら、閉じたときにオーナーへ戻ります
  *
  * ★開くのは、このアプリと同じ場所の提出ページ（shift/）だけです。よその URL は、枠の中に入れません。
- * ★枠の部品が無いとき（端末に古い index.html が残っている）は、今までどおり別の窓で開きます。
+ * ★枠の部品がないとき（端末に古い index.html が残っている）は、今までどおり別の窓で開きます。
  */
 function ptFrameOpen(url, from) {
   const 枠 = $('ptFrame');
@@ -8032,7 +8032,7 @@ function taskStatus(taskId, storeId) {
   if (taskId === 'anytime') {
     const items = getAnytime(storeId);
     if (!items.length) return { text: '項目なし', kind: 'none' };
-    // 期限が無い掃除なので、達成率ではなく「まだ一度も記録が無い数」を出します
+    // 期限がない掃除なので、達成率ではなく「まだ一度も記録がない数」を出します
     const rec = Store.getDay(storeId, ANYTIME_KEY);
     const never = items.filter((it) => !rec.items?.[it.id]?.at).length;
     return never
@@ -8051,7 +8051,7 @@ function taskStatus(taskId, storeId) {
   if (taskId === 'train') {
     const people = Trainees.list(storeId);
     const total = trainTotal(storeId);
-    // ★項目を先に見ます。項目が無いのに「みんな終わりました」と出すと嘘になります
+    // ★項目を先に見ます。項目がないのに「みんな終わりました」と出すと嘘になります
     if (!total) return { text: '項目がまだ', kind: 'none' };
     if (!people.length) return { text: '名前がまだ', kind: 'none' };
     const all = getTraining(storeId).flatMap((sec) => sec.items);
@@ -8254,11 +8254,11 @@ function expenseEntries(rec) {
  * 月が変わっても同じ場所に同じ人がいる方が、探しやすいためです
  * （順番を変えたいときは、マネージの「担当者」で並べ替えます）。
  *
- * 立て替えが1件も無い人も、¥0 として行を出します。
+ * 立て替えが1件もない人も、¥0 として行を出します。
  * 「この人はまだ入れていないのか、それとも本当に0円なのか」が
  * ひと目で分かるようにするためです（配達記録の表と同じ考え方）。
  *
- * 担当者リストに無い名前（辞めた方など）は、記録があるときだけ
+ * 担当者リストにない名前（辞めた方など）は、記録があるときだけ
  * 一番下に出ます。
  */
 function expenseByPerson(rec) {
@@ -8273,7 +8273,7 @@ function expenseByPerson(rec) {
   });
   const rank = (name) => {
     const i = order.indexOf(name);
-    return i < 0 ? order.length : i;   // リストに無い人は下へ
+    return i < 0 ? order.length : i;   // リストにない人は下へ
   };
 
   return [...map.entries()]
@@ -8283,7 +8283,7 @@ function expenseByPerson(rec) {
       total: list.reduce((t, e) => t + (Number(e.yen) || 0), 0),
       paid: (rec.items || {})[expensePaidKey(name)] || null,
     }))
-    // リストに無い人どうしは、金額の大きい順に並べます
+    // リストにない人どうしは、金額の大きい順に並べます
     .sort((a, b) => rank(a.name) - rank(b.name) || b.total - a.total);
 }
 
@@ -8344,7 +8344,7 @@ function renderExpense() {
   const rec = expenseRec();
   const people = expenseByPerson(rec);
   // 立て替えがあった人だけ。人数や未精算の数は、この人たちで数えます
-  // （0円の人は「渡すものが無い」ので、精算のしようがありません）
+  // （0円の人は「渡すものがない」ので、精算のしようがありません）
   const paying = people.filter((p) => p.total > 0);
   const total = paying.reduce((t, p) => t + p.total, 0);
   const unpaid = paying.filter((p) => !(p.paid && p.paid.done));
@@ -8373,7 +8373,7 @@ function renderExpense() {
     const zero = p.total === 0;
     const tr = document.createElement('tr');
     if (done) tr.className = 'is-paid';
-    else if (zero) tr.className = 'is-zero';   // 立て替えが無い人は色を落とす
+    else if (zero) tr.className = 'is-zero';   // 立て替えがない人は色を落とす
 
     const name = document.createElement('td');
     name.className = 'exp-total__name';
@@ -8534,7 +8534,7 @@ function expenseRowName(e) {
 
 async function removeExpense(e) {
   /* ★キャッチは渡した相手も添えます。同じ日・同じ店舗・同じ人数・同じ金額が
-     2件あると、相手が無いと**どちらを消すのか見分けられません。**
+     2件あると、相手がないと**どちらを消すのか見分けられません。**
      戻せない操作なので、ここは見分けが付くようにしておきます */
   const 相手 = (e.kind === 'catch' && (e.who || '').trim()) ? `　→ ${e.who.trim()}` : '';
   const ok = await askConfirm({
@@ -8610,7 +8610,7 @@ function openExpenseForm(entry) {
   el.expYen.value = expEditing ? expEditing.yen : '';
   el.expPeople.value = expEditing && expEditing.people ? expEditing.people : '';
 
-  /* 渡した相手（キャッチのとき）。リストに無い人は「その他」で名前を書きます */
+  /* 渡した相手（キャッチのとき）。リストにない人は「その他」で名前を書きます */
   const who = expEditing ? (expEditing.who || '') : '';
   fillWhoOptions(who);
   el.expWhoFree.value = el.expWho.value === CATCH_OTHER ? who : '';
@@ -9303,7 +9303,7 @@ function renderSettle() {
   el.settleRows.innerHTML = '';
   rows.forEach((r) => {
     const tr = document.createElement('tr');
-    // 記録が無い月は色を落とし、精算待ちの月は目立たせます
+    // 記録がない月は色を落とし、精算待ちの月は目立たせます
     if (!r.yen) tr.className = 'is-zero';
     else if (!r.settle) tr.className = 'is-yet';
     if (r.y === TODAY.y && r.m === TODAY.m) tr.classList.add('is-now');
@@ -9492,7 +9492,7 @@ async function clearSettle() {
  *    ・議事録 … _meeting/YYYY-MM に1つずつ入れます。表に直接書けます。
  * ============================================================ */
 
-/** 入っている月のうち、一番新しい月。1つも無ければ null */
+/** 入っている月のうち、一番新しい月。1つもなければ null */
 function latestMeetingMonth() {
   if (typeof MEETING_DATA === 'undefined') return null;
   const keys = Object.keys(MEETING_DATA).sort();
@@ -9501,7 +9501,7 @@ function latestMeetingMonth() {
   return { y: +y, m: +m };
 }
 
-/** その月のデータ。無ければ null */
+/** その月のデータ。なければ null */
 /**
  * その月の数字。
  *   下じき … meeting-data.js（2026年1〜6月を取り込んだもの）
@@ -9534,8 +9534,8 @@ function meetingOf(y, m) {
  *
  * ★どの数字が、どこを正とするか（2026-10-08、ko-dai さんの決め。同じ日に2回決め直しています）
  *     売上・客数・原価・人件費 … **日報のまとめのページ**。「必ず日報のまとめと誤差ないように」
- *     キャッチ               … スプレッドシートの数があればそれ。無ければキャッチ集計（立替金の記録）
- *     光熱費                 … 手で入れた数（日報にも無い）
+ *     キャッチ               … スプレッドシートの数があればそれ。なければキャッチ集計（立替金の記録）
+ *     光熱費                 … 手で入れた数（日報にもない）
  *   はじめは「売上なども、スプレッドシートに合わせる」でした。スプレッドシートは日報をある日に写した数で、
  *   日報はそのあとも直されます。日報と違う数が残るので、「日報の数にする」に変わりました。
  */
@@ -9634,11 +9634,11 @@ function meetingCatchOf(y, m) {
 /**
  * 表の1行に、キャッチ（金額と人数）を入れます
  *   v     … その店舗の、今年か昨年の数字（meetingRow の返すもの）。ここへ書きこみます
- *   集計  … キャッチ集計の数 { yen, people }（無ければ undefined）
+ *   集計  … キャッチ集計の数 { yen, people }（なければ undefined）
  * 返すもの … スプレッドシートの数を出したら true
  *
  * ★スプレッドシートの数（sheet: の katch）があれば、それが勝ちます。0 でも勝ちます
- *   （スプレッドシートに 0 と入っている＝その月はキャッチ無し、という記録です）。
+ *   （スプレッドシートに 0 と入っている＝その月はキャッチなし、という記録です）。
  */
 function meetingCatchFill(v, 集計) {
   if (typeof v.katch === 'number') {
@@ -10008,7 +10008,7 @@ function renderMeeting() {
       now.laborPartOnly = state.y <= NIPPOU_社員なしの最後の年;
       last.laborPartOnly = state.y - 1 <= NIPPOU_社員なしの最後の年;
       /* キャッチ … ★スプレッドシートの数が記録にあれば、それを出します（2026-10-08、ko-dai さんの決め）。
-           無ければ、今までどおりキャッチ集計（立替金の記録）から数えます。
+           なければ、今までどおりキャッチ集計（立替金の記録）から数えます。
            ★金額がスプレッドシートの数なら、人数もスプレッドシートの数です（出どころを混ぜません） */
       if (meetingCatchFill(now, katch[s.id])) シートのキャッチ = true;
       meetingCatchFill(last, katchLast[s.id]);
@@ -10038,7 +10038,7 @@ function renderMeeting() {
   if (has) {
     renderMeetingTable(list);
   } else {
-    // 数字の無い月に切り替えたとき、前の月の表が残らないように空にします
+    // 数字のない月に切り替えたとき、前の月の表が残らないように空にします
     el.meetingHead.innerHTML = '';
     el.meetingBody.innerHTML = '';
     el.meetingScrollHint.classList.add('is-hidden');
@@ -10198,7 +10198,7 @@ function renderMeetingCum() {
   });
 
   /* 6店舗の合計と、昨年もあった5店舗だけの合計。
-     6店舗の方は昨年の数字が無いので、そこは「—」にします */
+     6店舗の方は昨年の数字がないので、そこは「—」にします */
   const five = SALES_TARGET_FIVE_STORES;
   const all6 = shown.reduce((t, s) => t + cum[s.id].ex, 0);
   const now5 = shown.filter((s) => five.includes(s.id)).reduce((t, s) => t + cum[s.id].ex, 0);
@@ -10237,7 +10237,7 @@ let nippouShownKey = '';
  *  ★`js/meeting-data.js` は GitHub Pages で誰でも読めます。会社の売上・原価・
  *    人件費が店舗別・月別に出てしまうので、公開から外します。
  *    外すと画面から消えるので、先にここで記録（スプレッドシート）へ写します。
- *    写したあとは、ファイルが無くても今までどおり出ます。
+ *    写したあとは、ファイルがなくても今までどおり出ます。
  *
  *  ★すでに記録がある店舗は書き換えません。日報から取り込み直した分を
  *    上書きしないためです。二度押しても増えません。
@@ -10419,9 +10419,9 @@ function renderMeetingMove() {
  *   スプレッドシートへ書く道具（gas/会議資料に書く.gs）も同じ `at` を読み、古い写しは書きません。
  *   **名前を変えるときは2か所いっしょに**（検算 test_nippou_stamp.py が、両方を同じ記録で動かして見ています）。
  *
- * 返すもの … null（取り込んだ数字が無い）
+ * 返すもの … null（取り込んだ数字がない）
  *            { at: 一番古い時刻 }（店舗で時刻が違えば、古い方）
- *            { at: null }（時刻の無い店舗がある＝時刻を入れる前に取り込んだ月）
+ *            { at: null }（時刻のない店舗がある＝時刻を入れる前に取り込んだ月）
  */
 function nippouPulledAt(y, m) {
   const items = Store.getDay(MEETING_STORE, meetingMonthKey(y, m)).items || {};
@@ -10433,7 +10433,7 @@ function nippouPulledAt(y, m) {
   return { at: ats.slice().sort()[0] };
 }
 
-/** 取り込みのボタンの横に出す一文（取り込んだ数字が無ければ空） */
+/** 取り込みのボタンの横に出す一文（取り込んだ数字がなければ空） */
 function nippouPulledText(y, m, いま = new Date()) {
   const p = nippouPulledAt(y, m);
   if (!p) return '';
@@ -10446,7 +10446,7 @@ function nippouPulledText(y, m, いま = new Date()) {
   return `日報から取り込んだのは ${d.getMonth() + 1}月${d.getDate()}日 ${時刻}${日 >= 1 ? `（${日}日前）` : ''} です（${自動}）`;
 }
 
-/** スプレッドシートのキャッチを出している月に出す一文（無い月は空） */
+/** スプレッドシートのキャッチを出している月に出す一文（ない月は空） */
 function meetingSheetText(y, m) {
   if (!meetingHasSheet(y, m)) return '';
   return '★この月のキャッチは、スプレッドシートの数です（売上・客数・原価・人件費は、日報の数です）';
@@ -10462,7 +10462,7 @@ function meetingSheetText(y, m) {
  *
  *  ★現場の端末（ワークス）は読みません。日報を読むのに10秒ほどかかり、サーバーも使うためです。
  *    マインが読み直した数は、普段の同期で現場にも届きます。
- *  ★これからの月は読みません（日報がまだ無いか、空です）。
+ *  ★これからの月は読みません（日報がまだないか、空です）。
  *  ★読めなかったときに叩き続けないよう、同じ月を自動で試すのは NIPPOU_AUTO_分 に1回までです。
  * ---------------------------------------------------------- */
 const NIPPOU_AUTO_分 = 60;
@@ -10737,7 +10737,7 @@ function renderMeetingGoals() {
     ? `（${filled.last}月まで＝目安 ${Math.round(pace * 100)}%）` : '';
 
   /* ★目標はマネージで登録します（設定なので、公開ウェブには出ません）。
-     1つも登録が無いときは、黙って消さずに知らせます。
+     1つも登録がないときは、黙って消さずに知らせます。
      消えたのか、まだ入れていないのかが分からないのが一番こまるためです */
   el.meetingGoals.innerHTML = '';
   if (!SalesTargets.any()) {
@@ -11261,7 +11261,7 @@ function openMissForm(kind, entry, preset = {}) {
   });
   el.missBy.value = entry ? (entry.by || '') : '';
 
-  /* ミスした人。リストに無い人（アルバイトなど）は「その他」で名前を書きます */
+  /* ミスした人。リストにない人（アルバイトなど）は「その他」で名前を書きます */
   const who = entry ? (entry.who || '') : '';
   const list = Staff.list();
   el.missWho.innerHTML = '<option value="">選んでください</option>';
@@ -11478,7 +11478,7 @@ function renderStaffSelect(current) {
   //   前はここに「＋ 担当者リストを編集…」を出していましたが、
   //   押しても設定が開くだけで、**そこに編集する所はありません**でした。
   //   名前と中身が食いちがっていたので、消しました。
-  //   まだ1人も登録が無いときだけ、どこで登録するかを出します（選べません）。
+  //   まだ1人も登録がないときだけ、どこで登録するかを出します（選べません）。
   if (!names.length) {
     const どこ = document.createElement('option');
     どこ.value = '';
@@ -11718,7 +11718,7 @@ function renderWeekView() {
   // ホール・キッチン・トイレ…の見出しで区切って並べます
   const groups = groupWeekly(items);
   groups.forEach((g) => {
-    // 見出しが1つしか無いときは、わざわざ帯を出しません
+    // 見出しが1つしかないときは、わざわざ帯を出しません
     if (groups.length > 1) {
       const htr2 = document.createElement('tr');
       htr2.className = 'week-group';
@@ -12097,7 +12097,7 @@ function renderWeekAll() {
  * 週間掃除は2週間で1つの区切りなので、日のカレンダーではなく期をならべます。
  * 中の見かたは提出記録のカレンダーと同じで、
  *   出した店舗 … その店舗のアイコン
- *   項目が無い … アイコンをうすく
+ *   項目がない … アイコンをうすく
  *   まだの店舗 … アイコンは出さず「未◯」と数で
  * です。
  */
@@ -12134,7 +12134,7 @@ function renderWeekAllYear() {
     let done = 0, target = 0, yet = 0;
     STORES.forEach((s) => {
       const st = periodStatus(s.id, start);
-      const none = st.total === 0;                 // この期は対象の項目が無い
+      const none = st.total === 0;                 // この期は対象の項目がない
       if (!none) {
         target += 1;
         if (st.submittedAt) done += 1; else yet += 1;
@@ -12337,7 +12337,7 @@ function clearDoer() {
 /* ============================================================
  *  描画：随時掃除ビュー（決まった間隔がない掃除）
  *
- *  期限が無いので、できた・できないの判定はしません。
+ *  期限がないので、できた・できないの判定はしません。
  *  「最後にやった日」と「そこから何日たったか」だけを見せます。
  * ============================================================ */
 /** 日付（ISO）から今日までの日数。今日なら 0 */
@@ -12361,7 +12361,7 @@ function agoLabel(n) {
 function renderAnytimeBlock() {
   const storeId = state.storeId;
   const items = getAnytime(storeId).filter(anytimeShows);
-  // 項目が無い店舗では、この かたまり ごと出しません
+  // 項目がない店舗では、この かたまり ごと出しません
   el.anytimeBlock.classList.toggle('is-hidden', items.length === 0);
   if (!items.length) return;
 
@@ -12593,7 +12593,7 @@ function shiftRec() {
   return Store.getDay(SHIFT_STORE, shiftRecKey());
 }
 
-/** その日の組んだ結果（無ければ空） */
+/** その日の組んだ結果（なければ空） */
 /**
  * その日の組んだ結果
  *
@@ -12623,7 +12623,7 @@ function shiftDayOf(rec, dateStr) {
     dinner: 夜.dinner,
     last: 夜.last,
     memo: v.memo || '',
-    // その日のパティの枠（'lunch' か 'dinner'。無ければ空）
+    // その日のパティの枠（'lunch' か 'dinner'。なければ空）
     patty: SHIFT_PATTY_SLOTS.includes(v.patty) ? v.patty : '',
     // 人が足りないマス（'dinner|k' → あと何人欲しいか）。その人数だけ赤く出します
     short: shiftShortMap(v.short),
@@ -12838,7 +12838,7 @@ function shiftGoToday() {
  * ★「今日が入っている半月」ではありません。
  *   出してもらうのは先の半月なので、今日の半月を開くと
  *   「取り込んでも何も入らない」ことになります（実際そうなりました）。
- *   募集中のものがあればそれを、無ければ次に募集する半月を出します。
+ *   募集中のものがあればそれを、なければ次に募集する半月を出します。
  */
 function shiftFirstPeriod(storeId) {
   const t = businessDate();
@@ -12849,7 +12849,7 @@ function shiftFirstPeriod(storeId) {
     const rec = Store.getDay(SHIFT_STORE, shiftKey(storeId, p.y, p.m, p.half));
     if (shiftPhaseOf(rec) === SHIFT_OPEN) return p;
   }
-  // 募集中が無ければ、まだ確定していなくて「もう誰かが出している」半月
+  // 募集中がなければ、まだ確定していなくて「もう誰かが出している」半月
   for (let i = 0; i <= 4; i += 1) {
     const p = shiftStep(now.y, now.m, now.half, i);
     const rec = Store.getDay(SHIFT_STORE, shiftKey(storeId, p.y, p.m, p.half));
@@ -12858,7 +12858,7 @@ function shiftFirstPeriod(storeId) {
     //   いま開いている半月の希望を数えてしまいます
     if (shiftWishes(rec, { storeId, ...p }).length) return p;
   }
-  // どれも無ければ「次の半月」。★今の半月は出しません。
+  // どれもなければ「次の半月」。★今の半月は出しません。
   //   募集をかけるのは先の半月なので、いま動いている半月を開いても
   //   「取り込んでも何も入らない」ことになるためです
   return shiftStep(now.y, now.m, now.half, 1);
@@ -13370,7 +13370,7 @@ function shiftReqSiblings(key, rows) {
 }
 
 /**
- * 同じ申請で、よその店がもう承認した番号（無ければ ''）
+ * 同じ申請で、よその店がもう承認した番号（なければ ''）
  * ★2つ以上あれば、先に承認された方（すれ違いで番号が2つできても、どの端末でも同じ方を選びます）
  */
 function shiftReqSiblingCode(key, rows) {
@@ -13393,7 +13393,7 @@ function shiftReqSiblingCode(key, rows) {
  * ★取り直せたかは `Sync.lastSyncAt` が新しくなったかで見ます（js/sync.js は同期が通ったときだけ作り直します）。
  *   前の同期が終わらないまま `flush()` を呼ぶと、js/sync.js の「重ねません」で**何もせずに帰る**ので、
  *   `await` が終わっただけでは取り直せたことになりません。
- * ★同期しない端末（口が無い）は、上書きする相手がいないので、そのまま進めます。
+ * ★同期しない端末（口がない）は、上書きする相手がいないので、そのまま進めます。
  */
 async function shiftReqFresh() {
   if (typeof Sync === 'undefined' || !Sync.enabled || !Sync.enabled() || !Sync.flush) return '';
@@ -13546,7 +13546,7 @@ function shiftReqApprove(storeId, key, rec, 直した名前) {
     const 使用中 = Object.keys(map).reduce((a, id) => a.concat((map[id] || []).map((q) => String(q.c || ''))), [])
       .filter(Boolean);
     code = よその番号 || shiftCodeFrom(key.slice(key.indexOf('-') + 1), 使用中) || makeShiftCode(使用中);
-    // ★申請で選んだ持ち場で名簿に入れます（2026-09-24、ko-dai さんの指示）。持ち場の無い申請は、決めないまま
+    // ★申請で選んだ持ち場で名簿に入れます（2026-09-24、ko-dai さんの指示）。持ち場のない申請は、決めないまま
     map[storeId] = list.concat([{ n: name, c: code, s: false, p: 持ち場 ? rec.p : '' }]);
     ShiftStaff.save(map);
   }
@@ -13577,7 +13577,7 @@ function shiftReqDeny(key, rec, 聞く, 出す名前) {
   }
 }
 
-/** 申請の欄（無ければ null。★申請の画面を止めているあいだは出しません） */
+/** 申請の欄（なければ null。★申請の画面を止めているあいだは出しません） */
 function shiftReqBox(storeId) {
   if (!SHIFT_REQ_ON) return null;
   const rows = shiftReqRows();
@@ -13856,7 +13856,7 @@ function shiftCodeList(store, people) {
       open.rel = 'noopener';
       open.textContent = 'アルバイトの画面を見る';
       // ★本部の枠（ptFrameOpen）で開きます。マインはヘッダーの下、ワークスは全面＋閉じるボタン。
-      //   枠の部品が無い端末（古い版が残っている）では、今までどおり別のタブで開きます（2026-10-11・本部が足した）
+      //   枠の部品がない端末（古い版が残っている）では、今までどおり別のタブで開きます（2026-10-11・本部が足した）
       open.addEventListener('click', (e) => {
         if (typeof ptFrameOpen === 'function') { e.preventDefault(); ptFrameOpen(open.href); }
       });
@@ -14593,7 +14593,7 @@ function shiftGuideHtml(kind) {
   ]));
 
   // ★行き先は、ワークスの使い方の6章（シフト）へ直に。マインの「使い方を見る」はマインの使い方（help/mine/）へ行き、
-  //   そこに組む手順は無いため（2026-09-24、マニュアルの指摘）。この窓はワークスでもマインでも開きます
+  //   そこに組む手順はないため（2026-09-24、マニュアルの指摘）。この窓はワークスでもマインでも開きます
   const 本 = `${typeof ASSET_BASE !== 'undefined' ? ASSET_BASE : ''}help/index.html#s6`;
   out.push(`<p class="modal__note" style="margin:20px 0 6px;">もっと詳しい説明は、<a href="${本}" target="_blank" rel="noopener">`
     + 'ワークスの使い方の6章（シフト）</a>にあります。</p>');
@@ -14648,7 +14648,7 @@ function renderShift() {
   shiftExtraStyle();
   // ★名簿（シフトに入る人）は全店舗に出します。シフトを組むところは
   //   SHIFT_STORES の店舗だけです。組まない店舗では、名簿だけを出して
-  //   あとは隠します（空の表を見せても、できることが無いためです）
+  //   あとは隠します（空の表を見せても、できることがないためです）
   const 組む = shiftBuilds(state.storeId);
   renderShiftRoster(組む);
   // 「今日のシフト」の小窓を開いていたら、届いた記録で描き直します
@@ -14879,7 +14879,7 @@ function shiftGridBlock(rec, wishes, days) {
       td.appendChild(box);
     }
 
-    // ★決まり文句が1つも無い店舗（仕込み／営業の4店舗）では、行ごと出しません。
+    // ★決まり文句が1つもない店舗（仕込み／営業の4店舗）では、行ごと出しません。
     //   空の箱を置くと、メモの下にすき間だけが残ります
     if (shiftMemoTagsOf(state.storeId).length) {
       td.appendChild(shiftMemoTagBox(dateStr, input));
@@ -14912,7 +14912,7 @@ function shiftGridBlock(rec, wishes, days) {
  *              要請を出したときに、その日・その持ち場に入っている人数を `b` に控えます（→ helpReqStaffCount）。
  *              あとから人が入れば（手で足す・他の店舗から「ヘルプに出す」で来る・希望を取り込む）その分だけ減ります。
  *              ★人を外せば、また増えます（その日の人数で毎回数え直すため。書き換えはしません）。
- *              ★`b` の無い要請（この直しより前に出したもの）は減りません。出し直すと減るようになります。
+ *              ★`b` のない要請（この直しより前に出したもの）は減りません。出し直すと減るようになります。
  *              人員過多は、今までどおり出した人数のままです。
  * ★見た目は、すでにある .patty-box／.shift-patty／.memo-tags／.memo-tag／.modal を
  *   使い回しています（css/style.css は本部のもので、足していません）。
@@ -14930,7 +14930,7 @@ function helpReqLaneName(id) {
   return l ? l.name : id;
 }
 
-/** 出したときのまま（生）の1項目。無ければ null */
+/** 出したときのまま（生）の1項目。なければ null */
 function helpReqRaw(storeId, dateStr, kindId, laneId) {
   const items = Store.getDay(HELP_REQ_STORE, helpReqKey(storeId, dateStr)).items || {};
   const v = items[helpReqItem(dateStr, kindId, laneId)];
@@ -14956,7 +14956,7 @@ function helpReqStaffCount(storeId, dateStr, laneId) {
 
 /**
  * ヘルプ要請の「あと何人」（出した人数から、そのあと入った人数を引いたもの。0 より小さくはしません）
- * ★人員過多は引きません（出した人数のまま）。`b` の無い要請も引きません（→ 上の見出し）
+ * ★人員過多は引きません（出した人数のまま）。`b` のない要請も引きません（→ 上の見出し）
  */
 function helpReqLeft(storeId, dateStr, kindId, laneId, v) {
   const n = v ? Math.max(0, Math.floor(Number(v.n)) || 0) : 0;
@@ -15290,7 +15290,7 @@ function openHelpSend(dateStr) {
             <input type="text" class="field__input" id="helpSendFree" inputmode="numeric" autocomplete="off"
               autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="他の時刻（例 17:30）">
           </div></div>
-        <p class="modal__note">決めると、向こうの店舗のシフトのその日・その時刻に入ります（名簿に名前が無くても出ます）。</p>
+        <p class="modal__note">決めると、向こうの店舗のシフトのその日・その時刻に入ります（名簿に名前がなくても出ます）。</p>
         <div class="modal__actions modal__actions--confirm">
           <button type="button" class="btn" data-help-send-close>やめる</button>
           <button type="button" class="btn btn--primary" id="helpSendGo">決める</button>
@@ -16027,7 +16027,7 @@ function shiftPickWishBox(dateStr, name) {
   const line = document.createElement('p');
   line.className = 'modal__note';
   if (!w || !w.sentAt) {
-    // 提出そのものが無い人。こちらで入れた人です
+    // 提出そのものがない人。こちらで入れた人です
     line.textContent = `${name}さんは、この半月をまだ提出していません（こちらで入れた人です）`;
     box.appendChild(line);
     return box;
@@ -16217,8 +16217,8 @@ function renderShiftPick() {
      ★立ち上げから通しで入る人がいるので、立ち上げでも選べるようにしてあります */
   // ★時刻を入れる店舗（popo）では、Fは出勤・退勤から毎回決まります。
   //   手で切り替えるものではないので、この欄は出しません
-  // ★F（通し）の無いお店（仕込み／営業の4店舗＝こじゃれ・炭まろ・ちゃこる・おいでんテラス）では出しません
-  //   （2026-09-24、ko-dai さんの指示「立ち上げのあとは？の部分は消して」）。ランチが無いので F も無く、
+  // ★F（通し）のないお店（仕込み／営業の4店舗＝こじゃれ・炭まろ・ちゃこる・おいでんテラス）では出しません
+  //   （2026-09-24、ko-dai さんの指示「立ち上げのあとは？の部分は消して」）。ランチがないので F もなく、
   //   仕込みのあとは営業しかないためです。提出ページも同じ決め方です（shift/js/submit.js の「立ち上げのあとは？」）
   const Fがある = shiftWishSlots(state.storeId).some((s) => s.id === SHIFT_FULL_ID);
   const canFull = !時刻で入れる && Fがある && (slotId === 'lunch' || slotId === 'open');
@@ -16303,7 +16303,7 @@ function renderShiftPick() {
 
         // 立ち上げに希望を出した人には、時間をずらして入れる道も出します。
         // 立ち上げが多い日に、押すだけでランチへ回せるようにするためです。
-        // ★ランチを使っていない店舗（夜だけのお店）では、回し先が無いので出しません
+        // ★ランチを使っていない店舗（夜だけのお店）では、回し先がないので出しません
         const to = slotId === 'open' && isWish ? shiftSpillTo(state.storeId) : null;
         if (to) {
           const spill = document.createElement('button');
@@ -16361,7 +16361,7 @@ function setShiftLane(laneId) {
 /**
  * 時刻をじかに書く
  *
- * ボタンに無い時刻（11:15 など）を入れるためのものです。
+ * ボタンにない時刻（11:15 など）を入れるためのものです。
  * ★パソコンでもiPadでもiPhoneでも同じように使えます。
  */
 function applyShiftFreeTime() {
@@ -16501,7 +16501,7 @@ function shiftShortDays(rec) {
   //   「立ち上げ2人、ランチ2人」と分けて書くより「ランチ4人」の方が、
   //   受け取った人が自分に当てはめやすいためです。
   //   ★ランチを使っていない店舗（仕込み／営業の4店舗）では**足しません**。
-  //     足し先が無く、「仕込み」はランチとは別の時間帯だからです。
+  //     足し先がなく、「仕込み」はランチとは別の時間帯だからです。
   //     画面の表と、赤いあきの数え方は今までどおりです。**送る文だけの話です**
   const 足し先 = 枠一覧.some((sl) => sl.id === 'lunch') ? 'lunch' : null;
   // ★popo だけ、持ち場（キッチン／ホール）まで分けて書きます（2026-10-08、ko-dai さんの指示
@@ -16643,7 +16643,7 @@ function openShiftQr() {
         <img id="shiftQrImg" alt="シフト提出ページのQRコード" width="220" height="220"
           style="display:block;width:220px;height:220px;margin:0 auto 10px;">
         <p class="modal__note">スマホのカメラで読み取ると、シフト提出のページが開きます。<br>
-          番号がまだ無い人は、開いた画面の「番号をまだ持っていない」から申請できます。</p>
+          番号がまだない人は、開いた画面の「番号をまだ持っていない」から申請できます。</p>
         <textarea class="field__input" id="shiftQrUrl" rows="2" readonly
           style="font-size:12.5px;text-align:center;margin-bottom:12px;resize:none;"></textarea>
         <div class="modal__actions modal__actions--confirm">
@@ -16703,7 +16703,7 @@ function openShiftQr() {
  *   「壊れているのか」と迷います。
  *     シフト募集       … 募集中のとき
  *     足りない日をさがす … 足りない日が1日でもあるとき
- *     シフト確定       … 確定ずみのとき（足りない日が無くても出します）
+ *     シフト確定       … 確定ずみのとき（足りない日がなくても出します）
  */
 function shiftShortCopyBox(rec) {
   const 前の = document.getElementById('shiftShortCopy');
@@ -17532,7 +17532,7 @@ let lastDayPulled = '';
  * ★同期の他にも、あとから自動で描き直す所があります（ジャーナルの昨年の売上・日ごとの数の読み込み など）。
  *   どこから呼ばれても、ここを通れば同じ守りが効きます。
  * ★画面を選んだときの「一番上へ」は、呼んだ側が描き直しのあとで scrollTo(0, 0) します。そちらは変わりません。
- * ★試験の中など、js/sync.js が無いときは、そのまま描きます。
+ * ★試験の中など、js/sync.js がないときは、そのまま描きます。
  */
 function render() {
   if (typeof 位置を保って === 'function') 位置を保って(render中身);
@@ -17624,7 +17624,7 @@ function render中身() {
   }
   el.viewTasks.classList.add('is-hidden');
 
-  /* ---- 店舗選択画面：店舗に属する部品はすべて隠す ---- */
+  /* ---- 店舗選択画面：店舗に属する部品は全て隠す ---- */
   if (isStores) {
     document.documentElement.style.setProperty('--store', APP.accent || '#2b7fd4');
     document.title = APP_NAME;
@@ -17813,8 +17813,8 @@ function renderSyncStatus() {
      ★★**「番号」の欄そのものは消しません。**はじめ欄ごと隠して出しましたが、
        記憶 `demo-account-gating` の決まりに反していました
        （「見本のときに隠してよいのは**本物のデータを書き換えてしまうボタン**だけ。
-       見るだけの部品は出す」「意味の無いボタンは**その1つだけ**消す。まとめて帯ごと消さない」）。
-       帯ごと消すと、**プレビューから「番号」の欄の見た目を確かめる道が無くなります**
+       見るだけの部品は出す」「意味のないボタンは**その1つだけ**消す。まとめて帯ごと消さない」）。
+       帯ごと消すと、**プレビューから「番号」の欄の見た目を確かめる道がなくなります**
        （マニュアルは絵を手で組み直すことになりました）。2026-09-22 に直しました。 */
   el.codeChange.classList.toggle('is-hidden', !Sync.enabled());
   if (Sync.enabled()) {
@@ -17896,7 +17896,7 @@ function openPinModal(message, opts = {}) {
  *
  * ★確かめは `Sync.ping()` で1回だけします。
  *   ・同期（flush）は、まちがったPINを受け取ると**端末のPINを消します**（js/sync.js の bad_pin）。
- *     入れ直しをまちがえただけで、今まで動いていたPINまで無くなるので使いません。
+ *     入れ直しをまちがえただけで、今まで動いていたPINまでなくなるので使いません。
  *     ping はPINを消しません。だめだったら、入れ直す前のPINに戻します
  *   ・まちがったPINの ping も、同期と同じ締め出しの数（pinFail）に数えられます。
  *     10分に10回で**全店舗が約10分締め出されます。**自動で送り直さないこと。
@@ -18097,7 +18097,7 @@ function bindEvents() {
    *  ★申し送りは「打ち終わって0.6秒」で保存しています。打った直後に
    *    閉じられると、その端末にすら残りません。ここで先に保存してから、
    *    ためている分をまとめて送り出します。
-   *  ★打ちかけが無いときは何もしません（別の画面を見ているときに
+   *  ★打ちかけがないときは何もしません（別の画面を見ているときに
    *    空の申し送りで上書きしてしまわないため）。
    * ---------------------------------------------------------- */
   const flushEdits = () => {
@@ -18198,14 +18198,14 @@ function bindEvents() {
   $('storesReportBtn').addEventListener('click', () => openAllStores('report'));
 
   /* 今日のシフト（店舗選択画面 → 店舗を選ぶ → その店舗の今日のシフト） */
-  /* ★部品が無ければ、何もしません。端末に古い index.html が残ったまま、新しい js/app.js だけが届くことがあります
+  /* ★部品がなければ、何もしません。端末に古い index.html が残ったまま、新しい js/app.js だけが届くことがあります
        （版の印 ?v= はサーバーが見ないため）。そのとき、ここで転ぶとアプリ全体が開かなくなります。
        読み込み直せば新しい index.html が届き、ボタンが出ます */
   const 今日のシフトの口 = [['storesTodayBtn', () => openTodayShift('')], ['todayBack', goHome],
     ['todayPickBack', () => openTodayShift('')]];
   今日のシフトの口.forEach(([id, する]) => { const b = $(id); if (b) b.addEventListener('click', する); });
 
-  /* アルバイトの画面を開く枠（★部品が無ければ、何もしません。今日のシフトの口と同じわけです） */
+  /* アルバイトの画面を開く枠（★部品がなければ、何もしません。今日のシフトの口と同じわけです） */
   if ($('ptFrameClose')) $('ptFrameClose').addEventListener('click', ptFrameClose);
   // ヘッダーから別の画面へ移ったら、枠はしまいます（オーナーへは戻りません）
   window.addEventListener('hashchange', ptFrameHide);
@@ -18501,7 +18501,7 @@ function bindEvents() {
 async function init() {
   /* ★起動の見張り（index.html の <head>）が、この印を読みます（2026-09-25）。
        'storage' … 端末の保存を開いているところ ／ true … 最初の描画まで終わった
-       ★名前を変えるときは index.html と2か所いっしょに。ずれると、全部の端末に帯が出ます
+       ★名前を変えるときは index.html と2か所一緒に。ずれると、全部の端末に帯が出ます
          （test_start_watch.py が見ています） */
   window.T3_START = 'storage';
   readHash();

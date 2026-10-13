@@ -472,7 +472,7 @@ function moveButton(label, enabled, onClick) {
  * ★**名前を先に聞きます**（2026-09-18、本部。ko-dai さんの「全て直して」）。
  *   前は押した瞬間に「新しい項目」を `addedAt: 今日` ですぐ保存していたので、名前を入れずに画面を離れると、
  *   **「新しい項目」という名前のチェックが今日から6店舗の現場に出ていました**（週間掃除・随時掃除のような
- *   `draft` の印が無く、現場の `appliesTo` も印を見ません）。名前が空か、やめたときは何も足しません。
+ *   `draft` の印がなく、現場の `appliesTo` も印を見ません）。名前が空か、やめたときは何も足しません。
  * ★教育の項目も同じ道具を使います（しまう先だけが違う）。
  */
 function addItem(secId) {
@@ -552,7 +552,7 @@ function renderWeeklyEditor() {
   el.weeklyEditor.innerHTML = '';
 
   /* 掃除する場所ごとに1枚のカード。
-     まだ項目が無い場所（トイレなど）も、足せるように空のまま出します */
+     まだ項目がない場所（トイレなど）も、足せるように空のまま出します */
   const found = groupWeekly(live);
   const names = WEEKLY_GROUPS.slice();
   found.forEach((g) => { if (!names.includes(g.name)) names.push(g.name); });
@@ -797,7 +797,7 @@ function cycleAnytimeNote(itemId) {
   if (!item) return;
   const at = ANYTIME_NOTES.indexOf(item.note || '');
   const 次 = ANYTIME_NOTES[(at + 1) % ANYTIME_NOTES.length];
-  // 一覧に無い目安（手で入れたもの）だったときは、先頭へ戻します
+  // 一覧にない目安（手で入れたもの）だったときは、先頭へ戻します
   if (次) item.note = 次;
   else delete item.note;
   saveAnytime(next);
@@ -879,7 +879,7 @@ function cycleWeeklyGroup(itemId) {
   const item = next.find((it) => it.id === itemId);
   if (!item) return;
   const at = WEEKLY_GROUPS.indexOf(weeklyGroupOf(item));
-  // 一覧に無い場所（その他など）だったときは、先頭の場所へ入れます
+  // 一覧にない場所（その他など）だったときは、先頭の場所へ入れます
   item.group = WEEKLY_GROUPS[(at + 1) % WEEKLY_GROUPS.length] || WEEKLY_GROUPS[0];
   saveWeekly(next);
 }
@@ -1436,7 +1436,7 @@ function updateDows(fn) {
   const next = currentSections();
   const item = next.find((s) => s.id === dowTarget.secId).items.find((i) => i.id === dowTarget.itemId);
   const list = fn((item.onlyDows || []).slice()).sort((a, b) => a - b);
-  // 1つも無い／7つ全部＝毎日。どちらも「決まりなし」にそろえます
+  // 1つもない／7つ全部＝毎日。どちらも「決まりなし」にそろえます
   if (list.length && list.length < DOW.length) item.onlyDows = list;
   else delete item.onlyDows;
   saveSections(next);
@@ -1520,7 +1520,7 @@ function updateMons(fn) {
   const next = currentSections();
   const item = next.find((s) => s.id === monTarget.secId).items.find((i) => i.id === monTarget.itemId);
   const list = fn((item.onlyMonths || []).slice()).sort((a, b) => a - b);
-  // 1つも無い／12か月全部＝毎月。どちらも「決まりなし」にそろえます
+  // 1つもない／12か月全部＝毎月。どちらも「決まりなし」にそろえます
   if (list.length && list.length < 12) item.onlyMonths = list;
   else delete item.onlyMonths;
   saveSections(next);
@@ -2176,7 +2176,7 @@ function addAccount() {
       && !window.confirm(`${name}さんは、もう登録されています。\nもう1つ番号を作りますか？`)) return;
   const code = StaffAccounts.newCode();
   if (!code) { window.alert('番号を作れませんでした。もう一度押してください。'); return; }
-  // ★登録した時刻。これが無いと、あとで「入れた順」に並べ直せません
+  // ★登録した時刻。これがないと、あとで「入れた順」に並べ直せません
   map[code] = { n: name, admin: false, off: false, at: new Date().toISOString() };
   StaffAccounts.save(map);
   el.acctName.value = '';
@@ -2238,7 +2238,7 @@ function shiftTimesFromText(text) {
  *    「まだ登録していない」とは別です（ワークスの出し分けがこれを見ます）。
  */
 function renderShiftMemoTags() {
-  // ★入れ物（storage.js の ShiftMemoTags）が無いあいだは、この一かたまりを出しません。
+  // ★入れ物（storage.js の ShiftMemoTags）がないあいだは、この一かたまりを出しません。
   //   公開は分野をまたいでまとめて上がるので、**本部の直しが当たる前に
   //   このファイルだけが先に出ることがあります。**そのときマネージを
   //   赤い帯で止めないための逃げ道です（2026-09-07）
@@ -2327,7 +2327,7 @@ function saveShiftMemoTags() {
  *   3つめを足したとたんに「ask でないもの」が全部 done の欄に入ります。**
  *   2026-09-13 に「シフト募集を始めるとき」を足すとき、その形だと
  *   募集の文が確定の欄に出て、保存すると確定の文を上書きするところでした。
- * ★表に無い文は**出しません**（黙ってよその欄に入れません）。
+ * ★表にない文は**出しません**（黙ってよその欄に入れません）。
  */
 const LINE_欄 = {
   open: { text: 'lineOpenText', label: 'lineOpenLabel' },
@@ -2335,7 +2335,7 @@ const LINE_欄 = {
   done: { text: 'lineDoneText', label: 'lineDoneLabel' },
 };
 
-/** その文の欄（無ければ null） */
+/** その文の欄（なければ null） */
 function lineBoxOf(kindId) {
   const 名 = LINE_欄[kindId];
   if (!名 || !el[名.text] || !el[名.label]) return null;
@@ -2360,7 +2360,7 @@ function renderShiftLineTexts() {
 
 function saveShiftLineTexts() {
   if (typeof shiftLineTextOf !== 'function') return;
-  // ★いま入っているものから始めます。**欄の無い文を消さないため**です。
+  // ★いま入っているものから始めます。**欄のない文を消さないため**です。
   //   ここを `{}` から始めると、画面に欄が1つ足りないだけで、
   //   その文の直したものが保存のたびに黙って消えます
   const 前 = (Store.getDay(SHIFT_SET_STORE, state.storeId).items || {})[SHIFT_LINE_KEY];
@@ -2469,7 +2469,7 @@ function renderShiftSlots() {
   //   仕込み／営業の4店舗で「立ち上げ・ランチ・ディナー」が出てしまい、
   //   そのまま保存すると店舗ごとの形が黙って消えます
   // ★**使わない枠は、行ごと出しません。**「使う」のチェックは外しました
-  //   （2026-09-07 ko-dai の指示。切り替える場面が無いため）。
+  //   （2026-09-07 ko-dai の指示。切り替える場面がないため）。
   //   どの枠を使うかはコード（SHIFT_SLOTS_STORES）で店舗ごとに固定です
   shiftBaseSlots(storeId).filter((base) => base.use).forEach((base) => {
     const v = saved[shiftSlotSetKey(base.id)] || {};
@@ -3180,7 +3180,7 @@ function renderNippouTestStores() {
 
   /* ★日報に書く店舗だけを出します。おいでんテラスを出すと、
        選べるのに何も起きない欄になり、選んだ人が取りちがえます。
-     ★すでに選ばれている店舗は、一覧に無くても出します。
+     ★すでに選ばれている店舗は、一覧になくても出します。
        消すと、その選択が次の保存で黙って落ちるためです。 */
   const 出す店舗 = STORES.filter(
     (s) => 日報に書く店舗().indexOf(s.id) >= 0 || 選ばれ.indexOf(s.id) >= 0);
@@ -3352,12 +3352,12 @@ async function importExpenseRecords(only) {
 
   // ★担当者リストには足しません。辞めた人の名前が
   //   新しい記録のプルダウンに戻ってきてしまうためです。
-  //   過去の記録は e.by の名前で出るので、リストに無くても正しく並びます
+  //   過去の記録は e.by の名前で出るので、リストになくても正しく並びます
   const gone = [...new Set(rows.map((r) => r[1]))].filter((n) => !Staff.list().includes(n));
 
   el.expImportNote.textContent =
     `${rows.length}件（${months.length}か月分・合計 ${yenText(yen)}）を取り込みました。`
-    + (gone.length ? `${gone.join('・')} は担当者リストに無い名前ですが、過去の記録はそのまま出ます。` : '')
+    + (gone.length ? `${gone.join('・')} は担当者リストにない名前ですが、過去の記録はそのまま出ます。` : '')
     + 'アプリの現金支払い管理表で確かめてください。';
   renderSyncStatus();
 }
@@ -3419,7 +3419,7 @@ function renderClosed() {
  * 臨時の休業・営業を1日だけ登録する
  *
  * ★もとは「1/1〜1/3」のように期間で入れる作りでしたが、
- *   まとめて登録することが無く、1日ずつしか使わないため、
+ *   まとめて登録することがなく、1日ずつしか使わないため、
  *   日付を1つだけにしました（入れまちがいも減ります）。
  *   続けて休むときは、その日数だけ押してください。
  */
@@ -3555,7 +3555,7 @@ function pageList(storeId) {
 function getPage(id, storeId) {
   const page = ADMIN_PAGES.find((p) => p.id === id) || null;
   if (!page) return null;
-  // 使えない店舗のURLを直接開かれた場合は、無いものとして扱います
+  // 使えない店舗のURLを直接開かれた場合は、ないものとして扱います
   if (storeId && typeof page.when === 'function' && !page.when(storeId)) return null;
   return page;
 }
@@ -3705,12 +3705,12 @@ function goMenu() {
  *    そのあいだに他の端末で直した分を丸ごと上書きします。**
  *    シフトの名簿と教育を受ける人は、ワークス・マインからも足せるので、実際に起きうる形でした。
  *  ★`Sync.変わった回数`（js/sync.js。**本当に中身が変わったときだけ**増える）を見て、
- *      打ちかけが無ければ … その場で描き直します
+ *      打ちかけがなければ … その場で描き直します
  *      打ちかけがあれば … 描き直しません（打った分が消えるので）。帯で知らせて「最新を読み込む」を出します
  *  ★打ちかけは、欄に何か打ったら立ち、描き直したら下ろします。**保存しても下ろしません**
  *    （同じ画面の他の欄に、保存していない分が残っていることがあるので、安全な方に倒します）
  *  ★どの画面の設定が変わったかは見分けません。打ちかけがあれば必ず知らせます（見分け方の表を作ると、
- *    表に無い設定のときに黙ってしまうため）
+ *    表にない設定のときに黙ってしまうため）
  * ============================================================ */
 let 打ちかけ = false;
 let 見た変化 = 0;
@@ -3752,10 +3752,10 @@ function 描き直す() {
 }
 
 /**
- * 定休日を、設定にまだ無い店舗の分までそろえて書きます（2026-09-18、本部の残り②）
+ * 定休日を、設定にまだない店舗の分までそろえて書きます（2026-09-18、本部の残り②）
  *
  * ★LINE のクローズ通知（gas/通知.gs の isClosed_）は、**スプレッドシートの設定（closedDows）だけ**を見ます。
- *   アプリは、設定に無い店舗を js/config.js の初期値（STORES の closedDays）で定休日にしますが、
+ *   アプリは、設定にない店舗を js/config.js の初期値（STORES の closedDays）で定休日にしますが、
  *   シートには入っていません。**マネージで一度も曜日を触っていない店は、定休日にも「クローズ未提出」が飛ぶ**おそれがありました。
  * ★アプリがいま使っている定休日（Closed.dows）を、そのまま設定に書くだけです。**どの画面の表示も変わりません。**
  *   GAS を直すより、貼り直しが要らず、定休日の持ち主（マネージの設定）が1つのままで済みます。
@@ -3867,7 +3867,7 @@ function renderSyncStatus() {
  *
  * ★丸の色だけでは「なぜ止まったか」が分かりません。
  *   `js/sync.js` は理由を3つに分けて `Sync.lastError` に入れています
- *   （電波が無い／サーバーが返事をしない／つながらない）。やることが全部ちがうので、
+ *   （電波がない／サーバーが返事をしない／つながらない）。やることが全部ちがうので、
  *   **読める場所に出さないと、分けた意味がありません。**
  *
  * ★マネージで止まると、**ここで直した項目・担当者・定休日・社員の番号が
@@ -3968,7 +3968,7 @@ function openPinModal() {
  *
  * ★マネージには番号の欄がありません。**番号を必須にしたあと、マネージが断られて
  *   「番号の必須をやめる」も送れなくなるところでした**（2026-09-16、マニュアル部署の指摘）。
- *   サーバーは**管理用PINでも**、番号が無ければ `need_staff_code` で断ります（gas/コード.gs）。
+ *   サーバーは**管理用PINでも**、番号がなければ `need_staff_code` で断ります（gas/コード.gs）。
  * ★「マインで入れてあれば使える」は当てになりません。iPhone のホーム画面のアプリは、
  *   **アプリごとに保存場所が分かれる**ことがあります。
  * ★入れた番号はサーバーで確かめます（`Sync.ping()`）。**登録されていない番号は覚えません。**

@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="../img/owner-icon-180.png?v=cbb1087e">
 <link rel="icon" type="image/png" sizes="64x64" href="../img/owner-icon-64.png?v=ce05c3fc">
 <title>T3 Owner｜T3Dining株式会社</title>
-<link rel="stylesheet" href="../css/style.css?v=bcd0e3c3">
+<link rel="stylesheet" href="../css/style.css?v=fe10c428">
 <style>
 /* ============================================================
  *  切り替え画面（ホーム画面のフォルダ代わり）
@@ -89,7 +89,7 @@ body {
   font-variant-numeric: tabular-nums;
 }
 </style>
-<meta name="app-version" content="d4f6eafc">
+<meta name="app-version" content="b64ecd20">
 </head>
 <body class="no-daytabs">
 
@@ -191,7 +191,7 @@ body {
   var meta = document.querySelector('meta[name="app-version"]');
   document.getElementById('hubFoot').textContent = meta ? '版 ' + meta.content : '';
 
-  // 読み込みの世話係。これが無いと、ホーム画面のアプリを開き直したときに
+  // 読み込みの世話係。これがないと、ホーム画面のアプリを開き直したときに
   // 古い画面のまま出てしまいます（くわしくは ../sw.js）
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker

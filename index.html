@@ -36,7 +36,7 @@
        （公開で js/app.js だけ置いていく・控えの行き違い）。そのとき古い app.js は、
        ちゃんと描けているのに印を立てません。★ここで黙らないと、**全部の端末に帯が出ます。**
      ★見分け方：新しい app.js は、init に入った**最初の1行**で印を立てます（await の前）。
-       だから「init はあるのに印が無い」＝ init を持つ古い app.js です。
+       だから「init はあるのに印がない」＝ init を持つ古い app.js です。
        ★ファイルが届かなかったときは、それより先に言います（そちらは本物の止まりです）。 */
   function 起動の帯を出すか(files, 状態, initある) {
     if (状態 === true) return false;
@@ -102,8 +102,8 @@
 <link rel="icon" type="image/png" sizes="512x512" href="img/works-icon-512.png?v=dddd764f">
 <link rel="icon" type="image/png" sizes="64x64" href="img/works-icon-64.png?v=0f9cbed2">
 <title>T3 Works｜T3Dining株式会社</title>
-<link rel="stylesheet" href="css/style.css?v=bcd0e3c3">
-<meta name="app-version" content="d4f6eafc">
+<link rel="stylesheet" href="css/style.css?v=fe10c428">
+<meta name="app-version" content="b64ecd20">
 </head>
 <body>
 
@@ -456,7 +456,7 @@
         <h2 class="cash-box__title">日報に入れる</h2>
         <span class="cash-box__date" id="cashCheckMark"></span>
       </div>
-      <p class="cash-hint">ジャーナルに出ない分だけ入れてください。無い日は空のままで大丈夫です。</p>
+      <p class="cash-hint">ジャーナルに出ない分だけ入れてください。ない日は空のままで大丈夫です。</p>
       <div class="cash-minus" id="cashMinus"></div>
       <table class="cash-nippou"><tbody id="cashNippou"></tbody></table>
       <p class="cash-checks" id="cashChecks"></p>
@@ -668,7 +668,7 @@
       <div class="field">
         <label class="field__label" for="missWho">ミスした人</label>
         <select id="missWho" class="field__input"></select>
-        <!-- リストに無い人（アルバイトなど）は、ここに名前を書きます -->
+        <!-- リストにない人（アルバイトなど）は、ここに名前を書きます -->
         <input type="text" id="missWhoFree" class="field__input miss-who-free is-hidden"
                placeholder="名前" autocomplete="off">
       </div>
@@ -1061,7 +1061,7 @@
     </div>
   </div>
 
-  <!-- 光熱費を手で入れる画面（日報に無いので、ここだけ手入力です） -->
+  <!-- 光熱費を手で入れる画面（日報にないので、ここだけ手入力です） -->
   <div class="modal is-hidden" id="utilModal">
     <div class="modal__backdrop" data-close-util></div>
     <div class="modal__panel modal__panel--wide" role="dialog" aria-modal="true"
@@ -1149,7 +1149,7 @@
       <div class="field is-hidden" id="expWhoField">
         <label class="field__label" for="expWho">渡した相手</label>
         <select id="expWho" class="field__input"></select>
-        <!-- リストに無い人は、ここに名前を書きます -->
+        <!-- リストにない人は、ここに名前を書きます -->
         <input type="text" id="expWhoFree" class="field__input exp-who-free is-hidden"
                placeholder="名前" autocomplete="off">
       </div>
@@ -1384,7 +1384,7 @@
       <div class="seg seg--wrap" id="shiftPickTimes"></div>
     </div>
 
-    <!-- ボタンに無い時刻を入れるところ。どの端末でも使えます -->
+    <!-- ボタンにない時刻を入れるところ。どの端末でも使えます -->
     <div class="field is-hidden" id="shiftPickFreeField">
       <span class="field__label">時間を決めて入れる</span>
       <div class="free-time">
@@ -1784,16 +1784,16 @@
   <iframe class="pt-frame__page" id="ptFramePage" title="アルバイトの画面（シフト提出）" allow="web-share"></iframe>
 </div>
 
-<script src="js/config.js?v=2a3d315d"></script>
-<script src="js/storage.js?v=c190207e"></script>
-<script src="js/sync.js?v=b2312b54"></script>
-<script src="js/update.js?v=c530219e"></script>
+<script src="js/config.js?v=40f767b3"></script>
+<script src="js/storage.js?v=83352d03"></script>
+<script src="js/sync.js?v=07c78f00"></script>
+<script src="js/update.js?v=b2294857"></script>
 <!-- 会議資料の中身。スプレッドシートから取り込んだ数字と議事メモです -->
 <!-- シフト表を絵に描くところ。提出ページ（shift/）でも同じものを使います -->
 <script src="js/shift-sheet.js?v=699e6b23"></script>
-<script src="js/app.js?v=e0f4e1fb"></script>
-<script src="js/interview.js?v=1f652c4a"></script>
-<script src="js/share.js?v=4d2bf95f"></script>
-<script src="js/voice.js?v=45cf2f80"></script>
+<script src="js/app.js?v=a4eaedc5"></script>
+<script src="js/interview.js?v=9c08c637"></script>
+<script src="js/share.js?v=88023092"></script>
+<script src="js/voice.js?v=4855fe8b"></script>
 </body>
 </html>

@@ -96,7 +96,7 @@ body {
   padding-bottom: calc(var(--daytabs-h) + env(safe-area-inset-bottom) + 12px);
 }
 /* お知らせバーが出ているあいだは、その分だけ下を空ける
-   （日タブが無い画面はもともと余白があるので、足さなくて足ります） */
+   （日タブがない画面はもともと余白があるので、足さなくて足ります） */
 body.has-update:not(.no-daytabs) {
   padding-bottom: calc(var(--daytabs-h) + env(safe-area-inset-bottom) + 12px + var(--updatebar-h));
 }
@@ -176,7 +176,7 @@ body.no-daytabs .update-bar {
 }
 .logo-chip.is-hidden { display: none; }
 .logo-chip img { width: 100%; height: 100%; object-fit: contain; display: block; }
-/* 画像が無いときは店舗カラーの丸印にフォールバック */
+/* 画像がないときは店舗カラーの丸印にフォールバック */
 .logo-chip.is-fallback { background: transparent; border-radius: 50%; }
 .logo-chip.is-fallback::after {
   content: ''; width: 60%; height: 60%; border-radius: 50%; background: var(--chip-color, currentColor);
@@ -614,7 +614,7 @@ a.task-card { text-decoration: none; box-sizing: border-box; }
   color: var(--ng); font-weight: 800;
 }
 .report-summary.is-all-done { color: var(--ok); }
-/* 帳簿の表紙に数字を出している画面では、この一文は記録が無いときだけ出します */
+/* 帳簿の表紙に数字を出している画面では、この一文は記録がないときだけ出します */
 .report-summary.is-hidden { display: none; }
 
 .report-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -680,9 +680,9 @@ a.task-card { text-decoration: none; box-sizing: border-box; }
 }
 
 .store-tabs.is-hidden, .day-tabs.is-hidden { display: none; }
-/* 日タブが無い画面では、下部に空けていた余白を詰める */
+/* 日タブがない画面では、下部に空けていた余白を詰める */
 body:has(.day-tabs.is-hidden) { padding-bottom: 16px; }
-/* 店舗選択画面では下部の日タブが無いので余白を詰める */
+/* 店舗選択画面では下部の日タブがないので余白を詰める */
 .view--stores { padding-bottom: 8px; }
 
 /* ヘッダーのタイトルはボタン化してある（タップで店舗選択へ戻る） */
@@ -691,7 +691,7 @@ body:has(.day-tabs.is-hidden) { padding-bottom: 16px; }
 /* ---- 同期の状態 ----
    文字は入れず、丸いしるしの中の「形」と「色」で見せます。
      ✓ 送り終わった／ぐるぐる 送信中／↑ 未送信あり／! 送れていない
-   色が見分けにくい人にも伝わるよう、形もかならず変えてあります。 */
+   色が見分けにくい人にも伝わるよう、形も必ず変えてあります。 */
 .sync-chip {
   display: inline-flex; align-items: center; justify-content: center;
   flex: 0 0 auto; width: 30px; height: 30px; padding: 0;
@@ -1443,7 +1443,7 @@ body:has(.day-tabs.is-hidden) { padding-bottom: 16px; }
   position: absolute; left: 10px; bottom: 6px; height: 3px;
   border-radius: 2px; background: var(--accent); opacity: .5;
 }
-/* 走っていない人・立て替えが無い人は、名前も数字も落ち着かせる
+/* 走っていない人・立て替えがない人は、名前も数字も落ち着かせる
    （配達記録の表と、現金支払い管理表の表の両方で使います） */
 .exp-total tr.is-zero .exp-total__name,
 .exp-total tr.is-zero .exp-total__yen { color: var(--text-weak); font-weight: 600; }
@@ -2596,7 +2596,7 @@ body.is-wide .page { max-width: 1700px; }
 .settle-table th:nth-child(2), .settle-table td:nth-child(2) { text-align: right; }
 .settle-table th:nth-child(3), .settle-table td:nth-child(3) { text-align: right; }
 .settle-table th:nth-child(4), .settle-table td:nth-child(4) { text-align: left; width: auto; }
-/* ボタンの列。中身が無いときは幅を取りません */
+/* ボタンの列。中身がないときは幅を取りません */
 .settle-table th:last-child, .settle-table td:last-child {
   width: 1%; text-align: right; padding-left: 4px;
 }
@@ -2894,7 +2894,7 @@ body.is-wide .page { max-width: 1700px; }
 .day-tab.is-active .day-tab__state { box-shadow: 0 0 0 1.5px rgba(255,255,255,.8); }
 
 /* ===================== モーダル ===================== */
-/* ★上下の余白に safe-area を足します。これが無いと、iPhone の
+/* ★上下の余白に safe-area を足します。これがないと、iPhone の
    ホーム画面アプリで、モーダルの見出しが時刻や電池の表示に
    隠れてしまいます（ヘッダーは 134行目で同じことをしています） */
 .modal {
@@ -2942,7 +2942,7 @@ body.is-wide .page { max-width: 1700px; }
 .modal__note { font-size: 12.5px; color: var(--text-sub); margin: 0 0 12px; }
 .field { display: block; margin-bottom: 14px; }
 .field__label { display: block; font-size: 12.5px; color: var(--text-sub); margin-bottom: 5px; }
-/* ★入力欄の下の小さな説明（番号の欄など）。2026-09-16 まで見た目の決まりが無く、
+/* ★入力欄の下の小さな説明（番号の欄など）。2026-09-16 まで見た目の決まりがなく、
      ふつうの大きさの黒い字で出ていました（マニュアル部署の報告） */
 .field__hint { margin: 6px 0 0; font-size: 12px; color: var(--text-sub); line-height: 1.6; }
 .field__input {
@@ -3499,7 +3499,7 @@ html.is-interview-open, html.is-interview-open body { overflow: hidden; }
         ブラウザで4通り試して確かめています） */
 .shift-grid tr.is-slot-top > th,
 .shift-grid tr.is-slot-top > td:not(.is-patty) { border-top: 2px solid var(--line); }
-/* ★`:not(.is-patty)` が要ります。これが無いと、**パティの桃色の枠の上辺だけが
+/* ★`:not(.is-patty)` が要ります。これがないと、**パティの桃色の枠の上辺だけが
      この灰色の線に塗りかえられます**（`.shift-grid td.is-patty` より、こちらが強いため）。
      2026-09-10、境目の線を入れた直後に ko-dai さんの画面で消えていました。 */
 
@@ -3805,7 +3805,7 @@ body.print-shift .shift-sheet__name.is-full .shift-sheet__who::after { font-size
   }
 
   /* ★色を紙に出させます。
-     これが無いと、ブラウザは「背景の色は刷らない」ことにしてしまいます */
+     これがないと、ブラウザは「背景の色は刷らない」ことにしてしまいます */
   body.print-shift .shift-sheet,
   body.print-shift .shift-sheet * {
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
@@ -4428,7 +4428,7 @@ body.print-shift .shift-sheet__name.is-full .shift-sheet__who::after { font-size
    ★入れ物（.interview）は面接マニュアルと同じものを使い回しています。
      ここに足すのは、中身の並べ方だけです */
 /* ★position: relative は、右上の赤い印（.voice-dot）を、このボタンの中に置くためです。
-   無いと、印が画面の右上に飛びます（2026-09-23、ブラウザで確かめました） */
+   ないと、印が画面の右上に飛びます（2026-09-23、ブラウザで確かめました） */
 .stores-big-btn--voice { --pick: #2a9d8f; position: relative; }
 
 /* 返事が来たときの赤い印（T3Dining の欄のボタンに出ます） */

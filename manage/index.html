@@ -12,9 +12,9 @@
 <link rel="apple-touch-icon" href="../img/manage-icon-180.png?v=ac18efea">
 <link rel="icon" type="image/png" sizes="64x64" href="../img/manage-icon-64.png?v=2b8a9145">
 <title>T3 Works Manage｜T3Dining株式会社</title>
-<link rel="stylesheet" href="../css/style.css?v=bcd0e3c3">
+<link rel="stylesheet" href="../css/style.css?v=fe10c428">
 <link rel="stylesheet" href="css/admin.css?v=eae657ea">
-<meta name="app-version" content="d4f6eafc">
+<meta name="app-version" content="b64ecd20">
 </head>
 <body class="no-daytabs">
 
@@ -47,7 +47,7 @@
 
 <!-- ★保存が止まっているときだけ出ます。
      2026-09-13 まで、マネージには**この帯がありませんでした。**
-     丸（sync-chip）は出るのに理由の文が無く、読めるのは
+     丸（sync-chip）は出るのに理由の文がなく、読めるのは
      ・丸の title … 指では出ません
      ・設定モーダルの中（#syncInfo） … 開かないと見えません
      のどちらかだけでした。**ここで直した項目が現場に届いていないことに、気づけません。**
@@ -107,7 +107,7 @@
     </p>
     <!-- ★番号を必須にする切り替え。**決めるのはサーバー**（gas/コード.gs の staffCodeRequired_）で、
          ここはその設定を送るだけです。2026-09-16 まで、この切り替えがどこにもありませんでした
-         （設定の名前だけが ADMIN_SETTINGS にあって、押す所が無い状態でした）。 -->
+         （設定の名前だけが ADMIN_SETTINGS にあって、押す所がない状態でした）。 -->
     <div class="admin-actions" id="acctRequireRow">
       <button type="button" class="btn" id="acctRequire">番号を必須にする</button>
       <span class="admin-note" id="acctRequireNote"></span>
@@ -173,7 +173,7 @@
       会議資料のページで<b>「日報から取り込む」</b>を押すと、このフォルダから
       <b>「年月」で始まるファイル</b>（例：202607_こじゃれ_日報）を探して数字を読みます。
       去年の分は、中の年フォルダ（例：2025年_こじゃれ日報）からも探します。<br>
-      読むのは <b>売上・客数・原価・人件費</b> だけです。光熱費は日報に無いので手で入れます。
+      読むのは <b>売上・客数・原価・人件費</b> だけです。光熱費は日報にないので手で入れます。
     </p>
     <div class="admin-fields" id="nippouFields"></div>
     <div class="admin-actions">
@@ -223,7 +223,7 @@
         <b>・ 細かく</b> … 説明のさらに下<br>
         <b>！ 大事なこと</b> … 赤で目立たせます<br>
         <b>？ 聞くこと</b> … 応募者に聞くこと（吹き出しで出ます）<br>
-        記号の無い行は、ふつうの文になります。PDF の ❖ ➢ ■ のまま貼っても読めます。
+        記号のない行は、ふつうの文になります。PDF の ❖ ➢ ■ のまま貼っても読めます。
       </p>
     </details>
     <textarea id="interviewInput" class="field__input field__input--area" rows="16"
@@ -281,7 +281,7 @@
     <!-- ★取り込みは「上書き」ではなく「混ぜる」です（js/storage.js の importJson）。
          しかも Store.adapter.load だけなので、送信箱に乗らず、他の端末には届きません（2026-09-18 に書き直しました） -->
     <p class="admin-note">記録をまとめてファイルに書き出します。<br>
-      取り込むと、ファイルの中の記録で<b>この端末の同じ記録を置きかえます</b>（ファイルに無い記録はそのまま残ります）。
+      取り込むと、ファイルの中の記録で<b>この端末の同じ記録を置きかえます</b>（ファイルにない記録はそのまま残ります）。
       取り込んだ分は<b>この端末の中だけ</b>で、他の端末やスプレッドシートには送りません。</p>
     <div class="admin-actions">
       <button type="button" class="btn" id="exportBtn">書き出す</button>
@@ -435,13 +435,13 @@
       文の中の <b>{足りない日}</b> のところに、<b>赤いあき（人が足りないマス）の日と人数</b>が入ります。<br>
       たとえば <b>9/19(土)ディナー２人</b> のように、1日1行で入ります。
       人を入れて赤が減れば、<b>文からも減ります</b>。<br>
-      足りない日が1日も無いときは、<b>{足りない日} の行ごと消えます</b>（空行だけが残りません）。<br>
+      足りない日が1日もないときは、<b>{足りない日} の行ごと消えます</b>（空行だけが残りません）。<br>
       <b>{足りない日} を消してしまっても、足りない日は文の最後に足します</b>（黙って落としません）。<br>
       <b>シフト募集を始めるとき</b>の文では、<b>{期間}</b>が「9月前半」、
       <b>{期限}</b>が「9月25日（金）」に変わります。
       <b>{営業する日}</b>は、<b>定休日なのに「この日は営業する」と入れた日</b>です
       （バグる・おいでんテラスは火曜、ちゃこるは日曜）。
-      そういう日が1日も無いときは、<b>{営業する日} の行ごと消えます</b>。<br>
+      そういう日が1日もないときは、<b>{営業する日} の行ごと消えます</b>。<br>
       ★<b>「＠All」を入れても、メンションにはなりません。</b>
       LINEのメンションは文字ではなく、打つときにアプリが付ける印です。
       貼り付けるとただの文字として送られます。全員に知らせたいときは、
@@ -790,11 +790,11 @@
 <!-- ★この画面だけが「社員のアカウント」を端末に持ちます。
      現場のアプリ（ワークス・マイン）には持たせません。番号は合言葉だからです -->
 <script>window.T3_ADMIN_PAGE = true;</script>
-<script src="../js/config.js?v=2a3d315d"></script>
-<script src="../js/storage.js?v=c190207e"></script>
-<script src="../js/sync.js?v=b2312b54"></script>
-<script src="../js/update.js?v=c530219e"></script>
-<script src="js/admin.js?v=9c912247"></script>
-<script src="../js/interview.js?v=1f652c4a"></script>
+<script src="../js/config.js?v=40f767b3"></script>
+<script src="../js/storage.js?v=83352d03"></script>
+<script src="../js/sync.js?v=07c78f00"></script>
+<script src="../js/update.js?v=b2294857"></script>
+<script src="js/admin.js?v=cc61e321"></script>
+<script src="../js/interview.js?v=9c08c637"></script>
 </body>
 </html>

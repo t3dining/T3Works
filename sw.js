@@ -23,7 +23,7 @@
  *      一覧まるごとがコメントに刺さります（2026-09-13 に実際にそうなりました）。
  * ============================================================ */
 
-const VERSION = 'd4f6eafc';
+const VERSION = 'b64ecd20';
 
 /* ★控えの名前に版の印を入れません。**2026-09-13 まで入れていました。**
  *
@@ -45,16 +45,16 @@ const VERSION = 'd4f6eafc';
 const CACHE = 't3works';
 
 /* いまの版が使うファイルの一覧（`?v=` 付き）。公開用を作る.py が入れます。
- * ★ここに無い控えだけを捨てます。**あるものは残します。** */
-const KEEP_LIST = ["css/style.css?v=bcd0e3c3", "drive/js/drive.js?v=941ed5a8", "help/css/help.css?v=4011d0ad", "help/js/help.js?v=bb8f9518", "img/chacoru.png?v=3406529b", "img/drive-icon-180.png?v=cf8bda78", "img/drive-icon-512.png?v=7c78116c", "img/drive-icon-64.png?v=7088d4ae", "img/kojare.png?v=c5b494db", "img/manage-icon-180.png?v=ac18efea", "img/manage-icon-64.png?v=2b8a9145", "img/mine-icon-180.png?v=cbafcd5d", "img/mine-icon-512.png?v=2dbb903e", "img/mine-icon-64.png?v=ea09f133", "img/owner-icon-180.png?v=cbb1087e", "img/owner-icon-512.png?v=7972b6a3", "img/owner-icon-64.png?v=ce05c3fc", "img/shift-icon-180.png?v=ab0bd671", "img/shift-icon-64.png?v=0254ff8c", "img/shift-qr.png?v=3509f79d", "img/t3dining-mark.png?v=c9163364", "img/works-icon-180.png?v=a0ee5b78", "img/works-icon-512.png?v=dddd764f", "img/works-icon-64.png?v=0f9cbed2", "img/works-qr.png?v=facd8cdc", "js/app.js?v=e0f4e1fb", "js/config.js?v=2a3d315d", "js/interview.js?v=1f652c4a", "js/share.js?v=4d2bf95f", "js/shift-sheet.js?v=699e6b23", "js/storage.js?v=c190207e", "js/sync.js?v=b2312b54", "js/update.js?v=c530219e", "js/voice.js?v=45cf2f80", "manage/css/admin.css?v=eae657ea", "manage/js/admin.js?v=9c912247", "shift/css/submit.css?v=8a6429a6", "shift/js/submit.js?v=9c2452b8", "story/css/story.css?v=55f08ac0", "story/js/story.js?v=0f730e6d"];
+ * ★ここにない控えだけを捨てます。**あるものは残します。** */
+const KEEP_LIST = ["css/style.css?v=fe10c428", "drive/js/drive.js?v=65b5f262", "help/css/help.css?v=4011d0ad", "help/js/help.js?v=0619d3be", "img/chacoru.png?v=3406529b", "img/drive-icon-180.png?v=cf8bda78", "img/drive-icon-512.png?v=7c78116c", "img/drive-icon-64.png?v=7088d4ae", "img/kojare.png?v=c5b494db", "img/manage-icon-180.png?v=ac18efea", "img/manage-icon-64.png?v=2b8a9145", "img/mine-icon-180.png?v=cbafcd5d", "img/mine-icon-512.png?v=2dbb903e", "img/mine-icon-64.png?v=ea09f133", "img/owner-icon-180.png?v=cbb1087e", "img/owner-icon-512.png?v=7972b6a3", "img/owner-icon-64.png?v=ce05c3fc", "img/shift-icon-180.png?v=ab0bd671", "img/shift-icon-64.png?v=0254ff8c", "img/shift-qr.png?v=3509f79d", "img/t3dining-mark.png?v=c9163364", "img/works-icon-180.png?v=a0ee5b78", "img/works-icon-512.png?v=dddd764f", "img/works-icon-64.png?v=0f9cbed2", "img/works-qr.png?v=facd8cdc", "js/app.js?v=a4eaedc5", "js/config.js?v=40f767b3", "js/interview.js?v=9c08c637", "js/share.js?v=88023092", "js/shift-sheet.js?v=699e6b23", "js/storage.js?v=83352d03", "js/sync.js?v=07c78f00", "js/update.js?v=b2294857", "js/voice.js?v=4855fe8b", "manage/css/admin.css?v=eae657ea", "manage/js/admin.js?v=cc61e321", "shift/css/submit.css?v=14174bc5", "shift/js/submit.js?v=e7ac846a", "story/css/story.css?v=55f08ac0", "story/js/story.js?v=0f730e6d"];
 
 /**
  * この控えを捨てるか
  *
  * ★**いま使っている道の、古い印**だけを捨てます。
- *     ・印（?v=）が無いもの        … 触りません（ページ本体がこれです。
- *                                    捨てると電波が無いときの逃げ場を失います）
- *     ・一覧に無い道              … 触りません（よその画面のものかもしれません）
+ *     ・印（?v=）がないもの        … 触りません（ページ本体がこれです。
+ *                                    捨てると電波がないときの逃げ場を失います）
+ *     ・一覧にない道              … 触りません（よその画面のものかもしれません）
  *     ・一覧にある道で、印がちがう … 捨てます（要らなくなった古い版）
  *
  * ★ここを関数にしてあるのは、**検算から呼べるようにする**ためです
@@ -100,7 +100,7 @@ self.addEventListener('activate', (e) => {
     const のこす = keepSet();
     /* ★捨てるのは「**いま使っている道の、古い印**」だけです。
          `ページ本体`（`index.html?v=…` の形で控えに入ります）まで捨てると、
-         電波が無いときの逃げ場が無くなります。道で見分けます */
+         電波がないときの逃げ場がなくなります。道で見分けます */
     const 今の道 = new Set([...のこす].map((u) => new URL(u).pathname));
     const reqs = await cache.keys();
     await Promise.all(reqs.map(
@@ -121,7 +121,7 @@ async function keep(req, res) {
 /**
  * ★ページ本体を待つ上限
  *
- *   これが無かったので、電波が弱いときは**控えがすぐ横にあるのに、
+ *   これがなかったので、電波が弱いときは**控えがすぐ横にあるのに、
  *   通信が「失敗」するまでいつまでも待っていました。**
  *   控えが使われるのは失敗したときだけで、**遅いだけのときは使われません。**
  *   「開くのに時間がかかる」の半分はこれです。
@@ -148,7 +148,7 @@ function ページを出す(e, req) {
   return (async () => {
     const cache = await caches.open(CACHE);
     const 控え = await cache.match(req, { ignoreSearch: true });
-    // 控えが無い初回は、待つしかありません
+    // 控えがない初回は、待つしかありません
     if (!控え) {
       const 出た = await 静かな通信;
       if (出た !== おそい) return 出た;
@@ -167,7 +167,7 @@ function ページを出す(e, req) {
   })();
 }
 
-/** 通信を先に試し、だめなら控えを出す（?v= の無いこまごましたもの向け） */
+/** 通信を先に試し、だめなら控えを出す（?v= のないこまごましたもの向け） */
 async function networkFirst(req) {
   try {
     return await keep(req, await fetch(req));
@@ -178,7 +178,7 @@ async function networkFirst(req) {
   }
 }
 
-/** 控えがあればそれを出し、無ければ取りに行く（?v= 付きのファイルむけ） */
+/** 控えがあればそれを出し、なければ取りに行く（?v= 付きのファイルむけ） */
 async function cacheFirst(req) {
   const hit = await caches.match(req);
   if (hit) return hit;
