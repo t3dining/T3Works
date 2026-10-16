@@ -1638,9 +1638,9 @@ function renderCatchStaff() {
   el.catchStaffCount.textContent = n ? `${n}人` : 'まだ登録なし';
 
   el.catchStaffFields.innerHTML = '';
-  // キャッチだけの行き先（まいとなど）もキャッチをするので、ここには出します。
-  // ただし保留中（off）のものは出しません
-  pickableStores().forEach((s) => {
+  // ★キャッチだけの行き先（まいと）には渡した相手がいません（2026-10-16、ko-dai さんの指示）。
+  //   かわりに下で「選べる立て替えた人」を選びます。保留中（off）のものは出しません
+  pickableStores().filter((s) => !isCatchOnlyStore(s.id)).forEach((s) => {
     const wrap = document.createElement('label');
     wrap.className = 'field';
     const label = document.createElement('span');
@@ -1656,12 +1656,63 @@ function renderCatchStaff() {
     wrap.append(label, area);
     el.catchStaffFields.appendChild(wrap);
   });
+
+  /* ★キャッチだけの行き先（まいと）を選べる「立て替えた人」（2026-10-16、ko-dai さんの指示）
+       立て替えの記録で、ここで選んだ人がキャッチを立て替えたときだけ、店舗の選びに出ます。
+       誰も選ばなければ、誰のときも出ません。名前は担当者（立て替えた人）の一覧から選びます */
+  pickableStores().filter((s) => isCatchOnlyStore(s.id)).forEach((s) => {
+    const box = document.createElement('div');
+    box.className = 'field';
+    const label = document.createElement('span');
+    label.className = 'field__label';
+    const chosen = catchOnlyPayers(s.id);
+    label.textContent = `${s.name}を選べる人（立て替えた人・${chosen.length}人）`;
+    box.appendChild(label);
+    // 担当者の一覧から消えた人も、選んであれば残して見せます（知らないうちに外れないように）
+    const names = Staff.list();
+    chosen.forEach((n) => { if (!names.includes(n)) names.push(n); });
+    if (!names.length) {
+      const none = document.createElement('p');
+      none.className = 'admin-note';
+      none.textContent = '担当者が登録されていません';
+      box.appendChild(none);
+    }
+    const list = document.createElement('div');
+    list.style.display = 'flex';
+    list.style.flexWrap = 'wrap';
+    list.style.gap = '6px 14px';
+    names.forEach((n) => {
+      // ★見た目は、日報に書く店舗のチェックと同じ書き方です（マネージの CSS には触りません）
+      const row = document.createElement('label');
+      row.style.display = 'inline-flex';
+      row.style.alignItems = 'center';
+      row.style.gap = '5px';
+      row.style.fontSize = '13px';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.dataset.payerFor = s.id;
+      cb.value = n;
+      cb.checked = chosen.includes(n);
+      const t = document.createElement('span');
+      t.textContent = n;
+      row.append(cb, t);
+      list.appendChild(row);
+    });
+    box.appendChild(list);
+    el.catchStaffFields.appendChild(box);
+  });
 }
 
 function saveCatchStaff() {
   const map = {};
   [...el.catchStaffFields.querySelectorAll('textarea[data-store]')].forEach((a) => {
     map[a.dataset.store] = a.value.split('\n');
+  });
+  // ★まいとを選べる立て替えた人（設定 catchStaff の `by:店舗id` のキー。js/config.js の catchOnlyPayerKey）
+  [...el.catchStaffFields.querySelectorAll('input[type="checkbox"][data-payer-for]')].forEach((cb) => {
+    const k = catchOnlyPayerKey(cb.dataset.payerFor);
+    if (!map[k]) map[k] = [];
+    if (cb.checked) map[k].push(cb.value);
   });
   CatchStaff.save(map);
   renderCatchStaff();

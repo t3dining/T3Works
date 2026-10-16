@@ -8685,6 +8685,7 @@ async function removeExpense(e) {
   /* ★キャッチは渡した相手も添えます。同じ日・同じ店舗・同じ人数・同じ金額が
      2件あると、相手がないと**どちらを消すのか見分けられません。**
      戻せない操作なので、ここは見分けが付くようにしておきます */
+  // ★まいと（キャッチだけの行き先）は渡した相手がいません。名前は内容（「まいとキャッチ◯名」）に出ているので、ここでは足しません
   const 相手 = (e.kind === 'catch' && (e.who || '').trim()) ? `　→ ${e.who.trim()}` : '';
   const ok = await askConfirm({
     item: `${expenseRowName(e)}${相手}　${yenText(e.yen)}`,
@@ -8729,7 +8730,8 @@ let expEditing = null; // 直しているとき、その1件
 function fillWhoOptions(who) {
   const map = CatchStaff.all();
   el.expWho.innerHTML = '<option value="">選んでください</option>';
-  const order = pickableStores().map((x) => x.id)
+  // ★キャッチだけの行き先（まいと）には渡した相手がいないので、一覧に出しません
+  const order = pickableStores().map((x) => x.id).filter((id) => !isCatchOnlyStore(id))
     .sort((a, b) => (b === expStore ? 1 : 0) - (a === expStore ? 1 : 0));
   const known = [];
   order.forEach((id) => {
@@ -8787,6 +8789,8 @@ function openExpenseForm(entry) {
     el.expBy.appendChild(o);
   });
   if (expEditing) el.expBy.value = expEditing.by || '';
+  // ★立て替えた人で、まいと（キャッチだけの行き先）を出すかが変わります（catchOnlyPayers）
+  el.expBy.onchange = () => renderExpenseForm();
 
   /* 支払い項目のボタン */
   el.expChips.innerHTML = '';
@@ -8832,24 +8836,29 @@ function renderExpenseForm() {
   const isCatch = !!(kind && kind.who);
   [...el.expChips.children].forEach((b) => b.classList.toggle('is-on', b.dataset.kind === expKind));
 
-  // まいとはキャッチのときだけ出します。買い出しに切り替えたら、
-  // 選んだままにならないよう外します（見えないものが選ばれている状態を作らない）
+  /* まいと（キャッチだけの行き先）は、**キャッチのときで、マネージで登録した人が立て替えたときだけ**出します
+     （2026-10-16、ko-dai さんの指示。前はキャッチなら誰のときでも出す作りで、保留にしてありました）。
+     出さなくなったときは、選んだままにならないよう外します（見えないものが選ばれている状態を作らない） */
+  const by = el.expBy.value;
   [...el.expStores.children].forEach((b) => {
     const only = b.dataset.catchOnly === '1';
-    b.classList.toggle('is-hidden', only && !isCatch);
-    if (only && !isCatch && expStore === b.dataset.store) expStore = '';
+    const 出す = !only || (isCatch && !!by && catchOnlyPayers(b.dataset.store).includes(by));
+    b.classList.toggle('is-hidden', !出す);
+    if (!出す && expStore === b.dataset.store) expStore = '';
     b.classList.toggle('is-on', b.dataset.store === expStore);
   });
+  // ★まいとを選んだときは、渡した相手を入れません（まいとの名前で集計に出ます）
+  const 行き先だけ = isCatchOnlyStore(expStore);
 
   /* 渡した相手が要るかは日付で決まります（config.js の CATCH_WHO_FROM）。
      それより前の分は欄を出さず、人数と金額だけで記録できます。
      ★ここに月の名前を書かないこと。設定を動かしたとき、ここだけ古く残ります */
-  const whoOn = isCatch && catchWhoNeeded(el.expDate.value);
+  const whoOn = isCatch && !行き先だけ && catchWhoNeeded(el.expDate.value);
   el.expStoreField.classList.toggle('is-hidden', !(kind && kind.store));
   el.expPeopleField.classList.toggle('is-hidden', !(kind && kind.people));
   el.expWhoField.classList.toggle('is-hidden', !whoOn);
-  el.expWhoNote.classList.toggle('is-hidden', !(isCatch && !whoOn));
-  if (isCatch && !whoOn) el.expWhoNote.innerHTML = catchWhoNoteText();
+  el.expWhoNote.classList.toggle('is-hidden', !(isCatch && !whoOn && !行き先だけ));
+  if (isCatch && !whoOn && !行き先だけ) el.expWhoNote.innerHTML = catchWhoNoteText();
   el.expFreeField.classList.toggle('is-hidden', !(kind && kind.free));
   el.expWhoFree.classList.toggle('is-hidden', el.expWho.value !== CATCH_OTHER);
 }
@@ -8875,8 +8884,9 @@ function saveExpense() {
   if (!kind) { el.expenseError.textContent = '支払い項目を選んでください。'; return; }
   if (kind.store && !expStore) { el.expenseError.textContent = 'どの店舗かを選んでください。'; return; }
   if (kind.people && (!people || people <= 0)) { el.expenseError.textContent = '人数を入れてください。'; return; }
-  // 渡した相手が要るかは日付で決まります（config.js の CATCH_WHO_FROM）
-  if (kind.who && catchWhoNeeded(d) && !who) {
+  // 渡した相手が要るかは日付で決まります（config.js の CATCH_WHO_FROM）。★まいとは要りません
+  const 行き先だけ = isCatchOnlyStore(expStore);
+  if (kind.who && !行き先だけ && catchWhoNeeded(d) && !who) {
     el.expenseError.textContent = '渡した相手を選んでください。';
     return;
   }
@@ -8899,7 +8909,8 @@ function saveExpense() {
     done: true, d, by, label, yen: y, receipt: expReceipt,
     // あとから店舗ごとに集計できるよう、選んだ内容もそのまま残します
     kind: expKind, store: expStore || '', people: kind.people ? people : 0,
-    who: kind.who ? who : '',
+    // ★まいと（キャッチだけの行き先）は、渡した相手を入れません（catchWhoName が「まいと」と出します）
+    who: kind.who && !行き先だけ ? who : '',
   });
 
   // 入れた月を表示する（先月分を入れたときも、その場で確かめられます）
@@ -8972,7 +8983,8 @@ function catchRanking(range, storeId) {
   catchEntriesFor(range)
     .filter((e) => !storeId || e.store === storeId)
     .forEach((e) => {
-      const name = (e.who || '').trim() || '（相手なし）';
+      // ★まいと（キャッチだけの行き先）は、渡した相手の代わりに「まいと」の名前で数えます
+      const name = catchWhoName(e) || '（相手なし）';
       if (!map.has(name)) map.set(name, { name, people: 0, yen: 0, count: 0 });
       const r = map.get(name);
       r.people += Number(e.people) || 0;
@@ -9349,7 +9361,7 @@ function renderCatchDetail() {
       '<span class="catch-detail__who"></span>' +
       `<span class="catch-detail__people">${Number(e.people) || 0}<span class="ledger-unit">名</span></span>` +
       `<span class="catch-detail__yen">${yenMarkup(e.yen)}</span>`;
-    li.querySelector('.catch-detail__who').textContent = (e.who || '').trim() || '（相手なし）';
+    li.querySelector('.catch-detail__who').textContent = catchWhoName(e) || '（相手なし）';
 
     if (!locked) {
       const act = document.createElement('span');

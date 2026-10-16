@@ -5066,9 +5066,11 @@ const CATCH_ONLY_STORES = [
   // 白文字を載せるので、明るすぎない色にしています。
   // お店（赤〜茶の暖色）とは別のものだと分かるよう、青みにしてあります
   //
-  // ★ off: true … いまは保留。アプリのどこにも出しません。
-  //    出すときは、この行の  off: true,  を消すだけです（他は直しません）。
-  { id: 'maito', name: 'まいと', short: 'まいと', color: '#4a6580', off: true },
+  // ★2026-10-16 に保留（off: true）を外しました（ko-dai さんの指示）。
+  //   立て替えの記録で選べるのは、**キャッチのときで、マネージで登録した人が立て替えたときだけ**です（catchOnlyPayers）。
+  //   選んだときは「渡した相手」を入れません。キャッチ集計とランキングには「まいと」の名前で出ます（catchWhoName）。
+  //   また隠すときは、この行に  off: true,  を足すだけです。
+  { id: 'maito', name: 'まいと', short: 'まいと', color: '#4a6580' },
 ];
 
 /**
@@ -5090,6 +5092,42 @@ function pickableStores() {
 /** キャッチ集計の表と、ランキングのしぼり込みに出す店舗（保留中のものは出しません） */
 function catchStoreIds() {
   return CATCH_STORES.filter((id) => !getStore(id).off);
+}
+
+/** キャッチだけの行き先（まいと）か */
+function isCatchOnlyStore(storeId) {
+  return CATCH_ONLY_STORES.some((s) => s.id === storeId);
+}
+
+/**
+ * キャッチだけの行き先（まいと）を選べる「立て替えた人」の入れ先（設定 catchStaff の中のキー）
+ *
+ * ★2026-10-16、ko-dai さんの指示：まいとは、決まった人が立て替えたキャッチのときだけ選べます。
+ *   **人の名前はこのファイルに書きません**（公開されます）。マネージの「キャッチの渡した相手」で登録し、
+ *   設定 catchStaff の中に `by:店舗id` のキーで入ります。渡した相手の一覧（`店舗id` のキー）とは別のキーです
+ *   （CatchStaff.list は店舗idのキーしか読まないので、渡した相手に混ざりません）。
+ */
+function catchOnlyPayerKey(storeId) {
+  return `by:${storeId}`;
+}
+
+/** その行き先（まいと）を選べる立て替えた人。登録がなければ空（＝誰のときも出ません） */
+function catchOnlyPayers(storeId) {
+  const map = (typeof CatchStaff !== 'undefined') ? CatchStaff.all() : {};
+  return ((map && map[catchOnlyPayerKey(storeId)]) || []).slice();
+}
+
+/**
+ * キャッチの「名前」（ランキングと明細に出す名前。分からなければ空）
+ *
+ * ★まいと（キャッチだけの行き先）には渡した相手がいないので、行き先の名前（まいと）を出します。
+ *   記録には who を入れません（作り物の名前を記録に残さないため）。
+ */
+function catchWhoName(e) {
+  const who = String((e && e.who) || '').trim();
+  if (who) return who;
+  if (e && isCatchOnlyStore(e.store)) return getStore(e.store).name;
+  return '';
 }
 
 /**
