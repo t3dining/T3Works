@@ -9927,7 +9927,8 @@ const MEETING_MODES = {
       } },
     // キャッチは金額と人数の2段です。差も2段とも引き算です（meetingDiffCol）。
     // 人数も会議で見る数字なので、金額と同じ大きさで出します（big）
-    { label: 'キャッチ', mainKind: 'yen', subKind: 'num', subUnit: '人', big: true,
+    // ★色は、このページの決まり（増えたら赤・減ったら緑）にそろえます（2026-10-16、ko-dai さんの指示。前は色なし）
+    { label: 'キャッチ', mainKind: 'yen', subKind: 'num', subUnit: '人', goodWhen: 'down', big: true,
       main: (v) => v.katch, sub: (v) => v.katchPeople },
   ],
   // 光熱費も、もとのシートと同じように金額と率の両方を出します。
@@ -9969,6 +9970,32 @@ function meetingNum(n, kind, unit, diff) {
   return sign + yenMarkup(Math.round(v));
 }
 
+/**
+ * 差の色（★2026-10-16、ko-dai さんの指示）
+ *
+ *   売上のページ               … 増えた（＋）は緑、減った（−）は赤（goodWhen: 'up'）
+ *   原価と人件費・光熱費のページ … 増えた（＋）は赤、減った（−）は緑（goodWhen: 'down'）
+ *   ±0 と「—」は色なし
+ *
+ * ★上の段と下の段に、**それぞれの向きで**色を付けます。前は上の段（金額）の向きだけで升目ごと塗っていて、
+ *   人件費の金額が減って率が上がった店が「+1.2% なのに緑」に見えていました。
+ * ★上の段の色は `css/style.css` の `.meeting-table td.is-vs.is-good / .is-bad`（本部の持ちもの）。
+ *   下の段は、その同じ色を升目の中で付け直します（CSS は下の段に親の色を引き継がせるため）。
+ *   **色を変えるときは2か所一緒に**（test_meeting_diff.py が、CSS とここが同じ色かを見ています）。
+ */
+const MEETING_DIFF_COLORS = {
+  'is-good': 'color-mix(in srgb, var(--ok) 80%, var(--text))',
+  'is-bad': 'color-mix(in srgb, var(--ng) 80%, var(--text))',
+};
+
+/** 差の数の向き（'is-good'・'is-bad'・色なしは ''）。画面で ±0 と出る数は色なしです */
+function meetingDiffTone(col, n, kind) {
+  if (!col.goodWhen || typeof n !== 'number' || !isFinite(n)) return '';
+  const isPct = kind === 'pct' || kind === 'ratio';
+  if (Math.round(isPct ? n * 1000 : n) === 0) return '';
+  return (col.goodWhen === 'up') === (n > 0) ? 'is-good' : 'is-bad';
+}
+
 /** 1つの升目（主の数字と、あれば下に添える数字） */
 function meetingCell(col, v, opts = {}) {
   const diff = !!opts.diff;
@@ -9976,16 +10003,19 @@ function meetingCell(col, v, opts = {}) {
   const sub = col.sub ? col.sub(v) : null;
   let cls = 'mt-cell';
   cls += opts.last ? ' is-last' : (opts.diff ? '' : ' is-now');
+  let subStyle = '';
   if (diff) {
     cls += ' is-vs';
-    if (col.goodWhen && main) {
-      const good = col.goodWhen === 'up' ? main > 0 : main < 0;
-      cls += good ? ' is-good' : ' is-bad';
-    }
+    const 上 = meetingDiffTone(col, main, col.mainKind);
+    if (上) cls += ` ${上}`;
+    // ★下の段は、下の段の向きで色を付けます（上の段と向きが違う月があるため）
+    const 下 = meetingDiffTone(col, sub, col.subKind);
+    // 色なしは、差の列の普段の色（`.meeting-table td.is-vs` の var(--text-sub)）
+    subStyle = ` style="color: ${下 ? MEETING_DIFF_COLORS[下] : 'var(--text-sub)'}"`;
   }
   if (col.big) cls += ' mt-cell--two';
   const subHtml = col.sub
-    ? `<span class="mt-sub">${meetingNum(sub, col.subKind, col.subUnit, diff)}</span>`
+    ? `<span class="mt-sub"${subStyle}>${meetingNum(sub, col.subKind, col.subUnit, diff)}</span>`
     : '';
   return `<td class="${cls}"><span class="mt-main">${meetingNum(main, col.mainKind, col.unit, diff)}</span>${subHtml}</td>`;
 }
