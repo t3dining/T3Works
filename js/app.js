@@ -9925,9 +9925,9 @@ const MEETING_MODES = {
         const a = meetingLaborPart(v);
         return (c === null || a === null || !v.ex) ? null : c + a / v.ex;
       } },
-    // キャッチだけは、差の下段を「増減率」ではなく「人数の差」にします。
+    // キャッチは金額と人数の2段です。差も2段とも引き算です（meetingDiffCol）。
     // 人数も会議で見る数字なので、金額と同じ大きさで出します（big）
-    { label: 'キャッチ', mainKind: 'yen', subKind: 'num', subUnit: '人', diffSub: 'sub', big: true,
+    { label: 'キャッチ', mainKind: 'yen', subKind: 'num', subUnit: '人', big: true,
       main: (v) => v.katch, sub: (v) => v.katchPeople },
   ],
   // 光熱費も、もとのシートと同じように金額と率の両方を出します。
@@ -9991,26 +9991,39 @@ function meetingCell(col, v, opts = {}) {
 }
 
 /**
- * 差の升目に出すもの
- *   上段 … 今年 − 昨年（金額・人数・率）
- *   下段 … 前の年から何％増えたか減ったか
- *          （キャッチだけは、人数の差を出します）
- * 率だけの項目（F/L）は、率の差そのものが％なので下段はありません。
+ * 差の升目に出すもの（★2026-10-16、ko-dai さんの指示で決まりを1つにそろえました）
+ *
+ *   上段 … 今年 − 昨年
+ *   下段 … ・2段ある項目（原価・人件費・光熱費＝金額と率／キャッチ＝金額と人数）は、
+ *            **下の段どうしの引き算**（率なら 26.0% − 24.0% ＝ +2.0%、キャッチなら人数の差）
+ *          ・1段の項目（売上・客数・客単価・使用量）は、前の年から何％増えたか減ったか
+ *   率だけの項目（F/L）は、率どうしの引き算の1段だけです（引き算がそのまま％のため）。
+ *
+ * ★今年か昨年のどちらかが「—」（数字がない・0）なら、差も「—」です。
+ *   前は、昨年が空でも差を出していて、去年のキャッチがない月に「今年の数＝差」と出ていました（34か所）。
+ * ★前は、原価・人件費・光熱費の下の段が「金額が何％増えたか」でした。上の2つの升目の下の段は「率」なので、
+ *   同じ高さに違う意味の％が並び、率の差に見えていました（224か所）。
  */
 function meetingDiffCol(col, now, last) {
   const a = col.main ? col.main(now) : null;
   const b = col.main ? col.main(last) : null;
-  // 今年も昨年も入っていない項目は、差も「—」にします（±0 とは出しません）
-  const d = (x, y) => ((x === null || y === null) || (!x && !y) ? null : x - y);
-  const out = { ...col, main: () => d(a, b), sub: null, subKind: 'ratio', subUnit: '' };
+  // 今年・昨年の升目に数字が出るときだけ、差を出します（0 と空は、升目でも「—」です）
+  const 出る = (x) => typeof x === 'number' && isFinite(x) && x !== 0;
+  /* ★率は、升目に出ている桁（小数1けた）にそろえてから引きます。
+       そろえずに引くと、画面の「26.3% − 24.4%」と差が 0.1 ずれることがあります（見た人が引き算して合わない） */
+  const 見たまま = (x, kind) => (kind === 'pct' ? Math.round(x * 1000) / 1000 : x);
+  const d = (x, y, kind) => (出る(x) && 出る(y) ? 見たまま(x, kind) - 見たまま(y, kind) : null);
+  const out = { ...col, main: () => d(a, b, col.mainKind), sub: null, subKind: 'ratio', subUnit: '' };
 
-  if (col.diffSub === 'sub' && col.sub) {
-    const s = d(col.sub(now), col.sub(last));
+  if (col.sub) {
+    // 2段ある項目は、下の段も引き算です（率なら率どうし、キャッチなら人数どうし）
+    const s = d(col.sub(now), col.sub(last), col.subKind);
     out.sub = () => s;
     out.subKind = col.subKind;
     out.subUnit = col.subUnit;
   } else if (col.mainKind !== 'pct') {
-    const r = (a && b) ? (a / b - 1) : null;
+    // 1段の項目は、前の年から何％増えたか減ったか
+    const r = d(a, b) === null ? null : a / b - 1;
     out.sub = () => r;
   }
   return out;
