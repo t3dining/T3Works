@@ -8844,6 +8844,11 @@ function renderExpenseForm() {
     const only = b.dataset.catchOnly === '1';
     const 出す = !only || (isCatch && !!by && catchOnlyPayers(b.dataset.store).includes(by));
     b.classList.toggle('is-hidden', !出す);
+    /* ★札そのものに「表示しない」を付けます（2026-10-16）。
+         `css/style.css`（本部の持ちもの）に `.exp-chip.is-hidden` の決まりがなく、印だけでは隠れませんでした
+         （まいとは保留で札が作られていなかったので、今まで気づきませんでした）。
+         押せないのに見えている札になっていたため、ここで直接隠します */
+    b.style.display = 出す ? '' : 'none';
     if (!出す && expStore === b.dataset.store) expStore = '';
     b.classList.toggle('is-on', b.dataset.store === expStore);
   });
