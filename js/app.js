@@ -3240,6 +3240,20 @@ function journal社員の日額(月額, y, m, d) {
 }
 
 /**
+ * その月の、1日と最後の日の社員の額（月額が分からなければ null）
+ *
+ * ★日報は2日から後が1日の数を写すので、月のまとめを月額ちょうどにするには
+ *   「1日のページ＝1日分」「最後の日のページ＝1日分＋端数」がそろっていればよい（2026-10-18）。
+ *   人件費を書くときにこの2つを送り、GAS が他のページの社員のマスをそろえます（gas/日報に書く.gs）。
+ */
+function journal社員の月の額(月額, y, m) {
+  const 日数 = new Date(y, m, 0).getDate();
+  const 一日 = journal社員の日額(月額, y, m, 1);
+  const 末日 = journal社員の日額(月額, y, m, 日数);
+  return 一日 === null || 末日 === null ? null : { 一日, 末日 };
+}
+
+/**
  * その日の「社員」の欄に、1日分を入れます（画面の中身だけ）
  *
  * ★月額が分かっていれば、**いつもその日の1日分**にします（アプリが出す欄。手では打てません）。
@@ -4717,11 +4731,20 @@ function cashGridSend(だけ) {
         if (v === undefined || v === null || String(v).trim() === '') return;
         const n = cashMinusNum(v);
         if (n === null) return;                       // 読めないものは送りません
-        out.push({
+        const 一つ = {
           name,
           col: 列[c],
           value: (cashIsFormula(v) ? cashFormulaPlain(v) : n),
-        });
+        };
+        /* ★社員の金額には、1日と最後の日の額を添えます（ko-dai さんの指示・2026-10-18
+             「月の途中でも社員の人件費が各店舗合うように」）。GAS が、他のページの社員のマスを
+             そろえます（最後の日＝写す式のままなら1日分＋端数・1日＝空なら1日分）。
+           ★月額が分からない店では添えません（手で打った数なので、そろえる元がない） */
+        if (入れ先 === 'jinken' && c === 'g' && journal社員の行か(name)) {
+          const 月 = journal社員の月の額(journal社員の月額(state.storeId), state.y, state.m);
+          if (月) 一つ.月 = 月;
+        }
+        out.push(一つ);
       });
     });
   });
@@ -5412,7 +5435,9 @@ async function nippouWritePart(part, btn) {
     item: `${test ? '★テスト用の日報★　' : ''}${店名}　${Number(dateStr.slice(8))}日のページ（${決.name}）`,
     message: nippou確かめの行(values, calc, extra).map((r) => r.text
       + (手の名.indexOf(r.name) >= 0 ? '（手で直した数）' : '')).join('／')
-      + '　※日報にすでにちがう数が入っていれば、書く前にもう一度聞きます',
+      + '　※日報にすでにちがう数が入っていれば、書く前にもう一度聞きます'
+      // ★社員は、他のページ（1日・最後の日）もそろえます（2026-10-18）。黙って書かないよう、押す前に言います
+      + (extra.some((x) => x && x.月) ? '　※社員は、月のまとめが月額ちょうどになるよう、1日と最後の日のページもそろえます（空のマス・写す式のときだけ）' : ''),
     okLabel: '書く',
   });
   if (!ok) { 先の知らせ(''); return; }
@@ -5480,7 +5505,7 @@ async function nippouWritePart(part, btn) {
          書き先の名前を、あとから見て分かるように残します。 */
     先の知らせ(`${決.name}を書きました　→ ${res.file}　${res.sheet}日`
       + `（${(res.rows || []).length}か所）${test ? '　★テスト用の日報です' : ''}`
-      + nippou秒({ 書 }), 'ok');
+      + 社員をそろえた文(res) + nippou秒({ 書 }), 'ok');
   } catch (e) {
     先の知らせ(String(e && e.message || e), 'warn');
   } finally {
@@ -5935,9 +5960,18 @@ function 日報の返事を受ける(頼み, st) {
   }
 }
 
+/**
+ * 他のページの社員をそろえたときの一言（そろえていなければ空）
+ *   r.そろえた = [{ sheet: '31', cell: 'G◯', 前, 後 }]（gas/日報に書く.gs・2026-10-18）
+ */
+function 社員をそろえた文(r) {
+  const 日 = ((r && r.そろえた) || []).map((x) => `${Number(x.sheet) || x.sheet}日`);
+  return 日.length ? `　社員：${日.join('・')}のページもそろえました（月のまとめが月額ちょうどになります）` : '';
+}
+
 /** 書けたときの知らせ（ジャーナルは検算も出します） */
 function 日報に書けた文(頼み, r) {
-  const 先 = `→ ${r.file}　${r.sheet}日${頼み.test ? '　★テスト用の日報です' : ''}`;
+  const 先 = `→ ${r.file}　${r.sheet}日${頼み.test ? '　★テスト用の日報です' : ''}${社員をそろえた文(r)}`;
   const 秒 = 頼み.at ? `　（${Math.round((Date.now() - Date.parse(頼み.at)) / 1000)}秒）` : '';
   if (頼み.want === undefined || 頼み.want === null || r.total === null || r.total === undefined) {
     return `${頼み.名}を日報に書きました　${先}（${頼み.数}か所）${秒}`;
@@ -6147,11 +6181,11 @@ async function nippouSendNow(values, dateStr, test, folder, extra, calc) {
   // ③ 書いたあとの検算（want は上で取ってあります）
   if (res.total === null || res.total === undefined || want === null || want === undefined) {
     先の知らせ(`記録して、書きました　→ ${res.file}　${res.sheet}日`
-      + `${test ? '　★テスト用の日報です' : ''}` + 秒, 'ok');
+      + `${test ? '　★テスト用の日報です' : ''}` + 社員をそろえた文(res) + 秒, 'ok');
   } else if (res.total === want) {
     先の知らせ(`記録して、書きました　→ ${res.file}　${res.sheet}日`
       + `${test ? '　★テスト用の日報です' : ''}　`
-      + `検算OK：当日総合計 ${cashText(res.total)} ＝ ジャーナルの売上` + 秒, 'ok');
+      + `検算OK：当日総合計 ${cashText(res.total)} ＝ ジャーナルの売上` + 社員をそろえた文(res) + 秒, 'ok');
   } else {
     先の知らせ('日報には書きましたが、★検算が合いません。'
       + `当日総合計 ${cashText(res.total)} ／ ジャーナルの売上 ${cashText(want)}。`
