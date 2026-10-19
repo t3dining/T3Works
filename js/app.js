@@ -7623,15 +7623,27 @@ function trainDoneCount(personId) {
 function renderTrain() {
   const people = Trainees.list(state.storeId);
   const total = trainTotal(state.storeId);
+  const manual = trainManual(state.storeId);
 
   // 開いていた人が一覧から消えていたら、一覧に戻します
   if (trainPerson && !people.some((p) => p.id === trainPerson)) trainPerson = '';
+  // マニュアルのない店舗に移ったら、閉じます
+  if (trainManualOpen && !manual) trainManualOpen = false;
 
-  el.trainList.classList.toggle('is-hidden', !!trainPerson);
-  el.trainOne.classList.toggle('is-hidden', !trainPerson);
+  el.trainList.classList.toggle('is-hidden', !!trainPerson || trainManualOpen);
+  el.trainOne.classList.toggle('is-hidden', !trainPerson || trainManualOpen);
+
+  // ★マニュアルは中身が変わらないので、1回だけ作って、あとは出し入れだけします
+  if (trainManualOpen && trainManualDrawn !== manual.id) {
+    renderTrainManual(manual);
+    trainManualDrawn = manual.id;
+  }
+  if (trainManualBox) trainManualBox.classList.toggle('is-hidden', !trainManualOpen);
+  if (trainManualOpen) return;
 
   if (trainPerson) renderTrainOne(trainPerson, total);
   else renderTrainList(people, total);
+  renderTrainManualButton(manual);
 }
 
 /* -------- 人の一覧 -------- */
@@ -7808,6 +7820,404 @@ function addTrainee() {
   el.trainAddMsg.textContent = made ? '' : 'その名前は、もう入っています。';
   if (made) el.trainNewName.value = '';
   render();
+}
+
+/* ------------------------------------------------------------
+ *  店舗のマニュアル（紙のマニュアルを、そのまま読めるようにした画面）
+ *
+ *  教育ページの一番上に「📕 ホールマニュアル」のボタンが出ます。
+ *  中身は js/config.js の TRAIN_MANUALS です（行の種類の表もそちらにあります）。
+ *
+ *  ★index.html と css/style.css には1文字も触っていません（本部のファイルです）。
+ *    置き場も見た目も、この下で作って差し込みます。面接マニュアル（js/interview.js）が
+ *    画面を足さずにパネルで出しているのと同じ考え方です。
+ *
+ *  ★文字は全て textContent で入れます（innerHTML を使わない）。
+ *    マニュアルの文に <b> のような字が入っても、そのまま字として出すためです。
+ * ---------------------------------------------------------- */
+
+/** マニュアルを開いているか（開いた人の端末の中だけ。記録しません） */
+let trainManualOpen = false;
+/** 1回だけ作るもの */
+let trainManualBox = null;
+let trainManualBtnBox = null;
+/** いま中身を作ってあるマニュアル（作り直しを1回で済ませるための印） */
+let trainManualDrawn = '';
+/** 目次から飛ぶ先（節のタイトル → その節の箱） */
+const trainManualAnchors = new Map();
+
+/**
+ * この画面の見た目。css/style.css は本部のファイルなので、ここから1回だけ差し込みます
+ */
+function trainManualStyle() {
+  if (document.getElementById('trainManualStyle')) return;
+  const st = document.createElement('style');
+  st.id = 'trainManualStyle';
+  st.textContent = `
+.tman {
+  --tman-ink:#3a2c20; --tman-chap:#ece7dd; --tman-num:#4a3526; --tman-num-fg:#ffffff;
+  --tman-pink:#e2a2b4; --tman-rule:#6b5444;
+  --tman-key-bg:#c0352b; --tman-key-fg:#ffffff; --tman-key-body:#fbeeee; --tman-key-text:#b4352b;
+  --tman-say-bg:#fdf5cf; --tman-say-line:#e3d28a; --tman-say-text:#3a2c20;
+  --tman-staff-bg:#dce8f2; --tman-staff-line:#a9c4da; --tman-staff-text:#1c3a52; --tman-staff-tag:#2b6ca3;
+  --tman-warn:#cc2a24; --tman-box-line:#d9534f;
+  --tman-cell:#d8d2c8; --tman-cell-head:#f3efe8;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tman {
+  --tman-ink:#e7e9ec; --tman-chap:#2e2a25; --tman-num:#6b5444;
+  --tman-pink:#b4788a; --tman-rule:#6b5444;
+  --tman-key-bg:#a8352b; --tman-key-body:#3a2422; --tman-key-text:#f0a8a0;
+  --tman-say-bg:#3a3523; --tman-say-line:#6b6233; --tman-say-text:#f3ead0;
+  --tman-staff-bg:#22323f; --tman-staff-line:#3d5f78; --tman-staff-text:#d6e7f4; --tman-staff-tag:#7fb6e0;
+  --tman-warn:#ff8f85; --tman-box-line:#a8554f;
+  --tman-cell:#3b4048; --tman-cell-head:#2a2e34;
+} }
+:root[data-theme="dark"] .tman {
+  --tman-ink:#e7e9ec; --tman-chap:#2e2a25; --tman-num:#6b5444;
+  --tman-pink:#b4788a; --tman-rule:#6b5444;
+  --tman-key-bg:#a8352b; --tman-key-body:#3a2422; --tman-key-text:#f0a8a0;
+  --tman-say-bg:#3a3523; --tman-say-line:#6b6233; --tman-say-text:#f3ead0;
+  --tman-staff-bg:#22323f; --tman-staff-line:#3d5f78; --tman-staff-text:#d6e7f4; --tman-staff-tag:#7fb6e0;
+  --tman-warn:#ff8f85; --tman-box-line:#a8554f;
+  --tman-cell:#3b4048; --tman-cell-head:#2a2e34;
+}
+.tman { line-height:1.6; }
+.tman__head { display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+.tman__title { font-size:20px; font-weight:700; color:var(--text); }
+.tman__badge {
+  background:var(--tman-key-bg); color:var(--tman-key-fg); font-size:11px; font-weight:700;
+  border-radius:4px; padding:3px 8px;
+}
+.tman__store { font-size:12px; color:var(--text-sub); margin:-4px 0 14px; }
+.tman-toc__chap { margin-bottom:10px; }
+.tman-toc__chap-t { display:flex; align-items:center; gap:8px; font-weight:700; color:var(--text); margin-bottom:4px; }
+.tman-toc__n {
+  background:var(--tman-num); color:var(--tman-num-fg); font-size:12px; font-weight:700;
+  min-width:20px; height:20px; border-radius:3px; display:inline-flex; align-items:center; justify-content:center;
+}
+.tman-toc__link {
+  display:block; width:100%; text-align:left; background:none; border:0; cursor:pointer;
+  padding:5px 8px 5px 30px; font-size:14px; color:var(--accent); border-radius:6px;
+}
+.tman-toc__link:hover { background:var(--surface-2); }
+.tman-toc__sub { color:var(--text-sub); font-size:12px; margin-left:6px; }
+.tman-legend { display:grid; gap:8px; }
+.tman-legend__row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; align-items:center; }
+.tman-legend__d { font-size:13px; color:var(--text-sub); }
+.tman__chap {
+  display:flex; align-items:center; gap:10px; background:var(--tman-chap); color:var(--tman-ink);
+  border-radius:8px; padding:10px 12px; margin:22px 0 12px;
+}
+.tman__chap-n {
+  background:var(--tman-num); color:var(--tman-num-fg); font-size:15px; font-weight:700;
+  min-width:26px; height:26px; border-radius:4px; display:inline-flex; align-items:center; justify-content:center;
+}
+.tman__chap-t { font-size:17px; font-weight:700; }
+.tman__sec { margin:16px 0 8px; border-bottom:2px solid var(--tman-rule); padding-bottom:4px; }
+.tman__sec-t {
+  display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;
+  border-left:5px solid var(--tman-pink); padding-left:8px; color:var(--text);
+}
+.tman__sec-t b { font-size:16px; }
+.tman__sec-t span { font-size:12px; color:var(--text-sub); }
+.tman__key { display:flex; align-items:stretch; margin:8px 0 10px; border-radius:4px; overflow:hidden; }
+.tman__key-l {
+  background:var(--tman-key-bg); color:var(--tman-key-fg); font-size:11px; font-weight:700;
+  padding:5px 10px; display:flex; align-items:center; white-space:nowrap;
+}
+.tman__key-t {
+  background:var(--tman-key-body); color:var(--tman-key-text); font-weight:700; font-size:14px;
+  padding:5px 10px; flex:1 1 auto;
+}
+.tman__step { display:flex; align-items:flex-start; gap:8px; margin:12px 0 4px; }
+.tman__step-n {
+  background:var(--tman-num); color:var(--tman-num-fg); font-size:12px; font-weight:700;
+  min-width:20px; height:20px; border-radius:3px; display:inline-flex; align-items:center; justify-content:center;
+  margin-top:2px; flex:0 0 auto;
+}
+.tman__step-t { font-size:15px; font-weight:700; color:var(--text); }
+.tman__say {
+  background:var(--tman-say-bg); border:1px solid var(--tman-say-line); color:var(--tman-say-text);
+  font-weight:700; border-radius:4px; padding:8px 10px; margin:6px 0;
+}
+.tman__staff {
+  background:var(--tman-staff-bg); border:1px solid var(--tman-staff-line); color:var(--tman-staff-text);
+  font-weight:700; border-radius:4px; padding:8px 10px; margin:6px 0;
+}
+.tman__tag { color:var(--tman-staff-tag); font-size:12px; }
+.tman__warn {
+  color:var(--tman-warn); font-weight:700; font-size:14px; margin:6px 0 6px 8px;
+  display:flex; gap:6px; align-items:flex-start;
+}
+.tman__point { color:var(--text); font-weight:700; font-size:14px; margin:8px 0; display:flex; gap:7px; align-items:flex-start; }
+.tman__point-m { color:var(--text-sub); }
+.tman__plain { color:var(--text); font-size:14px; margin:5px 0 5px 8px; }
+.tman__note { color:var(--text-sub); font-size:13px; margin:3px 0 3px 22px; }
+.tman__h2 { display:flex; align-items:center; gap:7px; font-size:15px; font-weight:700; color:var(--text); margin:16px 0 6px; }
+.tman__h2::before { content:'●'; color:var(--tman-pink); font-size:11px; }
+.tman__h2-line { border-bottom:1px solid var(--line); margin-bottom:8px; }
+.tman__h3 { font-size:12px; color:var(--text-sub); margin:10px 0 4px; }
+.tman__table { border:1px solid var(--tman-cell); border-radius:4px; overflow:hidden; margin:8px 0; }
+.tman__tr { display:flex; border-top:1px solid var(--tman-cell); }
+.tman__tr:first-child { border-top:0; }
+.tman__td { padding:7px 10px; font-size:14px; color:var(--text); }
+.tman__td:first-child {
+  background:var(--tman-cell-head); font-weight:700; flex:0 0 38%;
+  border-right:1px solid var(--tman-cell); display:flex; align-items:center;
+}
+.tman__td:last-child { flex:1 1 auto; display:flex; align-items:center; }
+.tman__group { border:1px solid var(--tman-cell); border-radius:4px; margin:8px 0; overflow:hidden; }
+.tman__group-h { background:var(--tman-cell-head); color:var(--text); font-size:13px; padding:6px 10px; }
+.tman__group-b { padding:8px 10px; }
+.tman__box { border:1px solid var(--tman-box-line); border-radius:4px; margin:10px 0; overflow:hidden; }
+.tman__box-t { background:var(--tman-key-body); color:var(--tman-key-text); font-weight:700; font-size:14px; padding:6px 10px; }
+.tman__box-l { font-size:14px; color:var(--text); padding:5px 10px; }
+.tman__up { margin:14px 0 4px; }
+.tman-open { width:100%; display:flex; align-items:center; gap:10px; text-align:left; }
+.tman-open__t { font-weight:700; }
+.tman-open__s { font-size:12px; color:var(--text-sub); }
+`;
+  document.head.appendChild(st);
+}
+
+/** 1行作ります（文字は textContent で入れます） */
+function tmanEl(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+
+/** 【スタッフへ】のような頭の札を、小さい字で出します */
+function tmanLine(text, cls) {
+  const line = tmanEl('div', cls);
+  const m = String(text).match(/^(【[^】]+】)([\s\S]*)$/);
+  if (m) {
+    line.appendChild(tmanEl('span', 'tman__tag', m[1]));
+    line.appendChild(document.createTextNode(m[2]));
+  } else {
+    line.textContent = text;
+  }
+  return line;
+}
+
+/**
+ * そこまで飛びます
+ *
+ * ★上の帯（.app-header）は sticky で動かないので、そのまま scrollIntoView すると
+ *   見出しが帯の下に隠れます。帯の高さは画面の幅で変わるので、**そのとき測ります**
+ *   （CSS に数を書くと、幅が変わったときに合わなくなります）。
+ *   帯が見つからなければ 0 として、今までどおり一番上に合わせます（落ちません）。
+ */
+function tmanScrollTo(先) {
+  const 帯 = document.querySelector('.app-header');
+  const 高さ = 帯 ? 帯.getBoundingClientRect().height : 0;
+  const y = 先.getBoundingClientRect().top + window.scrollY - 高さ - 8;
+  window.scrollTo({ top: Math.max(y, 0), behavior: 'smooth' });
+}
+
+/**
+ * 行1つを描きます
+ *
+ * ★ここにない種類が config.js に入っていたら、検算（test_train_manual.js）が止めます。
+ *   データにあるのに描けない（押しても出てこない）のを、画面を開く前に見つけるためです。
+ */
+function trainManualRow(row) {
+  if (row.k === 'step') {
+    const wrap = tmanEl('div', 'tman__step');
+    wrap.appendChild(tmanEl('span', 'tman__step-n', String(row.n)));
+    wrap.appendChild(tmanEl('span', 'tman__step-t', row.t));
+    return wrap;
+  }
+  if (row.k === 'say' || row.k === 'staff') {
+    const cls = row.k === 'say' ? 'tman__say' : 'tman__staff';
+    const wrap = tmanEl('div', cls);
+    row.t.forEach((t) => wrap.appendChild(tmanLine(t, '')));
+    return wrap;
+  }
+  if (row.k === 'warn') {
+    const wrap = tmanEl('div', 'tman__warn');
+    wrap.appendChild(tmanEl('span', '', '！'));
+    wrap.appendChild(tmanEl('span', '', row.t));
+    return wrap;
+  }
+  if (row.k === 'point') {
+    const wrap = tmanEl('div', 'tman__point');
+    wrap.appendChild(tmanEl('span', 'tman__point-m', '□'));
+    wrap.appendChild(tmanEl('span', '', row.t));
+    return wrap;
+  }
+  if (row.k === 'plain') return tmanEl('div', 'tman__plain', row.t);
+  if (row.k === 'note') return tmanEl('div', 'tman__note', row.t);
+  if (row.k === 'h2') {
+    const wrap = tmanEl('div', 'tman__h2-line');
+    wrap.appendChild(tmanEl('div', 'tman__h2', row.t));
+    return wrap;
+  }
+  if (row.k === 'h3') return tmanEl('div', 'tman__h3', `▼ ${row.t}`);
+  if (row.k === 'table') {
+    const wrap = tmanEl('div', 'tman__table');
+    row.rows.forEach((cells) => {
+      const tr = tmanEl('div', 'tman__tr');
+      cells.forEach((c) => tr.appendChild(tmanEl('div', 'tman__td', c)));
+      wrap.appendChild(tr);
+    });
+    return wrap;
+  }
+  if (row.k === 'group') {
+    const wrap = tmanEl('div', 'tman__group');
+    wrap.appendChild(tmanEl('div', 'tman__group-h', row.head));
+    const body = tmanEl('div', 'tman__group-b');
+    row.rows.forEach((r) => body.appendChild(trainManualRow(r)));
+    wrap.appendChild(body);
+    return wrap;
+  }
+  if (row.k === 'box') {
+    const wrap = tmanEl('div', 'tman__box');
+    wrap.appendChild(tmanEl('div', 'tman__box-t', row.t));
+    row.lines.forEach((t) => wrap.appendChild(tmanEl('div', 'tman__box-l', `・${t}`)));
+    return wrap;
+  }
+  // ★知らない種類。黙って消すと「入れたのに出ない」になるので、そのまま字で出します
+  return tmanEl('div', 'tman__plain', String(row.t || ''));
+}
+
+/** 教育ページの一番上に出る、マニュアルを開くボタン */
+function renderTrainManualButton(manual) {
+  // ★ボタンの見た目もこのCSSで作るので、開く前に差し込みます
+  //   （開いたときだけ差し込んでいて、ボタンが素のままで出ていました）
+  if (manual) trainManualStyle();
+  if (!trainManualBtnBox) {
+    trainManualBtnBox = document.createElement('div');
+    el.trainList.insertBefore(trainManualBtnBox, el.trainList.firstChild);
+  }
+  trainManualBtnBox.innerHTML = '';
+  if (!manual) return;
+
+  const card = tmanEl('div', 'cash-box');
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn tman-open';
+  btn.appendChild(tmanEl('span', '', '📕'));
+  const body = tmanEl('span', '');
+  body.appendChild(tmanEl('span', 'tman-open__t', manual.title));
+  body.appendChild(document.createTextNode(' '));
+  body.appendChild(tmanEl('span', 'tman-open__s', manual.sub));
+  btn.appendChild(body);
+  btn.addEventListener('click', () => { trainManualOpen = true; render(); window.scrollTo(0, 0); });
+  card.appendChild(btn);
+  trainManualBtnBox.appendChild(card);
+}
+
+/** マニュアルの中身 */
+function renderTrainManual(manual) {
+  trainManualStyle();
+  if (!trainManualBox) {
+    trainManualBox = tmanEl('div', 'tman is-hidden');
+    el.viewTrain.appendChild(trainManualBox);
+  }
+  trainManualBox.innerHTML = '';
+  trainManualAnchors.clear();
+  if (!manual) return;
+
+  /* 見出しと「← 一覧へ」 */
+  const head = tmanEl('div', 'tman__head');
+  const back = document.createElement('button');
+  back.type = 'button';
+  back.className = 'btn';
+  back.textContent = '← 一覧へ';
+  back.addEventListener('click', () => { trainManualOpen = false; render(); window.scrollTo(0, 0); });
+  head.appendChild(back);
+  head.appendChild(tmanEl('span', 'tman__title', manual.title));
+  head.appendChild(tmanEl('span', 'tman__badge', manual.sub));
+  trainManualBox.appendChild(head);
+  trainManualBox.appendChild(tmanEl('p', 'tman__store', manual.store));
+
+  /* もくじ */
+  const toc = tmanEl('div', 'cash-box');
+  const tocHead = tmanEl('div', 'cash-box__head');
+  tocHead.appendChild(tmanEl('h2', 'cash-box__title', 'もくじ'));
+  toc.appendChild(tocHead);
+  manual.chapters.forEach((chap) => {
+    const box = tmanEl('div', 'tman-toc__chap');
+    const t = tmanEl('div', 'tman-toc__chap-t');
+    t.appendChild(tmanEl('span', 'tman-toc__n', String(chap.n)));
+    t.appendChild(tmanEl('span', '', chap.title));
+    box.appendChild(t);
+    chap.sections.forEach((sec) => {
+      const 鍵 = `${chap.n}/${sec.title}`;
+      const link = document.createElement('button');
+      link.type = 'button';
+      link.className = 'tman-toc__link';
+      link.appendChild(tmanEl('span', '', sec.title));
+      if (sec.sub) link.appendChild(tmanEl('span', 'tman-toc__sub', sec.sub));
+      link.addEventListener('click', () => {
+        const 先 = trainManualAnchors.get(鍵);
+        if (先) tmanScrollTo(先);
+      });
+      box.appendChild(link);
+    });
+    toc.appendChild(box);
+  });
+  trainManualBox.appendChild(toc);
+
+  /* このマニュアルの見かた */
+  if (manual.legend && manual.legend.length) {
+    const box = tmanEl('div', 'cash-box');
+    const h = tmanEl('div', 'cash-box__head');
+    h.appendChild(tmanEl('h2', 'cash-box__title', 'このマニュアルの見かた'));
+    box.appendChild(h);
+    const grid = tmanEl('div', 'tman-legend');
+    manual.legend.forEach((g) => {
+      const row = tmanEl('div', 'tman-legend__row');
+      const 見本 = tmanEl('div', '');
+      見本.appendChild(trainManualRow(
+        g.k === 'say' || g.k === 'staff' ? { k: g.k, t: [g.t] } : { k: g.k, t: g.t }
+      ));
+      row.appendChild(見本);
+      row.appendChild(tmanEl('div', 'tman-legend__d', g.d));
+      grid.appendChild(row);
+    });
+    box.appendChild(grid);
+    trainManualBox.appendChild(box);
+  }
+
+  /* 本文 */
+  manual.chapters.forEach((chap) => {
+    const bar = tmanEl('div', 'tman__chap');
+    bar.appendChild(tmanEl('span', 'tman__chap-n', String(chap.n)));
+    bar.appendChild(tmanEl('span', 'tman__chap-t', chap.title));
+    trainManualBox.appendChild(bar);
+
+    chap.sections.forEach((sec) => {
+      const card = tmanEl('div', 'cash-box');
+      const secHead = tmanEl('div', 'tman__sec');
+      const t = tmanEl('div', 'tman__sec-t');
+      t.appendChild(tmanEl('b', '', sec.title));
+      if (sec.sub) t.appendChild(tmanEl('span', '', sec.sub));
+      secHead.appendChild(t);
+      card.appendChild(secHead);
+      trainManualAnchors.set(`${chap.n}/${sec.title}`, card);
+
+      if (sec.key) {
+        const key = tmanEl('div', 'tman__key');
+        key.appendChild(tmanEl('span', 'tman__key-l', 'ここが大事'));
+        key.appendChild(tmanEl('span', 'tman__key-t', sec.key));
+        card.appendChild(key);
+      }
+      sec.rows.forEach((row) => card.appendChild(trainManualRow(row)));
+      trainManualBox.appendChild(card);
+    });
+
+    const up = tmanEl('div', 'tman__up');
+    const upBtn = document.createElement('button');
+    upBtn.type = 'button';
+    upBtn.className = 'linkbtn';
+    upBtn.textContent = '↑ もくじへ';
+    upBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+    up.appendChild(upBtn);
+    trainManualBox.appendChild(up);
+  });
 }
 
 /* ------------------------------------------------------------
@@ -8235,7 +8645,7 @@ function taskStatus(taskId, storeId) {
     const people = Trainees.list(storeId);
     const total = trainTotal(storeId);
     // ★項目を先に見ます。項目がないのに「みんな終わりました」と出すと嘘になります
-    if (!total) return { text: '項目がまだ', kind: 'none' };
+    if (!total) return { text: trainManual(storeId) ? 'マニュアル' : '項目がまだ', kind: 'none' };
     if (!people.length) return { text: '名前がまだ', kind: 'none' };
     const all = getTraining(storeId).flatMap((sec) => sec.items);
     const going = people.filter((p) => {
