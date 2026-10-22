@@ -1226,7 +1226,8 @@ function renderBuilt() {
           // 自分の名前は太く。自分の出番をひと目で見つけられるように
           one.className = 'built-name'
             + (e.n === me.name ? ' is-me' : '')
-            + (e.f ? ' is-full' : '');
+            // ★ディナーの行の人は、印が残っていても F の色にしません（js/config.js の shiftIsFull。2026-10-22）
+            + (e.f && shiftIsFull(me.store, e, slot.id) ? ' is-full' : '');
           one.textContent = shiftNameText(me.store, slot.id, e);
           line.appendChild(one);
         });
@@ -1322,7 +1323,8 @@ function builtSheetModel() {
             .map((e) => ({
               text: shiftNameText(me.store, slot.id, e),
               parts: shiftNameParts(me.store, slot.id, e),
-              full: !!e.f,
+              // ★ディナー・ラストの行の人は F にしません（js/config.js の shiftIsFull。2026-10-22）
+              full: !!e.f && shiftIsFull(me.store, e, slot.id),
               // ★早上がりを使わない店舗では、印を出しません（js/config.js の shiftUsesEarly）
               early: !!e.early && shiftUsesEarly(me.store),
             })),

@@ -6064,9 +6064,17 @@ function shiftRangeTimes(storeId, どちら) {
  * ★時刻を入れる店舗（popo）は、**入っている時刻から毎回決めます**。
  *   時刻を直せばFかどうかも変わるので、印を持たせません。
  *   境目は lunchTo（popo は17時）。**その前に出て、そのあとまで残る人**がFです。
+ * ★**ディナー・ラストの行にいる人は、F ではありません**（2026-10-22、ko-dai さんの指示
+ *   「バグるとpopoでFでシフト提出している人をディナー、ラストの時間帯から入れたら自動的にFの表記と色付けが消えるように」）。
+ *   F は「立ち上げかランチから入って、ディナーまで通す人」なので、ディナーから入れた人は F の字も色も出しません。
+ *   slotId … その人がいる行（'open' 'lunch' 'dinner' 'last'）。**表に出す所は必ず渡します**。
+ *   渡さない呼び方は、今までどおり印（バグる）か時刻（popo）だけで決めます。
+ *   ★印（entry.f）は、組む画面でディナーへ動かしたときに外します（js/app.js の moveShiftChip）。
+ *     ここでも見るのは、前に動かして印が残っている人と、マネージで popo の「F の境目」を遅くしたときのためです
  */
-function shiftIsFull(storeId, entry) {
+function shiftIsFull(storeId, entry, slotId) {
   if (!entry) return false;
+  if (slotId === 'dinner' || slotId === SHIFT_LAST_ID) return false;
   if (!shiftUsesRange(storeId)) return !!entry.f;
   const at = Number(entry.t);
   const to = Number(entry.e);
@@ -7521,7 +7529,7 @@ function shiftNameParts(storeId, slotId, entry) {
     // ★F の人は名前のうしろに「 F」が付きます。この幅も数に入れないと、
     //   その人だけマスからはみ出ます。
     //   popo は塗るだけで字を出さないので、幅も要りません
-    full: shiftShowsFullMark(storeId) && shiftIsFull(storeId, entry),
+    full: shiftShowsFullMark(storeId) && shiftIsFull(storeId, entry, slotId),
   };
 }
 
@@ -8315,7 +8323,7 @@ function shiftTableBar(storeId, slotId, entry, 高校生) {
   let to = SHIFT_END_LAST;
   let noTo = false;
   let fadeFrom = null;
-  const 通し = shiftIsFull(storeId, entry);
+  const 通し = shiftIsFull(storeId, entry, slotId);
   if (shiftUsesEnd(storeId)) {
     const 退勤 = shiftTableNum(entry.e);
     if (entry.e === SHIFT_END_LAST) to = SHIFT_END_LAST;

@@ -13452,7 +13452,8 @@ function shiftPlacedOn(rec, dateStr, name) {
   const out = [];
   shiftSlotsOf(state.storeId).forEach((slot) => {
     day[slot.id].forEach((e) => {
-      if (e.n === name) out.push({ slot: slot.id, t: e.t, e: e.e, f: !!e.f });
+      // ★ディナー・ラストの行の人は、印が残っていても F にしません（→ js/config.js の shiftIsFull）
+      if (e.n === name) out.push({ slot: slot.id, t: e.t, e: e.e, f: !!e.f && shiftIsFull(state.storeId, e, slot.id) });
     });
   });
   return out;
@@ -15141,8 +15142,9 @@ function shiftGuideHtml(kind) {
       return [
         { label: '10/5（月）', cells: {
           open: { k: { people: [{ t: '10:30〜15:00', n: 'Aさん' }] } },
-          lunch: { h: { people: [{ t: '11:00〜17:00', n: 'Bさん' }] } },
-          dinner: { k: { people: [{ t: '17:00〜23:00', n: 'Cさん' }] }, h: { people: [{ t: '11:30〜22:00', n: 'Dさん', cls: 'is-full' }], short: 1 } },
+          // ★通し（灰色）の人は、ランチの行（ディナー・ラストの行の人は灰色にならない → shiftIsFull）
+          lunch: { k: { people: [{ t: '11:30〜22:00', n: 'Dさん', cls: 'is-full' }] }, h: { people: [{ t: '11:00〜17:00', n: 'Bさん' }] } },
+          dinner: { k: { people: [{ t: '17:00〜23:00', n: 'Cさん' }] }, h: { short: 1 } },
         } },
         { label: '10/6（火）', cells: { lunch: { k: { wish: 2 }, h: { wish: 1 } }, dinner: { h: { people: [{ t: '18:00〜23:00', n: 'Eさん' }] } },
           last: { h: { people: [{ t: '22:00〜27:00', n: 'Aさん' }] } } } },
@@ -15179,8 +15181,10 @@ function shiftGuideHtml(kind) {
   ];
   // 退勤を決めない店舗では、上の退勤の行が空なので、手順から外します
   for (let i = 組む手順.length - 1; i >= 0; i -= 1) if (!組む手順[i]) 組む手順.splice(i, 1);
-  if (kind === 'hiru') 組む手順.push(`<b>F</b>（通し）は名前のうしろに「F」が付きます。${名('open')}や${名('lunch')}の人を押すと、ランチだけか F かを変えられます`);
-  if (range) 組む手順.push('灰色の人は通し（ランチからディナーまで）です。時刻から自動で決まります');
+  if (kind === 'hiru') 組む手順.push(`<b>F</b>（通し）は名前のうしろに「F」が付きます。${名('open')}や${名('lunch')}の人を押すと、ランチだけか F かを変えられます。`
+    + `F の人を${名('dinner')}の行へ動かすと、F は自動で外れます`);
+  if (range) 組む手順.push('灰色の人は通し（ランチからディナーまで）です。時刻から自動で決まります。'
+    + `${名('dinner')}${shiftLastFrom(店[0]) !== null ? `・${名('last')}` : ''}の行に入れた人は、灰色になりません`);
   out.push(shiftGuideOl(組む手順));
   out.push(shiftGuideShot(shiftGuidePanel('入る人を選ぶ',
     `<p class="doer__item">10/5（月） ${shiftGuideEsc(最後.name)} ・ ホール</p>`
@@ -16243,8 +16247,9 @@ function shiftCell(rec, wishes, day, dateStr, slot, lane, rest) {
     chip.dataset.n = e.n;
     chip.addEventListener('pointerdown', (ev) => startShiftDrag(ev, chip));
     // ★F かどうかは shiftIsFull にまかせます。時刻を入れる店舗（popo）では
-    //   入っている時刻から毎回決まるので、時刻を直せば塗りも変わります
-    const 通し = shiftIsFull(state.storeId, e);
+    //   入っている時刻から毎回決まるので、時刻を直せば塗りも変わります。
+    //   ★行も渡します（ディナー・ラストの行の人は F にしない。2026-10-22、ko-dai さんの指示）
+    const 通し = shiftIsFull(state.storeId, e, slot.id);
     // ★早上がりを使わない店舗では、記録に残っていても印を出しません（→ shiftUsesEarly）
     const 早上がり = !!e.early && shiftUsesEarly(state.storeId);
     chip.className = 'shift-chip' + (通し ? ' is-full' : '') + (早上がり ? ' is-early' : '');
@@ -16616,6 +16621,10 @@ function moveShiftChip(from, to) {
   const moved = { ...entry, p: to.lane };
   // 枠が変わったら、時刻はその枠の普段の時刻に入れかえます
   if (from.slot !== to.slot) moved.t = shiftDefaultTime(state.storeId, to.slot);
+  // ★F（通し）の人をディナー（ラスト）の行へ動かしたら、もう通しではありません。印を外します
+  //   （2026-10-22、ko-dai さんの指示。時刻をじかに書いて17時以降にしたときと同じ → applyShiftFreeTime）。
+  //   ランチへ戻しても F には戻りません（F にするなら、小窓の「ランチだけか、通し（F）か」で）
+  if (moved.f && !shiftIsFull(state.storeId, moved, to.slot)) delete moved.f;
   // ★退勤が出勤より前（か同じ）になったら、退勤を外します（小窓で出勤を直したときと同じ決め方）。
   //   ディナーの「19:00〜22:00」の人をラストへ動かすと「22:00〜22:00」になっていました
   if (moved.e !== undefined && moved.e !== '' && moved.t !== '' && moved.t !== undefined
@@ -17748,7 +17757,7 @@ function shiftSheetModel(pageIndex) {
             .map((e) => ({
               text: shiftNameText(state.storeId, slot.id, e),
               parts: shiftNameParts(state.storeId, slot.id, e),
-              full: shiftIsFull(state.storeId, e), early: !!e.early && shiftUsesEarly(state.storeId),
+              full: shiftIsFull(state.storeId, e, slot.id), early: !!e.early && shiftUsesEarly(state.storeId),
             })),
         }));
       }),
