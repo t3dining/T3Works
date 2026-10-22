@@ -17808,6 +17808,19 @@ function renderShiftSheet() {
   el.shiftSheetTitle.textContent = pages[0].title;
   el.shiftSheet.innerHTML = '';
 
+  // 列の幅は「一番多い日数」でそろえます。後ろの段が少ない半月でも、
+  // 前の段と同じ幅にしておくと、続きの表として読めます
+  const 決め = pages.map((model) => {
+    const perDay = model.blocks.reduce((n, b) => Math.max(n, b.head.length), 1);
+    return { perDay, size: shiftSheetMetrics(model, perDay) };
+  });
+  // ★字の大きさは、全部の紙で1つにそろえます（2枚に分ける店舗＝popo。2026-10-22、ko-dai さん「均等になるように」）。
+  //   小さい方の紙の字を上限にして、大きい方の紙を決め直します（行の高さも、その字に合わせて決め直されます）
+  const 字 = Math.min(...決め.map((x) => x.size.pt));
+  決め.forEach((x, i) => {
+    if (x.size.pt > 字) x.size = shiftSheetMetrics(pages[i], x.perDay, 字);
+  });
+
   pages.forEach((model, i) => {
     // 2枚に分ける店舗（popo）は、2枚目の上に見出しを出します。
     // どこからが2枚目か、画面でも分かるようにするためです
@@ -17824,10 +17837,7 @@ function renderShiftSheet() {
       cap.style.pageBreakBefore = 'always';   // 古いブラウザ向け
       el.shiftSheet.appendChild(cap);
     }
-    // 列の幅は「一番多い日数」でそろえます。後ろの段が少ない半月でも、
-    // 前の段と同じ幅にしておくと、続きの表として読めます
-    const perDay = model.blocks.reduce((n, b) => Math.max(n, b.head.length), 1);
-    const size = shiftSheetMetrics(model, perDay);
+    const { perDay, size } = 決め[i];
     model.blocks.forEach((b) => el.shiftSheet.appendChild(shiftSheetTable(b, perDay, size)));
   });
 }
@@ -17902,13 +17912,9 @@ function shiftSheetTable(block, perDay, size) {
         const cell = row.cells[i];
         i += 1;
         const td = document.createElement('td');
-        // ★人がたくさん入っているマスだけ、そのマスの中で小さくします
-        if (size) {
-          const room = ラスト ? size.lastMm : (ri === 0 ? size.openMm : size.slotMm);
-          // ★一番小さい字は、普段 4.5pt。それでも紙に入りきらない半月だけ、もう少し下げます（size.minPt）
-          const one = shiftCellPt(size.pt, cell.names.length + cell.short, room, size.minPt);
-          if (one < size.pt) td.style.setProperty('--name-pt', `${Math.floor(one * 10) / 10}pt`);
-        }
+        // ★字の大きさは、どのマスも表の字（--name-pt。表に1つだけ付けます）。マスごとには変えません
+        //   （2026-10-22、ko-dai さん「枠によって文字の大きさが異なる時があるので均等になるように」。
+        //   前は、人がたくさん入っているマスだけ、そのマスの中で小さくしていました → js/shift-sheet.js の shiftSheetMetrics）
         // パティの枠は、キッチンとホールをまとめて桃色のふちで囲みます
         if (cell.patty) {
           td.classList.add('is-patty');
@@ -18089,6 +18095,12 @@ async function saveShiftFile(kind) {
       const c = document.createElement('canvas');
       drawShiftSheet(c, model);
       return c;
+    });
+    // ★字の大きさは、全部の紙で1つにそろえます（2026-10-22、ko-dai さん「均等になるように」）。
+    //   小さい字になった紙に合わせて、大きい字の紙だけ描き直します（1枚の店舗は描き直しません）
+    const 字 = Math.min(...canvases.map((c) => c.shiftNamePx || Infinity));
+    canvases.forEach((c, i) => {
+      if (isFinite(字) && c.shiftNamePx > 字 + 0.01) drawShiftSheet(c, pages[i], undefined, 字);
     });
     // ★細い線と小さい字がつぶれないよう、高めにします（0.92だと字のふちがにじみます）
     const 焼く = (c) => new Promise((r) => c.toBlob(r, 'image/jpeg', 0.95));

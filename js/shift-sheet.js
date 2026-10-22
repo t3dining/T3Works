@@ -214,20 +214,18 @@ function shiftPersonMm(pt) {
 }
 
 /**
- * そのマスの名前の大きさ
- *
- * ★人がたくさん入っているマスだけ、そのマスの中で小さくします。
- *   前は「一番多いマス」に表全部を合わせていたので、
- *   7人入る日が1つあるだけで、他の日まで小さくなっていました。
+ * 紙の字の、一番小さい大きさ（ポイント）
+ * ★人数がとても多い半月でも、これより小さくはしません（そこから先は、紙が次の1枚へこぼれます）
  */
-/**
- * 1マスの中で小さくするときの、一番小さい字（ポイント）
- * ★普段は 4.5pt より小さくしません。それでも紙に入りきらない半月だけ、3pt まで下げます
- *   （shiftSheetMetrics が minPt で渡します。紙を2枚に分けないためです）
- */
-const SHIFT_CELL_PT_MIN = 4.5;
 const SHIFT_CELL_PT_FLOOR = 3;
 
+/**
+ * ★もう使っていません（2026-10-22 まで、人の多いマスだけ、そのマスの中で字を小さくしていた所）。
+ *   いまは字の大きさを表全体で1つにしています（→ shiftSheetMetrics）。
+ *   端末に古い js/app.js が残っていて、これを呼んでも転ばないように残してあります
+ *   （新しい shiftSheetMetrics は minPt に表の字を入れて返すので、古い呼び方でも全部のマスが同じ字になります）
+ */
+const SHIFT_CELL_PT_MIN = 4.5;
 function shiftCellPt(pt, count, roomMm, minPt) {
   if (count <= 0) return pt;
   const fit = ((roomMm - 1.4) / count) * 2.8346 / SHIFT_ROW_EM;
@@ -240,8 +238,14 @@ function shiftCellPt(pt, count, roomMm, minPt) {
  * ★A4横1枚に必ず収めるため、使える高さから逆算します。
  *   ランチとディナーは**同じ高さ**にします（どちらにも同じ人数を
  *   入れられるように。前はディナーだけ背が高くなっていました）。
+ * ★**字の大きさは、表全体で1つです**（2026-10-22、ko-dai さん「シフトを印刷した時などに枠によって文字の大きさが
+ *   異なる時があるので均等になるように調整してください」）。前は、人が多く入っているマスだけ、そのマスの中で
+ *   小さくしていたので、同じ紙の中で字の大きさがマスごとに違っていました。
+ *   いまは、**一番人の多いマスが入る大きさに、全部のマスをそろえます**。人数の多い日がある半月は、紙の字が全部小さくなります。
+ *   返す pt が、その表の字です（minPt も同じ数。古い js/app.js 向け）。
+ *   上限 … これより大きくしない（2枚に分ける店舗＝popo で、2枚の字をそろえるため。js/app.js の renderShiftSheet が渡します）
  */
-function shiftSheetMetrics(model, perDay) {
+function shiftSheetMetrics(model, perDay, 上限) {
   // 1マスの、字が入るところの幅（ミリ）。紙297mm − 余白3mm×2 − 枠名の列。
   // 1.05mm 引いているのは、マスの内よ白（0.3mm×2）とけい線（1px）の分です
   const cellMm = (297 - 3 * 2 - SHIFT_SHEET_LABEL_MM) / (perDay * SHIFT_LANES.length) - 1.05;
@@ -264,14 +268,16 @@ function shiftSheetMetrics(model, perDay) {
   const lastAt = sheetSlots(model).findIndex((sl) => sl.id === 'last');
   // ランチとディナーは、多い方に合わせてそろえます（ラストは数えません）
   const share = Math.max(3, ...need.filter((_, i) => i > 0 && i !== lastAt).map((n) => n || 0));
-  // ★名前の大きさは「マスの幅」だけで決めます。高さでは減らしません。
-  //   高さが足りないマスは、そのマスの中だけ小さくします（shiftCellPt）。
+  // ★名前の大きさは、まず「マスの幅」で決めます（一番長い名前・時刻が1行に入る大きさ）。
+  //   高さが足りないときは、下で表全体の字をそろって小さくします
   const em = shiftPrintEm(model);
   // 1mm = 2.8346ポイント。0.97 は念のための余裕（けい線の太さと端末の丸め）
   // 大きくても12pt。マスの幅がゆるすかぎり大きくします
-  const pt = Math.max(5, Math.floor(
+  let pt = Math.max(5, Math.floor(
     (em > 0 ? Math.min(12, (cellMm * 2.8346 / em) * 0.97) : 12) * 10,
   ) / 10);
+  // ★2枚目の紙（popo）と字をそろえるときは、そちらの字より大きくしません
+  if (Number(上限) > 0) pt = Math.min(pt, Number(上限));
 
   // 立ち上げの行は「入っている人数分」だけ取り、残りをランチとディナーで
   // 半分ずつ分けます（この2つは必ず同じ高さです）
@@ -293,19 +299,18 @@ function shiftSheetMetrics(model, perDay) {
   const 枠の行 = Math.max(1, sheetSlots(model).filter((sl, i) => i > 0 && i !== lastAt).length);
   let slotMm = (rowsMm - openMm - lastMm) / 枠の行;
 
-  // ★ここまでの配り方で、**一番小さい字（4.5pt）でも入りきらない行があるときだけ**、配り直します
-  //   （2026-10-09、ko-dai さん「印刷時にはpopoは1週間で1枚、それ以外は2週間で1枚のシフト表に収まるように」）。
-  //   そのままだと、入りきらない行が下へ伸びて、紙が次の1枚へこぼれます（popo は、ランチかディナーの1マスに
-  //   6人入ると3枚になっていました）。
-  //   配り直すときは、**どの行も同じ大きさの字で入るように、人数の割合で**高さを分けます
-  //   （絵の方 drawShiftSheet と同じ考え方。立ち上げだけ大きい字のまま・他は入らない、をやめます）。
-  //   それでも 4.5pt で入らない半月は、字をもう少し小さくします（minPt。3pt まで）。
-  //   ★普段の人数（どの行も 4.5pt 以上で入る）では、ここは通りません。配り方は上のままです
+  // ★ここまでの配り方で、**どの行も表の字（pt）のまま入るか**を見ます。入れば、配り方も字もこのままです（普段の人数）。
+  //   入らない行があるときは、配り直します。**どの行も同じ大きさの字で入るように、人数の割合で**高さを分け、
+  //   その中で一番大きい字にします（2026-10-22、字を表全体でそろえる → 上の説明）。
+  //   ★前（2026-10-09〜10-21）は、4.5pt でも入らないときだけ配り直し、入るときは、人の多いマスだけ
+  //     そのマスの中で字を小さくしていました（shiftCellPt）。そのため、マスごとに字の大きさが違っていました。
+  //   ★配り直しても紙の高さ（rowsMm）は変えません。紙を次の1枚へこぼさないため（2026-10-09、ko-dai さん
+  //     「印刷時にはpopoは1週間で1枚、それ以外は2週間で1枚のシフト表に収まるように」）。字は 3pt より小さくしません
   const slotNeed = Math.max(1, ...need.filter((_, i) => i > 0 && i !== lastAt).map((n) => n || 0));
   const 要る = (n, 字, 低) => Math.max(低, n * shiftPersonMm(字) + 1.4);
-  let minPt = SHIFT_CELL_PT_MIN;
-  const 入る = openMm + 0.05 >= 要る(openNeed, minPt, openMin) && slotMm + 0.05 >= 要る(slotNeed, minPt, slotMin)
-    && (lastAt < 0 || lastMm + 0.05 >= 要る(lastNeed, minPt, lastMin));
+  let 表の字 = pt;
+  const 入る = openMm + 0.05 >= 要る(openNeed, pt, openMin) && slotMm + 0.05 >= 要る(slotNeed, pt, slotMin)
+    && (lastAt < 0 || lastMm + 0.05 >= 要る(lastNeed, pt, lastMin));
   if (!入る) {
     const 行 = [{ n: openNeed, 数: 1, 低: openMin }, { n: slotNeed, 数: 枠の行, 低: slotMin }]
       .concat(lastAt >= 0 ? [{ n: lastNeed, 数: 1, 低: lastMin }] : []);
@@ -323,20 +328,23 @@ function shiftSheetMetrics(model, perDay) {
     lastMm = lastAt >= 0 ? Math.max(lastMin, lastNeed * p + 1.4) : 0;
     // 残りは全部、枠の行へ（紙の高さを使い切ります）
     slotMm = Math.max(slotMin, (rowsMm - openMm - lastMm) / 枠の行);
-    const 字 = Math.floor((p * 2.8346 / SHIFT_ROW_EM) * 10) / 10;
-    minPt = Math.max(SHIFT_CELL_PT_FLOOR, Math.min(SHIFT_CELL_PT_MIN, 字));
+    // ★1e-6 … はさんで探した p は、上の端（表の字ちょうど）の少しだけ下で止まるので、0.1pt 切り捨てすぎないように
+    const 字 = Math.floor((p * 2.8346 / SHIFT_ROW_EM) * 10 + 1e-6) / 10;
+    表の字 = Math.max(SHIFT_CELL_PT_FLOOR, Math.min(pt, 字));
   }
 
   return {
-    pt,
+    // ★表の字（全部のマスで同じ大きさ）
+    pt: 表の字,
     // その半月で一番多いマスの人数（何人まで入るかの目安に使います）
     share,
     openMm: Math.round(openMm * 10) / 10,
     slotMm: Math.round(slotMm * 10) / 10,
     lastMm: Math.round(lastMm * 10) / 10,
-    // 段ごとのメモの行の高さ（ミリ）と、マスの中で小さくするときの一番小さい字
+    // 段ごとのメモの行の高さ（ミリ）
     memoMm: memoMm.map((m) => Math.round(m * 10) / 10),
-    minPt,
+    // ★古い js/app.js（マスごとに小さくしていた版）向け。表の字と同じ数なので、古い呼び方でも全部のマスが同じ字になります
+    minPt: 表の字,
   };
 }
 
@@ -386,7 +394,11 @@ const SHEET_FONT = '-apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif';
 /** 縦書きのときに、90度まわして書く字（のばす棒やかっこ） */
 const VERT_TURN = 'ー－‐−–—〜~（）()［］[]｛｝{}「」『』〔〕【】＜＞<>';
 
-function drawShiftSheet(canvas, model, scale) {
+/**
+ * 上限 … 名前の字の大きさ（px）をこれより大きくしない（2枚に分ける店舗＝popo で、2枚の字をそろえるため。渡さなくてよい）
+ * ★描いたあと、使った名前の字の大きさを canvas.shiftNamePx に置きます（呼ぶ側が2枚の字をそろえるときに見ます）
+ */
+function drawShiftSheet(canvas, model, scale, 上限) {
   const cx = canvas.getContext('2d');
   const W = SHEET_PX.w;
   const H = SHEET_PX.h;
@@ -417,7 +429,6 @@ function drawShiftSheet(canvas, model, scale) {
   const nameSize = Math.max(10, Math.min(21, nameEm ? ((colW - 12) / nameEm) * 0.98 : 21));
   // 1人分の高さ（時刻の段＋名前の段＋すきま）。紙と同じ配分です
   const person = (size) => size * (1.0 + 1.1 + 0.35);
-  const lh = Math.round(person(nameSize));
 
   const center = (text, x, w, yy, size, bold, color) => {
     cx.fillStyle = color || '#111418';
@@ -544,9 +555,23 @@ function drawShiftSheet(canvas, model, scale) {
   const unit = weight.reduce((a, b) => a + b, 0);
   // ★行に配る高さは、**紙に残っている高さまで**です。前は「人数×1人分」の方が大きいとそちらを使っていたので、
   //   1マスに16人ほど入る半月では表が紙より長くなり、**下の段が切れて、人とメモが絵から消えていました**
-  //   （何も言わずに欠けます）。入りきらない分は、下でマスごとに字を小さくして収めます
+  //   （何も言わずに欠けます）。入りきらない分は、すぐ下で表全体の字をそろって小さくして収めます
   const room = Math.max(0, H - y - pad - fixed);
   const slotH = sheetSlots(model).map((slot, i) => (room / blocks) * (weight[i] / unit));
+  // ★**名前の字の大きさは、表全体で1つです**（2026-10-22、ko-dai さん「シフトを印刷した時などに枠によって文字の大きさが
+  //   異なる時があるので均等になるように調整してください」。紙と同じ → shiftSheetMetrics）。
+  //   前は、入りきらないマスだけ、そのマスの中で字を小さくしていました。いまは、一番人の多いマスが入る大きさに、
+  //   全部のマスをそろえます。行の高さは人数の割合で配ってあるので（上の weight）、どの行もほぼ同じだけ縮みます
+  // 表の行 … 1人分の高さ（どのマスも同じ）。一番きつい行に、その行の人数が入る高さまで
+  let 表の行 = person(Number(上限) > 0 ? Math.min(nameSize, Number(上限)) : nameSize);
+  need.forEach((n, si) => {
+    if (!(n > 0) || !(slotH[si] > 0)) return;
+    表の行 = Math.min(表の行, (slotH[si] - 6) / n);
+  });
+  // ★字は 7px より小さくしません（前と同じ）。そこまで小さくしても入らない半月だけ、字は 7px のまま1人分の高さを詰めます
+  //   （字が少し重なっても、全員を書きます。前もそのマスだけ同じ詰め方でした）
+  const 表の字 = Math.max(7, 表の行 / person(1));
+  canvas.shiftNamePx = 表の字;
 
   model.blocks.forEach((block, bi) => {
     const top = y;
@@ -602,11 +627,9 @@ function drawShiftSheet(canvas, model, scale) {
             cx.lineWidth = 2.5;
             cx.strokeRect(x + 1.5, y + 1.5, w2 - 3, rowH - 3);
           }
-          // ★人がたくさん入っているマスだけ、そのマスの中で小さくします
-          const count = cell.names.length + cell.short;
-          const fit = count > 0 ? (rowH - 6) / count : lh;
-          const cellSize = fit < lh ? Math.max(7, nameSize * (fit / lh)) : nameSize;
-          const cellLh = fit < lh ? fit : lh;
+          // ★字の大きさと1人分の高さは、どのマスも同じ（表の字。上で決めます）
+          const cellSize = 表の字;
+          const cellLh = 表の行;
           cell.names.forEach((n, ni) => {
             const top = y + 3 + ni * cellLh;
             if (top + cellLh > y + rowH + 1) return;   // 入りきらない分は出しません
