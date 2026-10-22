@@ -13465,6 +13465,41 @@ function shiftClosedOn(dateStr) {
   return Closed.isClosed(state.storeId, y, m, d);
 }
 
+/**
+ * その半月に、その人が希望を出した日数（出）と、シフトに入れた日数（入）
+ *
+ * ★提出を見るの「出7 → 入4」と、組む画面の名前の前の「4/7」は、**ここ1か所で数えます**（2026-10-22）。
+ *   定休日は数えません。1日に2つの枠に入っていても（仕込みと営業・立ち上げとランチなど）、1日と数えます。
+ *   w … shiftWishes の1人分（希望を出していない人は空）／open … 定休日を除いた、その半月の日
+ */
+function shiftWishTally(rec, w, name, open) {
+  let 出 = 0;
+  let 入 = 0;
+  open.forEach((d) => {
+    if (((w && w.days[d]) || []).length) 出 += 1;
+    if (shiftPlacedOn(rec, d, name).length) 入 += 1;
+  });
+  return { 出, 入 };
+}
+
+/**
+ * 組む画面の札に出す「入れた日数/希望を出した日数」（2026-10-22、ko-dai さん「Aさんが7回出して4回入っていたら4/7Aさんという表記に」）
+ *
+ * ★札は1回の描き直しで何十枚も作るので、**1回の描き直しの中では、人ごとに1回だけ数えます**。
+ *   wishes（shiftWishes の結果）は描き直しのたびに新しく作られるので、それを鍵にして覚えます。
+ *   組み替えるたびに描き直されるので、数はいつも最新です
+ */
+const shiftTallyMemo = new WeakMap();
+function shiftTallyFor(rec, wishes, name) {
+  let 覚え = shiftTallyMemo.get(wishes);
+  if (!覚え) {
+    覚え = { open: shiftDays(state.y, state.m, shiftHalf).filter((d) => !shiftClosedOn(d)), 人: {} };
+    shiftTallyMemo.set(wishes, 覚え);
+  }
+  if (!覚え.人[name]) 覚え.人[name] = shiftWishTally(rec, wishes.find((x) => x.name === name), name, 覚え.open);
+  return 覚え.人[name];
+}
+
 /* -------- 半月を動かす -------- */
 
 function shiftGo(y, m, half) {
@@ -15107,7 +15142,8 @@ function shiftGuideHtml(kind) {
   out.push(shiftGuideH(次(), '集まった希望を見て、表に取り込む'));
   out.push(shiftGuideOl([
     '表の上の<b>「提出 3 / 5人」</b>で、何人出したかが分かります',
-    '<b>「提出を見る」</b>で、誰がどの日に出したかを一覧で見られます（出していない人も分かります）',
+    '<b>「提出を見る」</b>で、誰がどの日に出したかを一覧で見られます（出していない人も分かります）。'
+      + '一覧のマスを押すと、組む画面と同じ小窓が開き、その人をその日のシフトに入れる・時刻を直す・外す、ができます（出していない日も）',
     '<b>「希望を取り込む」</b>を押すと、出した希望が表に入ります。名簿で決めた持ち場（キッチン／ホール）の列に入ります',
   ]));
   out.push(shiftGuideShot(
@@ -15176,6 +15212,8 @@ function shiftGuideHtml(kind) {
     !shiftUsesEarly(rep) ? '<b>入っている名前を押す</b>と、時刻・持ち場を直したり、<b>「この人を外す」</b>で外したりできます'
       : '<b>入っている名前を押す</b>と、時刻・持ち場を直したり、<b>「早上がり」</b>にしたり、<b>「この人を外す」</b>で外したりできます',
     '名前を<b>長押ししてつまむ</b>と、別のマス（別の日・別の枠）へ動かせます',
+    // ★名前の前の数（2026-10-22）。組み替えるたびに変わります
+    '名前の前の <b>4/7</b> は、この半月に<b>シフトに入れた日数／希望を出した日数</b>です（7日出して4日入っている）。入れたり外したりすると、その場で変わります',
     '人が足りないマスには、「＋」の小窓の<b>「あと何人欲しいか」</b>で人数を入れます。<b>赤い「＋」</b>が付き、人を入れると消えます',
     '<b>メモ</b>の行には、その日の連絡（社員の動きなど）を書けます',
   ];
@@ -15310,6 +15348,8 @@ function renderShift() {
   renderShiftRoster(組む);
   // 「今日のシフト」の小窓を開いていたら、届いた記録で描き直します
   shiftTodayRefresh();
+  // 「提出を見る」を開いていたら、入れた・外した・届いた記録で描き直します（2026-10-22）
+  shiftWishRefresh();
   [...el.viewShift.children].forEach((c) => {
     if (c.id === 'shiftRoster') return;
     c.classList.toggle('is-hidden', !組む);
@@ -16253,7 +16293,32 @@ function shiftCell(rec, wishes, day, dateStr, slot, lane, rest) {
     // ★早上がりを使わない店舗では、記録に残っていても印を出しません（→ shiftUsesEarly）
     const 早上がり = !!e.early && shiftUsesEarly(state.storeId);
     chip.className = 'shift-chip' + (通し ? ' is-full' : '') + (早上がり ? ' is-early' : '');
-    const 名前の段 = shiftChipFill(chip, state.storeId, slot.id, e);
+    let 名前の段 = shiftChipFill(chip, state.storeId, slot.id, e);
+    // ★名前の前に「入れた日数/希望を出した日数」（4/7）。**組む画面だけ**です（印刷・今日のシフト・アルバイトの画面には出しません）。
+    //   2026-10-22、ko-dai さん「シフトを組む画面にのみ名前の右側に何回シフト提出していて何回シフトに入れているか」（が分かるように）
+    //   「Aさんが7回出して4回入っていたら4/7Aさんという表記に」「組み替えたりしたらその都度最新の数字に」。
+    //   ★「右側」とあったが、例の「4/7Aさん」に合わせて名前の前に置いた（ko-dai さんに伝えた）。
+    //   ★ヘルプで来た人（よその店舗の人）には出しません（この店舗の希望を出す人ではないため）
+    if (!e[HELP_FROM_KEY]) {
+      const 数 = shiftTallyFor(rec, wishes, e.n);
+      const c = document.createElement('span');
+      c.className = 'chip-count';
+      c.textContent = `${数.入}/${数.出}`;
+      c.title = `この半月に希望を出した日 ${数.出}日・シフトに入れた日 ${数.入}日`;
+      c.style.cssText = 'white-space:nowrap;font-size:.8em;font-weight:400;opacity:.75;font-variant-numeric:tabular-nums;';
+      // ★名前は1つのかたまり（inline-block）にして、数のうしろに置きます。札に1行で入りきらないときは、
+      //   **名前の途中ではなく、数と名前のあいだで折れます**（数が名前の上の段に回る）。
+      //   数を字のまま前に足すと、4〜5文字の名前が「かきくけ／こ」と途中で折れました（幅 390・320 で測った。
+      //   前に ko-dai さんに「名前が途中で折り返す」と言われて2段にした札なので、それを崩さないため）。
+      //   名前そのものが札より長いときは、今までどおり名前の中で折れます（max-width）
+      const 名 = document.createElement('span');
+      名.className = 'chip-who';
+      名.style.cssText = 'display:inline-block;max-width:100%;';
+      名.append(...名前の段.childNodes);
+      名前の段.append(c, 名);
+      // F の印は、名前のすぐうしろ（名前と一緒に動く）
+      名前の段 = 名;
+    }
     // ★通しの人は名前のうしろに F。塗りだけだと、ぱっと見て分かりません。
     //   popo は「字は出さなくていい」とのことなので、塗りだけです
     //   ★F は名前の段に足します（札に足すと、F だけが3段目に落ちます）
@@ -16649,22 +16714,102 @@ function moveShiftChip(from, to) {
 
 /* -------- 人を選ぶ・直す -------- */
 
-function openShiftPick(dateStr, slotId, laneId, index) {
-  shiftPickAt = { dateStr, slotId, laneId, index, time: '', end: '', full: undefined };
+/**
+ * person … その人だけを入れる・直す小窓にするとき（提出を見るのマスから開いたとき。→ openShiftPickFor）
+ */
+function openShiftPick(dateStr, slotId, laneId, index, person) {
+  shiftPickAt = { dateStr, slotId, laneId, index, time: '', end: '', full: undefined, person: person || '' };
   const slot = getShiftSlot(state.storeId, slotId);
   const lane = SHIFT_LANES.find((l) => l.id === laneId) || SHIFT_LANES[0];
   const [, m, d] = dateStr.split('-').map(Number);
   const dow = new Date(dateStr.replace(/-/g, '/')).getDay();
 
-  el.shiftPickTitle.textContent = index === null ? '入る人を選ぶ' : '直す';
+  el.shiftPickTitle.textContent = person
+    ? (index === null ? `${person}をシフトに入れる` : `${person}のシフトを直す`)
+    : (index === null ? '入る人を選ぶ' : '直す');
   el.shiftPickWhen.textContent = `${m}/${d}（${DOW[dow]}） ${slot.name} ・ ${lane.name}`;
+  // ★提出を見るの小窓から開いたときは、その上に出します。2つとも同じ重なり順（css/style.css の .modal。本部のファイル）で、
+  //   提出を見るの方が index.html のあとに書いてあるので、そのままだと下に隠れます。css は触らず、ここで直に上げます
+  el.shiftPickModal.style.zIndex = person ? '61' : '';
   renderShiftPick();
   el.shiftPickModal.classList.remove('is-hidden');
 }
 
 function closeShiftPick() {
   el.shiftPickModal.classList.add('is-hidden');
+  el.shiftPickModal.style.zIndex = '';
   shiftPickAt = null;
+}
+
+/**
+ * 提出を見るのマスから、その人・その日の小窓を開く（2026-10-22、ko-dai さん「提出を見るからもシフトを入れれるように」
+ * 「提出されていてもされていなくてもその人の該当する日にちのマスを選択したら、各店舗シフトを組む画面で出てくる
+ * 何時から入れるかなどの画面が表示されてシフトに入れたり消したりできるように」）
+ *
+ * ★小窓は、組む画面のマスから開くものと同じです（時刻・退勤・持ち場・F・早上がり・外す。店舗ごとの形もそのまま）。
+ * ★どの枠で開くか（枠を渡さなければ）：その日に入っている枠 → 希望を出した枠 → ディナー（営業）。
+ *   入っていれば「直す」（外すこともできる）、入っていなければ「入れる」で開きます。
+ *   枠で選ぶ店舗は、小窓の上の「枠」のボタンで、別の枠に入れる・別の枠の分を直す、に切りかえられます（→ renderShiftPickSlots）
+ */
+function openShiftPickFor(dateStr, name, 枠) {
+  const rec = shiftRec();
+  const day = shiftDayOf(rec, dateStr);
+  const 行 = shiftSlotsOf(state.storeId).map((s) => s.id);
+  let slotId = 枠 && 行.includes(枠) ? 枠 : '';
+  if (!slotId) slotId = 行.find((id) => day[id].some((e) => e.n === name)) || '';
+  if (!slotId) {
+    const w = shiftWishes(rec).find((x) => x.name === name);
+    const 出した = ((w && w.days[dateStr]) || [])[0];
+    if (出した) slotId = shiftWishRow(state.storeId, 出した);
+  }
+  if (!slotId || !行.includes(slotId)) slotId = 行.includes('dinner') ? 'dinner' : 行[0];
+  const index = day[slotId].findIndex((e) => e.n === name);
+  const laneId = index >= 0
+    ? shiftLaneOf(day[slotId][index])
+    : shiftLaneOf({ p: ShiftStaff.laneOf(state.storeId, name) });
+  openShiftPick(dateStr, slotId, laneId, index >= 0 ? index : null, name);
+}
+
+/**
+ * 提出を見るから開いた小窓の「枠」のボタン（枠で選ぶ店舗だけ。時刻を入れる店舗＝popo は、出勤時刻で行が決まるので出しません）
+ *
+ * ★入っている枠には時刻が付きます。押すと、その枠の分を直す（入っていれば）か、その枠に入れる（入っていなければ）に切りかわります。
+ *   仕込みと営業の両方に入る人（4店舗）や、立ち上げとランチに入る人（バグる）がいるためです。
+ * ★入れ物は index.html（本部）に書かず、ここで作って差し込みます（退勤の欄と同じ → renderShiftEndTimes）
+ */
+function renderShiftPickSlots(day) {
+  let box = document.getElementById('shiftPickSlotField');
+  const 人 = shiftPickAt ? shiftPickAt.person : '';
+  const 使う = !!人 && !shiftUsesRange(state.storeId);
+  if (!box) {
+    if (!使う) return;
+    box = document.createElement('div');
+    box.id = 'shiftPickSlotField';
+    box.className = 'field';
+    const cap = document.createElement('span');
+    cap.className = 'field__label';
+    cap.textContent = '枠（押すと切りかわります。入っている枠には時刻が出ます）';
+    const seg = document.createElement('div');
+    seg.className = 'seg seg--wrap';
+    seg.id = 'shiftPickSlots';
+    box.append(cap, seg);
+    // 持ち場の欄の上に置きます
+    const 持ち場の欄 = el.shiftPickLanes.parentNode;
+    持ち場の欄.parentNode.insertBefore(box, 持ち場の欄);
+  }
+  box.classList.toggle('is-hidden', !使う);
+  if (!使う) return;
+  const seg = document.getElementById('shiftPickSlots');
+  seg.innerHTML = '';
+  shiftSlotsOf(state.storeId).forEach((sl) => {
+    const 入っている = day[sl.id].find((e) => e.n === 人);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'seg__btn' + (sl.id === shiftPickAt.slotId ? ' is-on' : '');
+    b.textContent = 入っている ? `${sl.name} ${shiftTimeSpan(state.storeId, sl.id, 入っている) || '（入っている）'}` : sl.name;
+    b.addEventListener('click', () => openShiftPickFor(shiftPickAt.dateStr, 人, sl.id));
+    seg.appendChild(b);
+  });
 }
 
 /**
@@ -16678,7 +16823,8 @@ function closeShiftPick() {
  * ★見た目は、いまある `wish-chip` と `shift-said` を借ります
  *   （`css/style.css` は本部のファイルなので、新しい見た目は足しません）。
  */
-function shiftPickWishBox(dateStr, name) {
+/** 入れる前 … まだシフトに入れていない人のとき（提出を見るから開いた「入れる」小窓。2026-10-22）。言い方だけ変えます */
+function shiftPickWishBox(dateStr, name, 入れる前) {
   const box = document.createElement('div');
   box.id = 'shiftPickWishBox';
   if (!name) return box;
@@ -16690,7 +16836,8 @@ function shiftPickWishBox(dateStr, name) {
   line.className = 'modal__note';
   if (!w || !w.sentAt) {
     // 提出そのものがない人。こちらで入れた人です
-    line.textContent = `${name}さんは、この半月をまだ提出していません（こちらで入れた人です）`;
+    line.textContent = 入れる前 ? `${name}さんは、この半月をまだ提出していません`
+      : `${name}さんは、この半月をまだ提出していません（こちらで入れた人です）`;
     box.appendChild(line);
     return box;
   }
@@ -16699,7 +16846,7 @@ function shiftPickWishBox(dateStr, name) {
     ? '' : `　提出 ${出した日時.toLocaleString('ja-JP')}`;
   line.textContent = list.length
     ? `${name}さんが出してくれた希望${いつ}`
-    : `${name}さんは、この日は希望を出していません（希望なしで入れています）${いつ}`;
+    : `${name}さんは、この日は希望を出していません${入れる前 ? '' : '（希望なしで入れています）'}${いつ}`;
   box.appendChild(line);
 
   if (list.length) {
@@ -16741,9 +16888,14 @@ function renderShiftPick() {
   //   日付の行のうしろへ差し込みます。開き直すたびに入れかえます
   const 前の = document.getElementById('shiftPickWishBox');
   if (前の) 前の.remove();
-  if (entry) {
-    el.shiftPickWhen.insertAdjacentElement('afterend', shiftPickWishBox(dateStr, entry.n));
+  // ★提出を見るから開いたとき（その人を入れる小窓）も、その人がその日をどう出したかを出します（2026-10-22）
+  const 誰 = entry ? entry.n : shiftPickAt.person;
+  if (誰) {
+    el.shiftPickWhen.insertAdjacentElement('afterend', shiftPickWishBox(dateStr, 誰, !entry));
   }
+
+  /* 枠（提出を見るから開いたときだけ。→ renderShiftPickSlots） */
+  renderShiftPickSlots(day);
 
   /* 出勤時刻 */
   // ★時刻を入れる店舗（popo）では、枠ごとの時刻ではなく
@@ -16904,9 +17056,9 @@ function renderShiftPick() {
     el.shiftPickEarlyOn.classList.toggle('is-on', !!entry.early);
   }
 
-  /* 人が足りないマス。マスに付くものなので、人を足すときだけ出します */
-  el.shiftPickShortField.classList.toggle('is-hidden', index !== null);
-  if (index === null) {
+  /* 人が足りないマス。マスに付くものなので、人を足すときだけ出します（提出を見るから開いたときは、マスから開いていないので出しません） */
+  el.shiftPickShortField.classList.toggle('is-hidden', index !== null || !!shiftPickAt.person);
+  if (index === null && !shiftPickAt.person) {
     const n = shiftShortOf(day, slotId, shiftPickAt.laneId);
     el.shiftPickShort.value = n ? String(n) : '';
   }
@@ -16920,10 +17072,17 @@ function renderShiftPick() {
     // その日のどこかに入っている人は、もう出しません（二重に入れないため）
     const already = [];
     shiftSlotsOf(state.storeId).forEach((sl) => day[sl.id].forEach((e) => already.push(e.n)));
-    const wish = shiftWishInto(shiftWishes(rec), dateStr, slotId)
+    let wish = shiftWishInto(shiftWishes(rec), dateStr, slotId)
       .filter((w) => !already.includes(w.name));
-    const others = shiftBuildNames(state.storeId)
+    let others = shiftBuildNames(state.storeId)
       .filter((n) => !already.includes(n) && !wish.some((w) => w.name === n));
+    // ★提出を見るから開いたとき（2026-10-22）は、その人だけを出します。
+    //   別の枠にもう入っていても出します（仕込みと営業の両方に入る人がいるため）。同じ枠に入っていれば「直す」で開くので、ここには来ません
+    const 人 = shiftPickAt.person;
+    if (人) {
+      wish = shiftWishInto(shiftWishes(rec), dateStr, slotId).filter((w) => w.name === 人);
+      others = wish.length ? [] : [人];
+    }
 
     const addGroup = (title, list, isWish) => {
       if (!list.length) return;
@@ -16992,10 +17151,16 @@ function renderShiftPick() {
     //   マスの「＋2」は持ち場ごとの数なので、開いたときに同じ人数が先頭に並ぶようにします。
     //   他の持ち場の人も、今までどおり選べます（ホールの人をキッチンに入れる日があるため）
     const 押した持ち場 = shiftLaneOf({ p: shiftPickAt.laneId });
-    SHIFT_LANES.slice().sort((a, b) => (b.id === 押した持ち場) - (a.id === 押した持ち場)).forEach((l) => {
-      addGroup(`希望を出している人（${l.name}）`, wish.filter((w) => shiftLaneOf({ p: w.lane }) === l.id), true);
-    });
-    addGroup('その他の人', others, false);
+    if (人) {
+      // ★その人だけ。押すと入ります（時刻・退勤・持ち場は、上で選んだもの。選ばなければ、その人が出した時刻）
+      addGroup('名前を押すと、シフトに入ります', wish, true);
+      addGroup('名前を押すと、シフトに入ります（この枠の希望は出していません）', others, false);
+    } else {
+      SHIFT_LANES.slice().sort((a, b) => (b.id === 押した持ち場) - (a.id === 押した持ち場)).forEach((l) => {
+        addGroup(`希望を出している人（${l.name}）`, wish.filter((w) => shiftLaneOf({ p: w.lane }) === l.id), true);
+      });
+      addGroup('その他の人', others, false);
+    }
 
     if (!wish.length && !others.length) {
       el.shiftPickNames.innerHTML = '<p class="modal__note">入れられる人がいません。'
@@ -17425,7 +17590,34 @@ function shiftShortCopyBox(rec) {
  *  ひと目で見くらべられるようにしています（縦に並べると、
  *  「この日は誰が出しているか」を数えるのに何度も往復することになります）。
  */
+/** 提出を見るで、いま押しているマス（{ d, name }。描き直しても、押したマスと上の欄を戻すため） */
+let shiftWishPicked = null;
+
 function openShiftWishes() {
+  shiftWishPicked = null;
+  renderShiftWishes();
+  el.shiftWishModal.classList.remove('is-hidden');
+}
+
+/**
+ * 提出を見るを開いていたら、いまの記録で描き直す（2026-10-22）
+ *
+ * ★提出を見るから小窓でシフトに入れた・外した・時刻を直した、同期で他の端末の直しが届いた、のたびに呼ばれます（renderShift から）。
+ *   マスの中身と「出7 → 入4」が、その場で変わります。見ていた位置（縦・横）と、押していたマスは戻します
+ */
+function shiftWishRefresh() {
+  if (!el.shiftWishModal || el.shiftWishModal.classList.contains('is-hidden')) return;
+  const 位置 = (b) => (b ? [b.scrollTop, b.scrollLeft] : null);
+  const 戻す = (b, v) => { if (b && v) { b.scrollTop = v[0]; b.scrollLeft = v[1]; } };
+  const パネル = el.shiftWishModal.querySelector('.modal__panel');
+  const 前 = [位置(パネル), 位置(el.shiftWishList), 位置(el.shiftWishList.querySelector('.wish-wrap'))];
+  renderShiftWishes();
+  戻す(パネル, 前[0]);
+  戻す(el.shiftWishList, 前[1]);
+  戻す(el.shiftWishList.querySelector('.wish-wrap'), 前[2]);
+}
+
+function renderShiftWishes() {
   // ★パソコン・タブレットでは、パネルが画面いっぱいに広がります
   //   （`index.html` の `modal__panel--table` ＋ `css/style.css` の @media。どちらも本部）。
   //   ここで classList.add もしていましたが、**同じことを2か所でやることになる**ので
@@ -17480,13 +17672,8 @@ function openShiftWishes() {
     const tr = document.createElement('tr');
     if (!w || !w.sentAt) tr.className = 'is-yet';
 
-    // その人が「出した日」と「実際に入った日」を数えます
-    let wished = 0;
-    let placed = 0;
-    open.forEach((d) => {
-      if (((w && w.days[d]) || []).length) wished += 1;
-      if (shiftPlacedOn(rec, d, name).length) placed += 1;
-    });
+    // その人が「出した日」と「実際に入った日」を数えます（組む画面の「4/7」と同じ数え方 → shiftWishTally）
+    const { 出: wished, 入: placed } = shiftWishTally(rec, w, name, open);
 
     const th = document.createElement('th');
     th.className = 'wish-table__name';
@@ -17568,16 +17755,23 @@ function openShiftWishes() {
       }
       // ★押すと、その人がその日に出した時刻（何時から何時まで）を上の欄に出します
       //   （2026-10-08、ko-dai さんの指示。全部の店舗）。マスには出勤の時刻しか出ていないためです。
-      //   何もないマス（出していない・入れていない・連絡もない）は押せません
-      if (組.length || (w && w.notes[d])) {
-        td.style.cursor = 'pointer';
-        td.addEventListener('click', () => {
-          const 前 = table.querySelector('td[data-picked]');
-          if (前) { 前.removeAttribute('data-picked'); 前.style.boxShadow = ''; }
-          td.setAttribute('data-picked', '1');
-          td.style.boxShadow = 'inset 0 0 0 2px var(--accent)';
-          shiftWishDetail(詳しく, d, name, w, mine);
-        });
+      // ★あわせて、組む画面と同じ小窓を、その人・その日で開きます。シフトに入れる・時刻を直す・外す、ができます
+      //   （2026-10-22、ko-dai さん「提出を見るからもシフトを入れれるように」「提出されていてもされていなくても…」）。
+      //   そのため、何もないマス（出していない・入れていない）も押せます。定休日のマスは押せません（上で返しています）
+      td.style.cursor = 'pointer';
+      td.addEventListener('click', () => {
+        const 前 = table.querySelector('td[data-picked]');
+        if (前) { 前.removeAttribute('data-picked'); 前.style.boxShadow = ''; }
+        td.setAttribute('data-picked', '1');
+        td.style.boxShadow = 'inset 0 0 0 2px var(--accent)';
+        shiftWishPicked = { d, name };
+        shiftWishDetail(詳しく, d, name, w, mine);
+        openShiftPickFor(d, name);
+      });
+      // 描き直したときは、押していたマスの印を戻します
+      if (shiftWishPicked && shiftWishPicked.d === d && shiftWishPicked.name === name) {
+        td.setAttribute('data-picked', '1');
+        td.style.boxShadow = 'inset 0 0 0 2px var(--accent)';
       }
       tr.appendChild(td);
     });
@@ -17589,7 +17783,13 @@ function openShiftWishes() {
   詳しく.id = 'shiftWishDetail';
   詳しく.style.cssText = 'position:sticky;top:0;z-index:3;margin:0 0 8px;padding:8px 10px;border:1px solid var(--line);'
     + 'border-radius:9px;background:var(--surface-2);font-size:13px;line-height:1.6;';
-  shiftWishDetail(詳しく, '', '', null, []);
+  // ★描き直したときは、押していたマスの中身を出し直します（入れた・外した・直した、がすぐ見えるように）
+  if (shiftWishPicked && names.includes(shiftWishPicked.name)) {
+    const { d, name } = shiftWishPicked;
+    shiftWishDetail(詳しく, d, name, wishes.find((x) => x.name === name) || null, shiftPlacedOn(rec, d, name));
+  } else {
+    shiftWishDetail(詳しく, '', '', null, []);
+  }
   el.shiftWishList.appendChild(詳しく);
 
   const wrap = document.createElement('div');
@@ -17614,11 +17814,10 @@ function openShiftWishes() {
       ['<span class="wish-chip wish-chip--lunch is-yet">薄い</span>',
         '出してもらったが、まだ入れていない'],
       ['<span class="wish-note">連</span>', '連絡あり（押すと中身が出ます）'],
-      ['<span style="font-weight:700;">押す</span>', 'マスを押すと、出してもらった時刻（何時から何時まで）と、シフトに入れた時刻が上に出ます'],
+      ['<span style="font-weight:700;">押す</span>', 'マスを押すと、出してもらった時刻（何時から何時まで）と、シフトに入れた時刻が上に出ます。'
+        + 'あわせて、組む画面と同じ小窓が開き、その日にシフトに入れる・時刻を直す・外す、ができます（出していない日も）'],
     ].map(([mark, text]) => `<p class="wish-legend__row">${mark}<span>${text}</span></p>`).join('');
   el.shiftWishList.appendChild(legend);
-
-  el.shiftWishModal.classList.remove('is-hidden');
 }
 
 /**
