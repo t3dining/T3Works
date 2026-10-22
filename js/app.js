@@ -2744,8 +2744,6 @@ function renderWroteStatus() {
     箱 = document.createElement('div');
     箱.id = 'cashWroteStatus';
     箱.setAttribute('aria-live', 'polite');
-    箱.style.cssText = 'margin:10px 0 0;padding:10px 12px;border:1px solid var(--line-2);border-radius:12px;'
-      + 'font-size:13px;line-height:1.6';
   }
   if (箱.previousElementSibling !== el.cashToNippou) el.cashToNippou.insertAdjacentElement('afterend', 箱);
   箱.style.display = '';
@@ -2757,15 +2755,28 @@ function renderWroteStatus() {
     return;
   }
   const 書けていない = 具合.filter((x) => x.様 === 'まだ' || x.様 === 'ちがう' || x.様 === '失敗').length;
-  const 頭 = 書けていない
-    ? `<div style="font-weight:800;color:var(--ng)">★日報に書けていないものがあります（${書けていない}つ）</div>`
-    : `<div style="font-weight:800;color:var(--ok)">日報に書けているか</div>`;
+  const 途中 = 具合.some((x) => x.様 === '途中');
+  const 書けた = 具合.some((x) => x.様 === 'ok');
+  /* ★目立たせます（ko-dai さん「もっと目立つように」・2026-10-22）。
+       枠ごと色を付けます：書けていないものがある＝赤／全部書けた＝緑／書いている途中だけ＝灰。字も大きく */
+  const 色 = 書けていない ? 'var(--ng)' : 途中 ? 'var(--text-sub)' : 書けた ? 'var(--ok)' : 'var(--text-sub)';
+  箱.setAttribute('role', 書けていない ? 'alert' : 'status');
+  箱.dataset.kind = 書けていない ? 'まだ' : 途中 ? '途中' : 書けた ? '全部' : 'なし';
+  箱.style.cssText = `margin:12px 0 0;padding:12px 14px;border:3px solid ${色};border-radius:14px;`
+    + `background:var(--surface);background:color-mix(in srgb,${色} 12%,var(--surface));`
+    + 'font-size:15px;line-height:1.55';
+  const 頭の字 = 書けていない ? `★日報に書けていないものがあります（${書けていない}つ）`
+    : 途中 ? '日報に書いている途中です…'
+      : 書けた ? '✓ 全部、日報に書けています' : '日報に書けているか';
+  const 頭 = `<div style="font-size:17px;font-weight:800;color:${色};margin:0 0 6px">${journalEsc(頭の字)}</div>`;
   箱.innerHTML = 頭 + 具合.map((x) => {
     const 印 = JOURNAL_書けた具合の印[x.様] || JOURNAL_書けた具合の印.なし;
-    return `<div data-wrote="${journalEsc(x.種)}" data-state="${journalEsc(x.様)}" style="display:flex;gap:6px;align-items:baseline">`
-      + `<span style="flex:0 0 1.2em;font-weight:800;color:${印.色}">${印.印}</span>`
-      + `<span style="flex:0 0 auto;font-weight:700">${journalEsc(x.名)}</span>`
-      + `<span style="flex:1 1 auto;min-width:0;color:${印.色}">${journalEsc(x.文)}</span></div>`;
+    const 赤 = x.様 === 'まだ' || x.様 === 'ちがう' || x.様 === '失敗';
+    return `<div data-wrote="${journalEsc(x.種)}" data-state="${journalEsc(x.様)}" style="display:flex;gap:8px;align-items:baseline;`
+      + 'padding:5px 0;border-top:1px solid var(--line-2)">'
+      + `<span style="flex:0 0 1.3em;font-size:18px;font-weight:900;color:${印.色}">${印.印}</span>`
+      + `<span style="flex:1 1 auto;min-width:0"><span style="font-weight:800">${journalEsc(x.名)}</span><br>`
+      + `<span style="font-weight:${赤 ? 800 : 600};color:${印.色}">${journalEsc(x.文)}</span></span></div>`;
   }).join('');
 }
 
