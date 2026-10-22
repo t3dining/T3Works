@@ -1189,7 +1189,7 @@ async function cashResume() {
           return;
         }
         cashJobClear();
-        cashWroteSave(job.date, job.values, job.extra);
+        cashWroteSave(job.date, job.values, job.extra, job.calc);
         先の知らせ(`${名}を日報に書きました（${res.sheet}日・${(res.rows || []).length}か所）`, 'ok');
       } finally { cashWakeOff(); }
     }
@@ -2089,11 +2089,18 @@ function cashWroteOf(storeId, dateStr) {
 }
 
 /** 前の覚え書きに、今書いた数を足します（数にならないものは入れません） */
-function cashWrote足す(前, values, extra) {
+function cashWrote足す(前, values, extra, calc) {
   const 次 = { ...(前 || {}) };
   Object.keys(values || {}).forEach((name) => {
     const n = cashMinusNum(values[name]);
     if (n !== null) 次[name] = n;
+  });
+  /* ★引き算の式で書く行（現金売上・クレジット）は、式の**もとの数**（紙の数）を覚えます（2026-10-22）。
+       「日報に書けているか」の一覧で、書いたあとに直したかを見くらべるためです。
+       日報のマスに入るのは式なので、日報からの取り込み（cashPullFromNippou）はこの行を見ません */
+  Object.keys(calc || {}).forEach((name) => {
+    const b = calc[name] && calc[name].base;
+    if (typeof b === 'number' && Number.isFinite(b)) 次[name] = Math.round(b);
   });
   (extra || []).forEach((x) => {
     const n = cashMinusNum(x.value);
@@ -2103,8 +2110,8 @@ function cashWrote足す(前, values, extra) {
 }
 
 /** 書いたものを覚えます（日報の数と見くらべるため） */
-function cashWroteSave(dateStr, values, extra) {
-  const 次 = cashWrote足す(cashWroteOf(state.storeId, dateStr), values, extra);
+function cashWroteSave(dateStr, values, extra, calc) {
+  const 次 = cashWrote足す(cashWroteOf(state.storeId, dateStr), values, extra, calc);
   const 手 = cashHandOf(state.storeId, dateStr);
   Store.setItem(state.storeId, dateStr, CASH_HAND, {
     value: {
@@ -2609,6 +2616,160 @@ function journal書けないわけ(storeId) {
 }
 
 /* ------------------------------------------------------------
+ *  日報に書けているか（ko-dai さんの指示・2026-10-22）
+ *
+ *  「仕入れ明細、人件費、ジャーナル写真の項目が全て日報に書けているか分かるような表示を
+ *    ジャーナルの5つを日報に書くボタンの近くに」
+ *
+ *  ★見くらべるのは「いまアプリに入っている数（日報に送ることになる数）」と
+ *    「アプリが日報に書けた数の覚え（書きかけの wrote）」です。
+ *    送る数は、書くときと同じ部品（nippouPartData・cashGridSend）から取ります（2か所に決まりを持たない）。
+ *  ★日報を手で直した数は、その日を開いたときに取り込むので（cashPullFromNippou）、覚えもそれにそろいます。
+ *  ★預けた頼み（J2）がまだ答えを待っているときは「書いている途中」と出します。
+ * ---------------------------------------------------------- */
+const JOURNAL_書けた具合の区分 = [
+  { 種: 'journal', 名: 'ジャーナル（写真の項目）' },
+  { 種: 'delivery', 名: '出前館・ウーバー・ロケットナウ', なければ出さない: true },
+  { 種: 'shiire', 名: '仕入明細' },
+  { 種: 'jinken', 名: '人件費' },
+];
+
+/** その区分で、いま日報に送ることになる数（覚え書きと同じ鍵 → 数）。計算できない式は入れません */
+function journal送る数(種) {
+  const 出 = {};
+  if (種 === 'shiire' || 種 === 'jinken') {
+    cashGridSend(種).forEach((x) => {
+      const n = cashMinusNum(x.value);
+      if (n !== null) 出[cashWroteKey(x.name, x.col)] = n;
+    });
+    return 出;
+  }
+  const d = nippouPartData(種);
+  Object.keys(d.values || {}).forEach((名) => {
+    const n = cashMinusNum(d.values[名]);
+    if (n !== null) 出[名] = n;
+  });
+  Object.keys(d.calc || {}).forEach((名) => {
+    const b = d.calc[名] && d.calc[名].base;
+    if (typeof b === 'number' && Number.isFinite(b)) 出[名] = Math.round(b);
+  });
+  return 出;
+}
+
+/** 覚え書きの鍵を、人が読む名前にします（'あ食品|G' → 'あ食品'） */
+function journal鍵の名(鍵) { return String(鍵).split('|')[0]; }
+
+/**
+ * 区分ごとの「書けているか」
+ *
+ *   返り: [{ 種, 名, 様: 'ok' | 'まだ' | 'ちがう' | '途中' | '失敗' | 'なし' | '休み', 数, 名たち: [...], 文 }]
+ *   ★様が 'まだ'・'ちがう'・'失敗' のものが「日報に書けていない」です（赤で出します）
+ */
+function journal書けた具合(storeId, dateStr) {
+  const 覚え = cashWroteOf(storeId, dateStr);
+  const hit = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  const 休み = !!hit && Closed.isClosed(storeId, Number(hit[1]), Number(hit[2]), Number(hit[3]));
+  const 五つ書いた = journal書いた記録(storeId, dateStr).五つ;
+  const 引く行 = Object.keys(nippouCalc());
+  const 頼み = 日報の頼みたち().filter((x) => x.store === storeId && x.date === dateStr);
+  const 頼みの様 = (種) => {
+    const x = 頼み.find((h) => h.group === 'journal' || String(h.group || '').split('・').indexOf(種) >= 0);
+    if (!x) return null;
+    if (x.state === '食いちがい') return { 様: '失敗', 文: '日報にちがう数が入っていて、まだ書いていません' };
+    if (x.state === '失敗') return { 様: '失敗', 文: `書けませんでした${x.error ? `（${x.error}）` : ''}` };
+    return { 様: '途中', 文: '日報に書いている途中です…' };
+  };
+  const 出 = [];
+  JOURNAL_書けた具合の区分.forEach((区) => {
+    const 送る = journal送る数(区.種);
+    const 鍵 = Object.keys(送る);
+    const 一つ = { 種: 区.種, 名: 区.名, 様: 'ok', 数: 鍵.length, 名たち: [], 文: '' };
+    if (区.なければ出さない && !鍵.length) return;       // ★入れていないデリバリーは、書いている途中でも出しません
+    const 途中 = 頼みの様(区.種);
+    if (途中) { 出.push({ ...一つ, ...途中 }); return; }
+    if (区.種 === 'journal') {
+      if (!五つ書いた) {
+        if (休み) { 出.push({ ...一つ, 様: '休み', 文: '定休日です' }); return; }
+        const わけ = journal書けないわけ(storeId);
+        出.push({ ...一つ, 様: 'まだ',
+          文: 'まだ書いていません' + (わけ && わけ.種 === '写真まだ' ? '（写真を撮ると書けます）'
+            : わけ && わけ.色 === '赤' ? '（上の赤い札を見てください）' : '') });
+        return;
+      }
+    } else if (!鍵.length) {
+      if (区.なければ出さない) return;
+      出.push({ ...一つ, 様: 'なし', 文: '入れたものはありません' });
+      return;
+    }
+    const まだ = [];
+    const ちがう = [];
+    鍵.forEach((k) => {
+      if (覚え[k] === undefined) {
+        // ★前の版（2026-10-22 より前）は、引き算の式の行（現金売上・クレジット）を覚えていません。5つを書いていれば書けたと見ます
+        if (区.種 === 'journal' && 引く行.indexOf(k) >= 0) return;
+        まだ.push(journal鍵の名(k));
+      } else if (Math.round(覚え[k]) !== Math.round(送る[k])) {
+        ちがう.push(journal鍵の名(k));
+      }
+    });
+    if (!まだ.length && !ちがう.length) {
+      出.push({ ...一つ, 様: 'ok', 文: 区.種 === 'journal' ? '書けています' : `書けています（${鍵.length}件）` });
+      return;
+    }
+    const 文 = [];
+    const 一度ずつ = (並び) => 並び.filter((x, i) => 並び.indexOf(x) === i);   // ★同じ仕入先の F と G は1回だけ出します
+    if (まだ.length) 文.push(`まだ書いていない：${一度ずつ(まだ).join('・')}`);
+    if (ちがう.length) 文.push(`書いたあとに直した：${一度ずつ(ちがう).join('・')}`);
+    出.push({ ...一つ, 様: ちがう.length ? 'ちがう' : 'まだ', 名たち: まだ.concat(ちがう), 文: 文.join('／') });
+  });
+  return 出;
+}
+
+const JOURNAL_書けた具合の印 = {
+  ok: { 印: '✓', 色: 'var(--ok)' },
+  まだ: { 印: '★', 色: 'var(--ng)' },
+  ちがう: { 印: '★', 色: 'var(--ng)' },
+  失敗: { 印: '★', 色: 'var(--ng)' },
+  途中: { 印: '…', 色: 'var(--text-sub)' },
+  なし: { 印: '－', 色: 'var(--text-sub)' },
+  休み: { 印: '－', 色: 'var(--text-sub)' },
+};
+
+/** 「ジャーナルの5つを日報に書く」のすぐ下に、区分ごとの「日報に書けているか」を出します */
+function renderWroteStatus() {
+  if (!el.cashToNippou || !el.cashToNippou.parentNode) return;
+  let 箱 = document.getElementById('cashWroteStatus');
+  if (!JOURNAL_STORES.includes(state.storeId)) { if (箱) 箱.style.display = 'none'; return; }
+  if (!箱) {
+    箱 = document.createElement('div');
+    箱.id = 'cashWroteStatus';
+    箱.setAttribute('aria-live', 'polite');
+    箱.style.cssText = 'margin:10px 0 0;padding:10px 12px;border:1px solid var(--line-2);border-radius:12px;'
+      + 'font-size:13px;line-height:1.6';
+  }
+  if (箱.previousElementSibling !== el.cashToNippou) el.cashToNippou.insertAdjacentElement('afterend', 箱);
+  箱.style.display = '';
+  let 具合;
+  try { 具合 = journal書けた具合(state.storeId, ymd(state.y, state.m, state.d)); } catch (e) {
+    // ★見るだけのものなので、転んでも書く作業は止めません（コンソールには残します）
+    console.error('日報に書けているかを出せませんでした', e);
+    箱.style.display = 'none';
+    return;
+  }
+  const 書けていない = 具合.filter((x) => x.様 === 'まだ' || x.様 === 'ちがう' || x.様 === '失敗').length;
+  const 頭 = 書けていない
+    ? `<div style="font-weight:800;color:var(--ng)">★日報に書けていないものがあります（${書けていない}つ）</div>`
+    : `<div style="font-weight:800;color:var(--ok)">日報に書けているか</div>`;
+  箱.innerHTML = 頭 + 具合.map((x) => {
+    const 印 = JOURNAL_書けた具合の印[x.様] || JOURNAL_書けた具合の印.なし;
+    return `<div data-wrote="${journalEsc(x.種)}" data-state="${journalEsc(x.様)}" style="display:flex;gap:6px;align-items:baseline">`
+      + `<span style="flex:0 0 1.2em;font-weight:800;color:${印.色}">${印.印}</span>`
+      + `<span style="flex:0 0 auto;font-weight:700">${journalEsc(x.名)}</span>`
+      + `<span style="flex:1 1 auto;min-width:0;color:${印.色}">${journalEsc(x.文)}</span></div>`;
+  }).join('');
+}
+
+/* ------------------------------------------------------------
  *  大将へのLINEをコピー（ko-dai さんの指示・2026-10-01）
  *
  *  「バグるのみ、その日の現金売上を記録するボタンと、その月の現金売上の一覧の間に、
@@ -2822,6 +2983,7 @@ function renderNippouBox(done) {
         cashHandSave();               // ★他のページへ行っても消えないように残します
         renderNippouMinusNote();
         renderNippouTable();          // 表だけ描き直します（入力の位置が飛ばないように）
+        renderWroteStatus();          // ★日報に書けているか
       });
       // 欄から離れたら、待たずにその場で残します
       input.addEventListener('blur', () => cashHandSave(true));
@@ -2886,6 +3048,7 @@ function renderNippouBox(done) {
     el.cashToNippou.classList.add('is-hidden');
     // ★ボタンの場所に、なぜまだ出ていないかを出します（まだ撮っていない・読み取っている途中）
     journal書けない札(journal書けないわけ(state.storeId));
+    renderWroteStatus();     // ★日報に書けているか（写真の前でも、仕入・人件費は書けていることがあります）
     setNippouMsg('');
     return;
   }
@@ -2953,6 +3116,7 @@ function renderNippouGate() {
     }
   }
   el.cashChecks.textContent = say.join('　');
+  renderWroteStatus();       // ★日報に書けているか（2026-10-22）
 }
 
 /* ------------------------------------------------------------
@@ -4557,6 +4721,7 @@ function renderGridBox() {
           cashHandSave();
           renderGridNote();
           renderGridButton();
+          renderWroteStatus();        // ★日報に書けているか
         });
         i.addEventListener('blur', () => cashHandSave(true));
         calcPadBind(i);         // ★自前のテンキーを出します（＝や＋も打てます）
@@ -5496,7 +5661,7 @@ async function nippouWritePart(part, btn) {
       return;
     }
     cashJobClear();                          // ここまで来たら、やり直す必要はありません
-    cashWroteSave(dateStr, values, extra);   // ★日報で直されたかを見くらべるため
+    cashWroteSave(dateStr, values, extra, calc);   // ★日報で直されたかを見くらべるため
     journal秒を残す(`日報（${決.name}）`, { ms: 書.ms, 中: res.ms && res.ms.全部, 送り直した: res.送り直した || 0 });
     /* ★どのファイルに書いたかを出します。
          「アプリでは書けたことになっているのに、日報には入っていなかった」
@@ -5912,7 +6077,7 @@ function 日報の返事を受ける(頼み, st) {
     日報の頼みを直す(頼み.id, { state: '済み' });
     if (!nippouGasOk(r)) { 日報の頼みを外す(頼み.id); return; }   // 知らせは出ています
     if (r.wrote) {
-      日報に書いた値を残す(頼み.store, 頼み.date, 頼み.req.values, 頼み.req.extra);
+      日報に書いた値を残す(頼み.store, 頼み.date, 頼み.req.values, 頼み.req.extra, 頼み.req.calc);
       日報の頼みを外す(頼み.id);
       journal秒を残す(`日報（${頼み.名}）`, {
         ms: 頼み.at ? Date.now() - Date.parse(頼み.at) : 0, 中: r.ms && r.ms.全部, 預け: 頼み.預けms || 0,
@@ -6039,7 +6204,7 @@ async function 日報を上書きするか聞く(id) {
        黙って上書きするよりも安全です）。 */
   const res = await 日報確かめて書く(頼み.req, 頼み.名);
   if (res.ok && res.wrote) {
-    日報に書いた値を残す(頼み.store, 頼み.date, 頼み.req.values, 頼み.req.extra);
+    日報に書いた値を残す(頼み.store, 頼み.date, 頼み.req.values, 頼み.req.extra, 頼み.req.calc);
     setNippouMsg(日報に書けた文({ ...頼み, at: '' }, res), 'ok');
     return;
   }
@@ -6120,11 +6285,11 @@ function 日報の待ちを出す() {
  *   預けた答えは、別の店・別の日を開いているときに届くことがあります。
  *   そのとき今の画面の書きかけを入れてしまうと、別の日の記録を壊します。
  */
-function 日報に書いた値を残す(店, dateStr, values, extra) {
+function 日報に書いた値を残す(店, dateStr, values, extra, calc) {
   const 手 = cashHandOf(店, dateStr);
   // ★wroteAt … 日報に書けた時刻（2026-10-01）。日報の日ごとの数を「書く前に読んだ」のかを見分けるため（journal書いた記録）
   Store.setItem(店, dateStr, CASH_HAND, {
-    value: { ...手, wrote: cashWrote足す(手.wrote, values, extra), wroteAt: new Date().toISOString() },
+    value: { ...手, wrote: cashWrote足す(手.wrote, values, extra, calc), wroteAt: new Date().toISOString() },
   });
 }
 
@@ -6175,7 +6340,7 @@ async function nippouSendNow(values, dateStr, test, folder, extra, calc) {
   }
 
   cashJobClear();            // ここまで来たら、やり直す必要はありません
-  cashWroteSave(dateStr, values, extra);   // ★日報で直されたかを見くらべるため
+  cashWroteSave(dateStr, values, extra, calc);   // ★日報で直されたかを見くらべるため
   journal秒を残す('日報（ジャーナル）', { ms: Date.now() - 書いた, 中: res.ms && res.ms.全部, 送り直した: res.送り直した || 0 });
 
   // ③ 書いたあとの検算（want は上で取ってあります）
