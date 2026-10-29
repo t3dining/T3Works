@@ -13,7 +13,7 @@
 <link rel="icon" type="image/png" sizes="64x64" href="../img/drive-icon-64.png?v=7088d4ae">
 <title>配達記録｜バグる</title>
 <link rel="stylesheet" href="../css/style.css?v=fe10c428">
-<meta name="app-version" content="27e4e9cd">
+<meta name="app-version" content="18777183">
 </head>
 <body class="no-daytabs app-drive" data-assets="../">
 
@@ -97,6 +97,18 @@
       <span class="drive-add__sub">配達に行ったら、その都度ここから</span>
     </span>
     <span class="drive-add__plus" aria-hidden="true">＋</span>
+  </button>
+
+  <!-- 現金で受け取る配達に出る前に使います。
+       「走った距離を入れる」は帰ってきてから、こちらは出かける前。
+       同じ人が同じ画面で、行きと帰りに1つずつ押す作りにしています -->
+  <button type="button" class="drive-add" id="driveChangeBtn">
+    <span class="drive-add__icon" aria-hidden="true">💴</span>
+    <span class="drive-add__text">
+      <span class="drive-add__main">お釣りを用意する</span>
+      <span class="drive-add__sub">現金のお客さまに行く前に、持っていく分を数えます</span>
+    </span>
+    <span class="drive-add__plus" aria-hidden="true">›</span>
   </button>
 
   <!-- 名前・合計距離・合計金額（Numbersの「N月合計」にあたる表） -->
@@ -302,6 +314,59 @@
   </div>
 </div>
 
+<!-- ===== お釣りの用意 =====
+     ★ここは記録を作りません。**その場で数えるだけ**の画面です。
+       同期にも端末の保存にも触れないので、押しても送信箱には何も積まれません -->
+<div class="modal is-hidden" id="changeModal">
+  <div class="modal__backdrop" data-close-change></div>
+  <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="changeTitle">
+    <h2 class="modal__title" id="changeTitle">お釣りを用意する</h2>
+
+    <p class="drive-callout">
+      <span class="drive-callout__mark" aria-hidden="true">💴</span>
+      <span>これから行く配達の<b>注文の金額</b>を入れてください。<br>
+      お客さまが<b>どんな出し方をしても</b>、ちょうどのお釣りを作れる分を出します</span>
+    </p>
+
+    <div class="field">
+      <span class="field__label">注文の金額（税込）</span>
+      <div class="drive-legs" id="chgOrders"></div>
+      <button type="button" class="drive-legs__add" id="chgAddOrder">＋ もう1件入れる</button>
+      <p class="drive-hint" id="chgHint">注文の金額を入れてください</p>
+    </div>
+
+    <div class="field">
+      <span class="field__label">お客さまが出す一番大きいお金</span>
+      <div class="doer-grid" id="chgBills"></div>
+      <p class="field__hint" id="chgBillNote"></p>
+    </div>
+
+    <div class="field">
+      <span class="field__label">持っていくお金</span>
+      <p class="drive-hero__yen" id="chgTotal">¥0</p>
+      <p class="drive-trip__total is-on" id="chgPieces"></p>
+      <div class="table-scroll">
+        <table class="exp-total catch-table drive-table">
+          <thead>
+            <tr><th>お金</th><th>枚数</th><th>金額</th></tr>
+          </thead>
+          <tbody id="chgRows"></tbody>
+          <tfoot id="chgFoot"></tfoot>
+        </table>
+      </div>
+      <!-- ★その場の検算。作れない金額が1つでもあれば、ここが赤くなります -->
+      <p class="drive-trip__total" id="chgCheck"></p>
+      <p class="pin-error" id="chgError"></p>
+    </div>
+
+    <p class="expense-note" id="chgWhy"></p>
+
+    <div class="modal__actions">
+      <button type="button" class="btn" data-close-change>閉じる</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== 確認ダイアログ =====
      ★この画面は、**他のどの画面よりもあとに**置いてください。
        `.modal` は全部 z-index 50 で、同じときは**あとに書いた方が上に出ます**。
@@ -324,7 +389,7 @@
 <script src="../js/storage.js?v=83352d03"></script>
 <script src="../js/sync.js?v=07c78f00"></script>
 <script src="../js/update.js?v=b2294857"></script>
-<script src="js/drive.js?v=317aa4d0"></script>
+<script src="js/drive.js?v=131e31cd"></script>
 
 </body>
 </html>

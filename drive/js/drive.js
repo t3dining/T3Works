@@ -57,6 +57,10 @@ const el = {
   drvDate: $('drvDate'), drvNames: $('drvNames'), drvNoNames: $('drvNoNames'),
   drvLegs: $('drvLegs'), drvAddLeg: $('drvAddLeg'), drvHint: $('drvHint'), drvWarn: $('drvWarn'),
   driveFormTitle: $('driveFormTitle'), driveSave: $('driveSave'),
+  changeModal: $('changeModal'), chgOrders: $('chgOrders'), chgAddOrder: $('chgAddOrder'),
+  chgHint: $('chgHint'), chgBills: $('chgBills'), chgBillNote: $('chgBillNote'),
+  chgTotal: $('chgTotal'), chgPieces: $('chgPieces'), chgRows: $('chgRows'),
+  chgFoot: $('chgFoot'), chgCheck: $('chgCheck'), chgError: $('chgError'), chgWhy: $('chgWhy'),
   modal: $('modal'), syncChip: $('syncChip'), syncInfo: $('syncInfo'), syncLegend: $('syncLegend'),
   syncWarn: $('syncWarn'), syncLog: $('syncLog'), syncLogClear: $('syncLogClear'),
   pinModal: $('pinModal'), pinInput: $('pinInput'), pinError: $('pinError'),
@@ -747,6 +751,312 @@ function shiftMonth(diff) {
 }
 
 /* ============================================================
+ *  お釣りの用意（現金で受け取る配達に出る前に）
+ *
+ *  守ること
+ *    お客さまが、注文の金額以上の**どんな出し方をしても**、
+ *    ちょうどのお釣りを作れる分だけ持っていきます。
+ *
+ *  ★なぜ「一番多いお釣り」を持つだけでは足りないか
+ *    3850円の注文に1万円札なら、お釣りは 6150円です。
+ *    でも 4000円を出されれば 150円、4350円なら 500円。
+ *    小銭を混ぜて出されるので、**お釣りは1円単位で動きます。**
+ *    だから要るのは「6150円を作れること」ではなく、
+ *    **「0円から6150円まで、全部作れること」**です。
+ *
+ *  作り方
+ *    いま 0〜R円の全部を作れるとき、**R+1 以下**の金種を1枚足すと、
+ *    作れる範囲は 0〜R+d円 に伸びます。あいだは飛びません
+ *    （R より大きい v は、v−d が 0〜R に入るので、その作り方にその1枚を足せます）。
+ *    R+1 を超える金種を足すと、作れない金額ができます。
+ *    なので「R+1 以下で一番大きい金種」を、届くまで足していきます。
+ *    日本のお金では 1円4・5円1・10円4・50円1・100円4・500円1・1000円4・5000円1 の
+ *    **20枚（9999円）**で、1万円未満の全部が作れます。
+ *
+ *  ★何件かまとめて行くときは、件ごとに1組ずつ
+ *    受け取ったお金は当てにできません。一番まずいのは**全員が1万円札を出すとき**で、
+ *    受け取るのは1万円札ばかり。それはお釣りには使えません。
+ *
+ *  ★この画面は記録を作りません。
+ *    端末の保存にも同期にも触らないので、押しても送信箱には何も積まれません。
+ * ============================================================ */
+
+/* お釣りに使う金種。2千円札は出回りが少ないので入れていません */
+const お釣りの金種 = [10000, 5000, 1000, 500, 100, 50, 10, 5, 1];
+
+const お釣りの呼び名 = {
+  10000: '1万円札', 5000: '5千円札', 1000: '千円札',
+  500: '500円玉', 100: '100円玉', 50: '50円玉',
+  10: '10円玉', 5: '5円玉', 1: '1円玉',
+};
+
+/* お客さまが出す一番大きいお金。画面で選びます */
+const お釣りの選べる額 = [
+  { 円: 10000, 名: '1万円札' },
+  { 円: 5000, 名: '5千円札' },
+  { 円: 1000, 名: '千円札' },
+];
+let お釣りの大きいお金 = 10000;
+
+/* 1件の注文として、ありえない額で止める線。入れまちがいを拾うためです */
+const 注文の上限 = 200000;
+
+/**
+ * その注文で、お釣りが一番多くなるとき
+ *
+ * お客さまは、足りる一番少ない枚数で出します。
+ *   3850円  → 1万円札1枚        → 6150円
+ *   12000円 → 1万円札2枚（2万円）→ 8000円
+ *   10000円 → ちょうど           → 0円
+ * ★割り算を使わず余りで出します（小数にすると、ちょうどの金額が1円ずれることがあります）
+ */
+function お釣りの上限(金額) {
+  if (!(金額 > 0)) return 0;
+  const 余り = 金額 % お釣りの大きいお金;
+  return 余り === 0 ? 0 : お釣りの大きいお金 - 余り;
+}
+
+/** 0円から M円まで、どの金額も作れる組（金種 → 枚数） */
+function お釣りの組(M) {
+  const 枚 = {};
+  let R = 0;   // いま 0〜R円 の全部を作れます
+  while (R < M) {
+    const d = お釣りの金種.find((x) => x <= R + 1);
+    枚[d] = (枚[d] || 0) + 1;
+    R += d;
+  }
+  return 枚;
+}
+
+/**
+ * ★検算。その組で 0円〜M円を全部作れるか、1円ずつ数えます
+ *
+ * 作り方が正しければ必ず通ります。**通らなくなったのは、作り方が壊れたときです。**
+ * 画面にも出すので、足りない組を黙って持っていく、ということが起きません。
+ * 返すのは作れなかった金額。全部作れたら -1 です。
+ * ★数え方は、上の組み立てとわざと変えてあります（1枚ずつ、作れる金額に印を付けていきます）。
+ *   同じ考え方で数えると、まちがいも一緒にすり抜けます。
+ */
+function お釣りの作れない金額(枚, M) {
+  const できる = new Uint8Array(M + 1);
+  できる[0] = 1;
+  お釣りの金種.forEach((d) => {
+    for (let k = 0; k < (枚[d] || 0); k++) {
+      for (let v = M; v >= d; v--) if (できる[v - d]) できる[v] = 1;
+    }
+  });
+  for (let c = 0; c <= M; c++) if (!できる[c]) return c;
+  return -1;
+}
+
+/** 注文の欄を1つ足す */
+function お釣りの件を足す(focus) {
+  const row = document.createElement('div');
+  row.className = 'drive-trip';
+
+  const head = document.createElement('div');
+  head.className = 'drive-trip__head';
+  const no = document.createElement('span');
+  no.className = 'drive-trip__no';
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.className = 'drive-trip__del';
+  del.textContent = '×';
+  del.title = 'この件を消す';
+  del.addEventListener('click', () => {
+    // 最後の1つは消さずに空にします（欄がなくなると入れられなくなるため）
+    if (el.chgOrders.children.length > 1) row.remove();
+    else row.querySelector('.field__input').value = '';
+    renderChange();
+  });
+  head.append(no, del);
+
+  const input = document.createElement('input');
+  // type="number" は全角の数字を弾いて空にしてしまうので text にします
+  input.type = 'text';
+  input.className = 'field__input';
+  input.inputMode = 'numeric';
+  input.autocomplete = 'off';
+  input.placeholder = '3850';
+  bindNumericInput(input);
+  input.addEventListener('input', renderChange);
+
+  const sub = document.createElement('p');
+  sub.className = 'drive-trip__total';
+
+  row.append(head, input, sub);
+  el.chgOrders.appendChild(row);
+  if (focus) input.focus();
+  return row;
+}
+
+/** 「お客さまが出す一番大きいお金」の3つのボタン */
+function お釣りの額のボタンを描く() {
+  el.chgBills.innerHTML = '';
+  お釣りの選べる額.forEach((x) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'doer-btn';
+    b.textContent = x.名;
+    b.addEventListener('click', () => { お釣りの大きいお金 = x.円; renderChange(); });
+    b.dataset.yen = String(x.円);
+    el.chgBills.appendChild(b);
+  });
+}
+
+function お釣りの円(n) {
+  return '¥' + (Number(n) || 0).toLocaleString('ja-JP');
+}
+
+/** 入れた金額を1件ずつ読みます（読めない欄は、黙って外さずに止めます） */
+function お釣りの件を読む() {
+  return [...el.chgOrders.children].map((row, i) => {
+    const input = row.querySelector('.field__input');
+    const 文字 = toHalfWidthNumber(input.value);
+    const 数 = Number(文字);
+    const 空 = 文字 === '';
+    const よい = !空 && Number.isInteger(数) && 数 > 0 && 数 <= 注文の上限;
+    let なぜ = '';
+    if (!空 && !よい) {
+      なぜ = 数 > 注文の上限
+        ? `${i + 1}件目が${お釣りの円(注文の上限)}を超えています。入れまちがいではありませんか？`
+        : `${i + 1}件目の金額が読めません。1円単位の数で入れてください。`;
+    }
+    return { no: i + 1, row, 空, よい, なぜ, 円: よい ? 数 : 0 };
+  });
+}
+
+/**
+ * 画面を出し直す
+ *
+ * ★入っているのに読めない欄があるときは、**結果を出しません。**
+ *   出すと、その件を数えていない額を持っていくことになります
+ *   （この画面と同じまちがいを、入れる画面で一度しています。2026-09-19）。
+ *   何も入れていない空の欄は、数えないだけで止めません。
+ */
+function renderChange() {
+  const 件 = お釣りの件を読む();
+  [...el.chgOrders.children].forEach((row, i) => {
+    row.querySelector('.drive-trip__no').textContent = `${i + 1}件目`;
+  });
+  [...el.chgBills.children].forEach((b) => {
+    b.classList.toggle('is-current', Number(b.dataset.yen) === お釣りの大きいお金);
+  });
+  const 選んだ = お釣りの選べる額.find((x) => x.円 === お釣りの大きいお金);
+  el.chgBillNote.textContent = お釣りの大きいお金 === 10000
+    ? '1万円札を出されても足りる分を用意します。'
+    : `★${選んだ.名}より大きいお金を出されたら足りません。出ないと分かっているときだけ選んでください。`;
+
+  const 止め = 件.find((x) => x.なぜ);
+  el.chgError.textContent = 止め ? 止め.なぜ : '';
+
+  const 使う = 止め ? [] : 件.filter((x) => x.よい);
+  const 合計枚 = {};
+  let 一番多いとき = 0;
+  let 数えた = 0;
+  let 作れない = -1;
+  let 作れない件 = 0;
+
+  使う.forEach((x) => {
+    x.上限 = お釣りの上限(x.円);
+    x.枚 = お釣りの組(x.上限);
+    一番多いとき += x.上限;
+    数えた += x.上限 + 1;
+    const ng = お釣りの作れない金額(x.枚, x.上限);
+    if (ng >= 0 && 作れない < 0) { 作れない = ng; 作れない件 = x.no; }
+    Object.keys(x.枚).forEach((d) => { 合計枚[d] = (合計枚[d] || 0) + x.枚[d]; });
+  });
+
+  /* 1件ずつの行に「この件のお釣りは、いくらからいくらまで」を出します */
+  件.forEach((x) => {
+    const sub = x.row.querySelector('.drive-trip__total');
+    if (!x.よい || 止め) { sub.textContent = ''; sub.classList.remove('is-on'); return; }
+    sub.textContent = x.上限 === 0
+      ? `${選んだ.名}でちょうどです。この件のお釣りは要りません`
+      : `お釣りは ${お釣りの円(0)}〜${お釣りの円(x.上限)} のどれかになります`;
+    sub.classList.toggle('is-on', x.上限 > 0);
+  });
+
+  /* 持っていくお金の表 */
+  let 合計金額 = 0;
+  let 枚数 = 0;
+  el.chgRows.innerHTML = '';
+  お釣りの金種.forEach((d) => {
+    const n = 合計枚[d] || 0;
+    if (!n) return;
+    合計金額 += d * n;
+    枚数 += n;
+    const tr = document.createElement('tr');
+    const 名 = document.createElement('td');
+    名.className = 'exp-total__name';
+    名.textContent = お釣りの呼び名[d];
+    const 枚 = document.createElement('td');
+    枚.className = 'exp-total__yen';
+    枚.textContent = `${n}枚`;
+    const 額 = document.createElement('td');
+    額.className = 'exp-total__yen';
+    額.textContent = お釣りの円(d * n);
+    tr.append(名, 枚, 額);
+    el.chgRows.appendChild(tr);
+  });
+
+  el.chgFoot.innerHTML = '';
+  if (枚数) {
+    const tr = document.createElement('tr');
+    tr.className = 'drive-foot';
+    const 名 = document.createElement('td');
+    名.className = 'exp-total__name';
+    名.textContent = '合計';
+    const 枚 = document.createElement('td');
+    枚.className = 'exp-total__yen';
+    枚.textContent = `${枚数}枚`;
+    const 額 = document.createElement('td');
+    額.className = 'exp-total__yen';
+    額.textContent = お釣りの円(合計金額);
+    tr.append(名, 枚, 額);
+    el.chgFoot.appendChild(tr);
+  }
+
+  el.chgTotal.textContent = 枚数 ? お釣りの円(合計金額) : '—';
+  el.chgPieces.textContent = 枚数 ? `${枚数}枚` : '';
+
+  /* 上の1行。何件分を数えたか */
+  if (止め) el.chgHint.textContent = '読めない欄があります。直すと、持っていくお金を出します';
+  else if (!使う.length) el.chgHint.textContent = '注文の金額を入れてください';
+  else el.chgHint.textContent = `${使う.length}件分。出ていくお釣りは、一番多いときで ${お釣りの円(一番多いとき)} です`;
+  el.chgHint.classList.toggle('is-on', !!使う.length && !止め);
+
+  /* ★検算の結果。黙らせないために、通ったときも数を出します */
+  if (!使う.length) {
+    el.chgCheck.textContent = '';
+    el.chgCheck.classList.remove('is-on');
+  } else if (作れない >= 0) {
+    el.chgCheck.textContent = `★${作れない件}件目で ${お釣りの円(作れない)} が作れません。`
+      + 'この組はまちがっています。こうだいさんに、この文をそのまま伝えてください';
+    el.chgCheck.classList.remove('is-on');
+  } else {
+    el.chgCheck.textContent = `どの出し方でも作れることを数えました（${数えた.toLocaleString('ja-JP')}通り）`;
+    el.chgCheck.classList.add('is-on');
+  }
+
+  el.chgWhy.textContent = 使う.length > 1
+    ? '件ごとに1組ずつ数えています。受け取ったお金は当てにできません'
+      + '（全員が1万円札を出すと、受け取るのは1万円札ばかりで、お釣りには使えません）。'
+    : 'お釣りは、お客さまの出し方で0円から一番多いときまでの、どの金額にもなります'
+      + '（小銭を混ぜて出されると1円単位で動きます）。'
+      + 'そのため「一番多い金額を作れる分」ではなく「その範囲を全部作れる分」を出しています。';
+}
+
+/** 画面を開く */
+function openChange() {
+  if (!el.chgOrders.children.length) お釣りの件を足す();
+  renderChange();
+  el.changeModal.classList.remove('is-hidden');
+  const 初め = el.chgOrders.querySelector('.field__input');
+  if (初め) setTimeout(() => 初め.focus(), 50);
+}
+
+/* ============================================================
  *  確認ダイアログ
  * ============================================================ */
 let confirmResolve = null;
@@ -993,6 +1303,12 @@ function bindEvents() {
   window.addEventListener('pageshow', 月が変わったら追う);
 
   $('driveAddBtn').addEventListener('click', () => openForm());
+  /* お釣りの用意。記録を作らない画面なので、閉じるときに聞きません */
+  $('driveChangeBtn').addEventListener('click', openChange);
+  el.chgAddOrder.addEventListener('click', () => お釣りの件を足す(true));
+  document.querySelectorAll('[data-close-change]').forEach((n) => {
+    n.addEventListener('click', () => el.changeModal.classList.add('is-hidden'));
+  });
   el.driveSave.addEventListener('click', saveEntry);
   el.drvAddLeg.addEventListener('click', () => { addTrip(true); renderForm(); });
   /* 閉じる。外の暗い所は、入れた内容があれば聞いてから閉じます。
@@ -1096,6 +1412,11 @@ function bindEvents() {
     if (e.key !== 'Escape') return;
     if (!el.confirmDialog.classList.contains('is-hidden')) { closeConfirm(false); return; }
     if (!el.driveModal.classList.contains('is-hidden')) { 聞いてから閉じる(); return; }
+    // お釣りの画面は、入れたものが記録になりません。聞かずに閉じます
+    if (!el.changeModal.classList.contains('is-hidden')) {
+      el.changeModal.classList.add('is-hidden');
+      return;
+    }
     el.modal.classList.add('is-hidden');
   });
 }
@@ -1156,6 +1477,8 @@ function bindEvents() {
   } catch (e) { /* 使えない端末もあります（そのときは、戻るボタンが出ないだけです） */ }
 
   bindEvents();
+  お釣りの額のボタンを描く();
+  お釣りの件を足す();
   render();
 
   Updater.start();
