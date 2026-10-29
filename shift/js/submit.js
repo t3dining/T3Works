@@ -1587,13 +1587,22 @@ function dayCard(dateStr) {
 
     const btns = document.createElement('div');
     btns.className = 'times__btns';
-    if (slot.every) {
-      // ★こじゃれ・炭まろ・ちゃこる・おいでんテラスは、時と分を回して選びます
-      //   （→ shiftWheel。2026-09-18、ko-dai さんの指示）。普段の時刻がないので、
-      //   はじめは「—」です。選ばないまま出そうとすると止めます（→ timeMissing）
+    // ★こじゃれ・炭まろ・ちゃこる・おいでんテラスの営業は、16:00〜21:00 の30分おきをボタンで並べます
+    //   （2026-10-29、ko-dai さん「バグるのようにボタンで選べるように」→ js/config.js の shiftSubmitTimes）。
+    //   組む画面の時刻（17:00〜22:00 の15分おき）は変えていません。提出ページだけの並びです。
+    //   普段の時刻がないので、はじめはどれも光っていません。選ばないまま出そうとすると止めます（→ timeMissing）
+    // ★前に別の時刻で出した人（17:15 など。ボタンの並びにない）は、その時刻も1つボタンで出して光らせます（黙って消さない）
+    const ボタンの時刻 = shiftSubmitTimes(me.store, slot.id);
+    if (ボタンの時刻 && entry.t !== '' && entry.t !== undefined && entry.t !== null && !ボタンの時刻.includes(String(entry.t))) {
+      ボタンの時刻.push(String(entry.t));
+      ボタンの時刻.sort((a, b) => Number(a) - Number(b));
+    }
+    if (slot.every && !ボタンの時刻) {
+      // ★ボタンの並びを決めていない `every` の枠は、時と分を回して選びます
+      //   （→ shiftWheel。2026-09-18、ko-dai さんの指示。2026-10-29 からは、この道を通る店舗はありません）
       btns.appendChild(shiftWheel(slot.times, entry.t, (t) => setTime(dateStr, slot.id, t), 'range__sel'));
     } else {
-      slot.times.forEach((t) => {
+      (ボタンの時刻 || slot.times).forEach((t) => {
         const b = document.createElement('button');
         b.type = 'button';
         b.className = 'time' + (String(entry.t) === t ? ' is-on' : '');

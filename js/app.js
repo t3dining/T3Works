@@ -15359,7 +15359,13 @@ function shiftGuideHtml(kind) {
     + '（ホーム画面のアイコンや別のスマホで番号を聞かれたら、控えた<b>番号</b>を入れて「進む」）'];
   if (yoru) {
     提出の手順.push(`出られる日に<b>「${名('open')}」</b>か<b>「${名('dinner')}」</b>を押します（${名('open')}を押すと、そのまま${名('dinner')}も入ります）`);
-    提出の手順.push('<b>何時から入れるか</b>を、<b>時</b>と<b>分</b>のプルダウンで選びます。選ばないまま出そうとすると止まります');
+    // ★2026-10-29 から、提出ページの営業は時刻のボタン（js/config.js の shiftSubmitTimes。組む画面の時刻とは別）。並びは設定から作ります
+    //   ★端末に古い js/config.js が残っていても転ばないように、関数があるかを先に見ます
+    const 提出の時刻 = (typeof shiftSubmitTimes === 'function' && shiftSubmitTimes(店[0], 'dinner')) || [];
+    提出の手順.push(提出の時刻.length > 1
+      ? `<b>${名('dinner')} は何時から？</b>と出たら、<b>入れる時刻を押します</b>（${shiftTimeText(提出の時刻[0])}〜${shiftTimeText(提出の時刻[提出の時刻.length - 1])} の`
+        + `${Math.round((Number(提出の時刻[1]) - Number(提出の時刻[0])) * 60)}分おき）。選ばないまま出そうとすると止まります`
+      : '<b>何時から入れるか</b>を、<b>時</b>と<b>分</b>のプルダウンで選びます。選ばないまま出そうとすると止まります');
   } else if (range) {
     提出の手順.push('入れる日の<b>出勤</b>と<b>退勤</b>を、<b>時</b>と<b>分</b>のプルダウンで選びます（出勤が「—」の日は入れない日）');
   } else {
@@ -15380,8 +15386,14 @@ function shiftGuideHtml(kind) {
         + `<div style="display:flex;align-items:center;gap:10px;margin-top:8px;"><span style="flex:0 0 2.6em;font-size:13px;color:var(--text-sub);">退勤</span>${shiftGuideWheel('17時', '00分')}</div></div>`;
     }
     if (yoru) {
+      // ★提出ページの営業は、時刻のボタン（2026-10-29 → shiftSubmitTimes）。見本は頭の5つを並べ、4つ目を押した形にします
+      const 並び = ((typeof shiftSubmitTimes === 'function' && shiftSubmitTimes(店[0], 'dinner')) || []).slice(0, 5);
+      const 時刻 = 並び.length
+        ? 並び.map((t, i) => `<span style="border:1px solid ${i === 3 ? 'var(--pick)' : 'var(--line)'};border-radius:8px;padding:6px 9px;font-size:12.5px;`
+          + `${i === 3 ? 'background:var(--pick);color:#fff;' : ''}">${shiftTimeText(t)}</span>`).join('') + '<span style="font-size:12.5px;color:var(--text-sub);">…</span>'
+        : shiftGuideWheel('17時', '30分');
       return `<div ${箱}><b>10/5（月）</b><div style="display:flex;gap:6px;margin-top:8px;">${枠ボタン(名('open'), false)}${枠ボタン(名('dinner'), true, 'var(--shift-dinner)')}</div>`
-        + `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;"><span style="font-size:12.5px;font-weight:700;">${名('dinner')} は何時から？</span>${shiftGuideWheel('17時', '30分')}</div></div>`;
+        + `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px;"><span style="font-size:12.5px;font-weight:700;">${名('dinner')} は何時から？</span>${時刻}</div></div>`;
     }
     return `<div ${箱}><b>10/5（月）</b><div style="display:flex;gap:6px;margin-top:8px;">${枠ボタン(名('open'), false)}${枠ボタン('F', false)}`
       + `${枠ボタン(名('lunch'), true, 'var(--shift-lunch)')}${枠ボタン(名('dinner'), false)}</div>`
