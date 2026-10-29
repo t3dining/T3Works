@@ -58,7 +58,7 @@ const el = {
   drvLegs: $('drvLegs'), drvAddLeg: $('drvAddLeg'), drvHint: $('drvHint'), drvWarn: $('drvWarn'),
   driveFormTitle: $('driveFormTitle'), driveSave: $('driveSave'),
   changeModal: $('changeModal'), chgOrders: $('chgOrders'), chgAddOrder: $('chgAddOrder'),
-  chgHint: $('chgHint'), chgBills: $('chgBills'), chgBillNote: $('chgBillNote'),
+  chgHint: $('chgHint'),
   chgTotal: $('chgTotal'), chgPieces: $('chgPieces'), chgRows: $('chgRows'),
   chgFoot: $('chgFoot'), chgCheck: $('chgCheck'), chgError: $('chgError'), chgWhy: $('chgWhy'),
   modal: $('modal'), syncChip: $('syncChip'), syncInfo: $('syncInfo'), syncLegend: $('syncLegend'),
@@ -834,13 +834,15 @@ const お釣りの刻みのわけ = {
   1: '1の位が0でない注文なので、小銭を混ぜて出されると1円単位で動きます。',
 };
 
-/* お客さまが出す一番大きいお金。画面で選びます */
-const お釣りの選べる額 = [
-  { 円: 10000, 名: '1万円札' },
-  { 円: 5000, 名: '5千円札' },
-  { 円: 1000, 名: '千円札' },
-];
-let お釣りの大きいお金 = 10000;
+/**
+ * お客さまが出す一番大きいお金。**1万円札で固定です**
+ *
+ * ★2026-10-30 に、画面で選べる形をやめました（ko-dai さんの指示）。
+ *   選べると「5千円札まで」を選んだ日に1万円札を出されて足りなくなります。
+ *   **選びまちがいは、現場では気づけません**（足りないと分かるのは、お客さまの前です）。
+ *   いつも一番きつい側で数えるので、枚数は増えますが、足りなくなりません。
+ */
+const お釣りの大きいお金 = 10000;
 
 /* 1件の注文として、ありえない額で止める線。入れまちがいを拾うためです */
 const 注文の上限 = 200000;
@@ -979,20 +981,6 @@ function お釣りの件を足す(focus) {
   return row;
 }
 
-/** 「お客さまが出す一番大きいお金」の3つのボタン */
-function お釣りの額のボタンを描く() {
-  el.chgBills.innerHTML = '';
-  お釣りの選べる額.forEach((x) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'doer-btn';
-    b.textContent = x.名;
-    b.addEventListener('click', () => { お釣りの大きいお金 = x.円; renderChange(); });
-    b.dataset.yen = String(x.円);
-    el.chgBills.appendChild(b);
-  });
-}
-
 function お釣りの円(n) {
   return '¥' + (Number(n) || 0).toLocaleString('ja-JP');
 }
@@ -1028,14 +1016,6 @@ function renderChange() {
   [...el.chgOrders.children].forEach((row, i) => {
     row.querySelector('.drive-trip__no').textContent = `${i + 1}件目`;
   });
-  [...el.chgBills.children].forEach((b) => {
-    b.classList.toggle('is-current', Number(b.dataset.yen) === お釣りの大きいお金);
-  });
-  const 選んだ = お釣りの選べる額.find((x) => x.円 === お釣りの大きいお金);
-  el.chgBillNote.textContent = お釣りの大きいお金 === 10000
-    ? '1万円札を出されても足りる分を用意します。'
-    : `★${選んだ.名}より大きいお金を出されたら足りません。出ないと分かっているときだけ選んでください。`;
-
   const 止め = 件.find((x) => x.なぜ);
   el.chgError.textContent = 止め ? 止め.なぜ : '';
 
@@ -1065,7 +1045,7 @@ function renderChange() {
     const sub = x.row.querySelector('.drive-trip__total');
     if (!x.よい || 止め) { sub.textContent = ''; sub.classList.remove('is-on'); return; }
     if (x.上限 === 0) {
-      sub.textContent = `${選んだ.名}でちょうどです。この件のお釣りは要りません`;
+      sub.textContent = '1万円札でちょうどです。この件のお釣りは要りません';
     } else {
       sub.textContent = `お釣りは ${お釣りの円(0)}〜${お釣りの円(x.上限)} の`
         + `${x.刻み}円刻みのどれかです${お釣りの刻みのただし書き[x.刻み] || ''}`;
@@ -1593,7 +1573,6 @@ function bindEvents() {
   } catch (e) { /* 使えない端末もあります（そのときは、戻るボタンが出ないだけです） */ }
 
   bindEvents();
-  お釣りの額のボタンを描く();
   お釣りの件を足す();
   render();
 
