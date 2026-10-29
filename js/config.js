@@ -8733,9 +8733,18 @@ const NIPPOU_丸めの幅 = 3;
  *   （他の項目は、下の行が「率」です）。他の項目にも要るようになったら、
  *   ここに use2 を足せば、入れる画面・会議の表・シートへ書く所が付いてきます
  *   （シートへ書く所は `gas/会議資料に書く.gs` の COLS にも1行ずつ足してください）
+ *
+ *   kind … 店舗ごとの種類（店舗id → 名前）。会議の表と入れる画面で、使用量の下に添えます
+ *
+ * ★ガスだけ kind があります（2026-10-29、ko-dai さんの指示）。スプレッドシートと同じく、
+ *   ガス使用量の下に「都市ガス」「プロパン」と出します。都市ガスとプロパンは使用量の桁がまるで違うので、
+ *   店どうしを見くらべるときの読みちがいを防ぎます。
+ *   ★店舗を足したら、ここにも1行足してください（足さないと何も出ません。test_util_last.py が止めます）
  */
 const MEETING_UTIL_ROWS = [
-  { key: 'gas',   name: 'ガス', use: 'gasUse',   unit: '㎥' },
+  { key: 'gas',   name: 'ガス', use: 'gasUse',   unit: '㎥',
+    kind: { kojare: '都市ガス', sumimaro: '都市ガス', oiden: '都市ガス',
+            chacoru: 'プロパン', baguru: 'プロパン', popo: 'プロパン' } },
   { key: 'water', name: '水道', use: 'waterUse', unit: '㎥' },
   { key: 'power', name: '電気', use: 'powerUse', use2: 'powerUse2', unit: 'kWh' },
 ];

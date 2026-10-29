@@ -10572,11 +10572,13 @@ const MEETING_MODES = {
   // ★その下に使用量を1行ずつ足しています。金額だけだと、値上がりで増えたのか
   //   使いすぎで増えたのかが分かりません。使用量が並んでいれば見分けられます
   // ★使用量を上下2つ持つ項目（いまは電気だけ）は、シートと同じく「（上）」「（下）」の2行にします
+  // ★種類を持つ項目（いまはガスだけ）は、今年の使用量の下に「都市ガス」「プロパン」と添えます（note）。
+  //   シートと同じ所です（2026-10-29、ko-dai さんの指示）
   util: MEETING_UTIL_ROWS.reduce((rows, u) => rows.concat([
     { label: u.name, mainKind: 'yen', subKind: 'pct', goodWhen: 'down', big: true,
       main: (v) => v[u.key], sub: (v) => (v.ex ? v[u.key] / v.ex : null) },
     { label: `${u.name} 使用量${u.use2 ? '（上）' : ''}`, mainKind: 'num', unit: u.unit, goodWhen: 'down',
-      main: (v) => v[u.use] },
+      main: (v) => v[u.use], note: u.kind ? (store) => u.kind[store.id] || '' : null },
   ], u.use2 ? [
     { label: `${u.name} 使用量（下）`, mainKind: 'num', unit: u.unit, goodWhen: 'down',
       main: (v) => v[u.use2] },
@@ -10651,9 +10653,12 @@ function meetingCell(col, v, opts = {}) {
     subStyle = ` style="color: ${下 ? MEETING_DIFF_COLORS[下] : 'var(--text-sub)'}"`;
   }
   if (col.big) cls += ' mt-cell--two';
+  // 添え書き（ガスの種類）は今年の升目だけに出します。シートも、昨年の升目には書いていません。
+  // 字は `js/config.js` の決まった言葉だけですが、念のため HTML の記号は落とします
+  const note = !diff && !opts.last && col.note && opts.store ? col.note(opts.store) : '';
   const subHtml = col.sub
     ? `<span class="mt-sub"${subStyle}>${meetingNum(sub, col.subKind, col.subUnit, diff)}</span>`
-    : '';
+    : (note ? `<span class="mt-sub">${String(note).replace(/[&<>"]/g, '')}</span>` : '');
   return `<td class="${cls}"><span class="mt-main">${meetingNum(main, col.mainKind, col.unit, diff)}</span>${subHtml}</td>`;
 }
 
@@ -10696,9 +10701,9 @@ function meetingDiffCol(col, now, last) {
   return out;
 }
 
-/** 1項目分の3つの升目（今年・昨年・差） */
-function meetingCells(col, now, last) {
-  return meetingCell(col, now)
+/** 1項目分の3つの升目（今年・昨年・差）。store は添え書き（ガスの種類）を引くためのもの */
+function meetingCells(col, now, last, store) {
+  return meetingCell(col, now, { store })
     + meetingCell(col, last, { last: true })
     + meetingCell(meetingDiffCol(col, now, last), null, { diff: true });
 }
@@ -10985,7 +10990,7 @@ function renderMeetingTable(list) {
     name.className = 'meeting-td-name';
     name.textContent = store.name;
     tr.appendChild(name);
-    cols.forEach((c) => tr.insertAdjacentHTML('beforeend', meetingCells(c, now, last)));
+    cols.forEach((c) => tr.insertAdjacentHTML('beforeend', meetingCells(c, now, last, store)));
     el.meetingBody.appendChild(tr);
   });
 
@@ -11465,8 +11470,23 @@ async function pullNippou(opts) {
  *  日報にはガス・水道・電気が入っていないので、ここだけ手で入れます。
  *  取り込みとは別の項目（util:店舗id）に入れるので、日報から取り込んでも
  *  消えません。逆に、ここで保存しても取り込んだ数字は消しません。
+ *
+ *  ★今年と昨年を横に並べて、一度に入れます（2026-10-29、ko-dai さんの指示）。
+ *    並びはスプレッドシート「2026_売上比率_会議」と同じです：
+ *      ガス｜ガス使用量｜【昨年】ガス｜【昨年】ガス使用量｜水道｜…
+ *    前は「今年／昨年」の切り替えで片方ずつ入れていました。切り替えると、
+ *    保存する前に入れた方の数が消えていました。
  * ---------------------------------------------------------- */
+/** ★もう使いません。`index.html` の切り替え（#utilYear・いまは隠しています）を押したときに、イベント登録が書くだけです */
 let utilSide = 'now';
+
+/** 1つの項目の中の並び（今年 → 昨年）。head は見出しの頭に付ける字 */
+const UTIL_SIDES = [
+  { side: 'now', head: '' },
+  { side: 'last', head: '【昨年】' },
+];
+/** 昨年の欄の地の色。スプレッドシートも、昨年の列だけ色を変えています */
+const UTIL_LAST_BG = 'color-mix(in srgb, var(--ok) 9%, transparent)';
 
 /** その月・その年の光熱費（画面に出ているもの）を取り出します */
 function utilValues(side) {
@@ -11482,14 +11502,36 @@ function utilValues(side) {
 }
 
 function openUtilForm() {
-  utilSide = 'now';
-  [...el.utilYear.children].forEach((b) => b.classList.toggle('is-on', b.dataset.side === 'now'));
+  // 切り替え（`index.html` の #utilYear）は使わなくなったので隠します。
+  // 表が横に倍の長さになるので、パネルを表の幅（.modal__panel--table）に広げます
+  el.utilYear.style.display = 'none';
+  const panel = el.utilModal.querySelector('.modal__panel');
+  if (panel && panel.classList) panel.classList.add('modal__panel--table');
   fillUtilForm();
   el.utilModal.classList.remove('is-hidden');
 }
 
+/**
+ * 見出し（2段）。`index.html` に書いてある見出しは切り替えのころの並びなので、ここで作り直します。
+ * 列は MEETING_UTIL_ROWS から作るので、項目を足しても、見出しと欄がずれません
+ */
+function fillUtilHead() {
+  const table = el.utilRows.parentNode;
+  const head = table && table.tHead;
+  if (!head) return;
+  const 地 = (side) => (side === 'last' ? ` style="background: ${UTIL_LAST_BG}"` : '');
+  const top = '<tr><th rowspan="2">店舗</th>'
+    + MEETING_UTIL_ROWS.map((u) => `<th colspan="${UTIL_SIDES.length * 2}">${u.name}</th>`).join('')
+    + '</tr>';
+  const sub = '<tr>' + MEETING_UTIL_ROWS.map(() => UTIL_SIDES.map(({ side, head: 頭 }) =>
+    `<th class="util-sub"${地(side)}>${頭}金額</th><th class="util-sub"${地(side)}>${頭}使用量</th>`).join('')).join('')
+    + '</tr>';
+  head.innerHTML = top + sub;
+}
+
 function fillUtilForm() {
-  const vals = utilValues(utilSide);
+  fillUtilHead();
+  const vals = { now: utilValues('now'), last: utilValues('last') };
   el.utilRows.innerHTML = '';
   STORES.forEach((s) => {
     const tr = document.createElement('tr');
@@ -11498,32 +11540,45 @@ function fillUtilForm() {
     name.textContent = s.name;
     tr.appendChild(name);
 
-    // ガス・水道・電気それぞれに「金額」と「使用量」の2つを並べます
+    // ガス・水道・電気それぞれに、今年の「金額」「使用量」、昨年の「金額」「使用量」の4つを並べます
     /* ★使用量を上下2つ持つ項目（いまは電気だけ）は、同じ枠の中に入れる欄を上下に2つ置きます。
          スプレッドシートの並びと同じです。入れる欄は幅いっぱい（`.util-input` の width: 100%）なので、
-         同じ枠に入れると自然に上下に並びます。見出しの列（`index.html`）は増やしません */
-    const 欄を作る = (sid, f, hint, 使用量か) => {
+         同じ枠に入れると自然に上下に並びます */
+    const 欄を作る = (sid, side, f, hint, 使用量か) => {
       const input = document.createElement('input');
       input.type = 'number';
       input.inputMode = 'numeric';
       input.className = 'util-input' + (使用量か ? ' util-input--use' : '');
       input.dataset.store = sid;
+      input.dataset.side = side;
       input.dataset.field = f;
-      input.value = vals[sid][f] || '';
+      input.value = vals[side][sid][f] || '';
       input.placeholder = hint;
       return input;
     };
     MEETING_UTIL_ROWS.forEach((u) => {
-      [{ f: u.key, hint: '円' }, { f: u.use, hint: u.unit }].forEach((box) => {
-        const td = document.createElement('td');
-        const 使用量か = box.f === u.use;
-        td.appendChild(欄を作る(s.id, box.f, u.use2 && 使用量か ? `上 ${u.unit}` : box.hint, 使用量か));
-        if (u.use2 && 使用量か) {
-          const 下 = 欄を作る(s.id, u.use2, `下 ${u.unit}`, true);
-          下.style.marginTop = '6px';   // 上の欄とくっつかないように
-          td.appendChild(下);
-        }
-        tr.appendChild(td);
+      UTIL_SIDES.forEach(({ side }) => {
+        [{ f: u.key, hint: '円' }, { f: u.use, hint: u.unit }].forEach((box) => {
+          const td = document.createElement('td');
+          const 使用量か = box.f === u.use;
+          if (side === 'last') td.style.background = UTIL_LAST_BG;
+          td.appendChild(欄を作る(s.id, side, box.f, u.use2 && 使用量か ? `上 ${u.unit}` : box.hint, 使用量か));
+          if (u.use2 && 使用量か) {
+            const 下 = 欄を作る(s.id, side, u.use2, `下 ${u.unit}`, true);
+            下.style.marginTop = '6px';   // 上の欄とくっつかないように
+            td.appendChild(下);
+          }
+          // ガスの種類（都市ガス・プロパン）は、今年の使用量の下に。スプレッドシートと同じ所です
+          const 種類 = 使用量か && side === 'now' && u.kind ? (u.kind[s.id] || '') : '';
+          if (種類) {
+            const k = document.createElement('div');
+            k.className = 'util-kind';
+            k.textContent = 種類;
+            k.style.cssText = 'margin-top: 4px; font-size: 11px; font-weight: 700; color: var(--text-sub); text-align: center;';
+            td.appendChild(k);
+          }
+          tr.appendChild(td);
+        });
       });
     });
     el.utilRows.appendChild(tr);
@@ -11532,22 +11587,18 @@ function fillUtilForm() {
 
 function saveUtilForm() {
   const key = meetingMonthKey(state.y, state.m);
-  // 画面に出ていない方の年も、いまの数字をそのまま書き写します
-  // （片方だけ保存して、もう片方が消えてしまわないように）
-  const other = utilSide === 'now' ? 'last' : 'now';
-  const otherVals = utilValues(other);
+  // 今年も昨年も画面に出ているので、出ている欄をそのまま保存します
   const typed = {};
   [...el.utilRows.querySelectorAll('.util-input')].forEach((i) => {
     const sid = i.dataset.store;
-    if (!typed[sid]) typed[sid] = {};
-    typed[sid][i.dataset.field] = Math.max(Math.round(Number(i.value) || 0), 0);
+    const side = i.dataset.side;
+    if (!UTIL_SIDES.some((x) => x.side === side)) return;   // 今年でも昨年でもない欄は無視します
+    if (!typed[sid]) typed[sid] = { now: {}, last: {} };
+    typed[sid][side][i.dataset.field] = Math.max(Math.round(Number(i.value) || 0), 0);
   });
 
   STORES.forEach((s) => {
-    const val = {};
-    val[utilSide] = typed[s.id] || {};
-    val[other] = otherVals[s.id] || {};
-    Store.setItem(MEETING_STORE, key, `util:${s.id}`, { value: val });
+    Store.setItem(MEETING_STORE, key, `util:${s.id}`, { value: typed[s.id] || { now: {}, last: {} } });
   });
 
   meetingSeq += 1;
