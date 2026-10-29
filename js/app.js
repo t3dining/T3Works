@@ -10571,16 +10571,17 @@ const MEETING_MODES = {
   // 光熱費も、もとのシートと同じように金額と率の両方を出します。
   // ★その下に使用量を1行ずつ足しています。金額だけだと、値上がりで増えたのか
   //   使いすぎで増えたのかが分かりません。使用量が並んでいれば見分けられます
-  // ★使用量を上下2つ持つ項目（いまは電気だけ）は、シートと同じく「（上）」「（下）」の2行にします
+  // ★使用量を上下2つ持つ項目（いまは電気だけ）は、シートと同じく2行にします。
+  //   行の名前は呼び名（useName・use2Name）で「電気 使用量（電灯）」「（動力）」（2026-10-29 から。前は「（上）」「（下）」）
   // ★種類を持つ項目（いまはガスだけ）は、今年の使用量の下に「都市ガス」「プロパン」と添えます（note）。
   //   シートと同じ所です（2026-10-29、ko-dai さんの指示）
   util: MEETING_UTIL_ROWS.reduce((rows, u) => rows.concat([
     { label: u.name, mainKind: 'yen', subKind: 'pct', goodWhen: 'down', big: true,
       main: (v) => v[u.key], sub: (v) => (v.ex ? v[u.key] / v.ex : null) },
-    { label: `${u.name} 使用量${u.use2 ? '（上）' : ''}`, mainKind: 'num', unit: u.unit, goodWhen: 'down',
+    { label: `${u.name} 使用量${u.use2 ? `（${u.useName}）` : ''}`, mainKind: 'num', unit: u.unit, goodWhen: 'down',
       main: (v) => v[u.use], note: u.kind ? (store) => u.kind[store.id] || '' : null },
   ], u.use2 ? [
-    { label: `${u.name} 使用量（下）`, mainKind: 'num', unit: u.unit, goodWhen: 'down',
+    { label: `${u.name} 使用量（${u.use2Name}）`, mainKind: 'num', unit: u.unit, goodWhen: 'down',
       main: (v) => v[u.use2] },
   ] : []), []).concat([
     { label: '光熱費 合計', mainKind: 'yen', subKind: 'pct', goodWhen: 'down', big: true,
@@ -11562,9 +11563,9 @@ function fillUtilForm() {
           const td = document.createElement('td');
           const 使用量か = box.f === u.use;
           if (side === 'last') td.style.background = UTIL_LAST_BG;
-          const 上 = td.appendChild(欄を作る(s.id, side, box.f, u.use2 && 使用量か ? `上 ${u.unit}` : box.hint, 使用量か));
+          const 上 = td.appendChild(欄を作る(s.id, side, box.f, u.use2 && 使用量か ? `${u.useName} ${u.unit}` : box.hint, 使用量か));
           if (u.use2 && 使用量か) {
-            const 下 = 欄を作る(s.id, side, u.use2, `下 ${u.unit}`, true);
+            const 下 = 欄を作る(s.id, side, u.use2, `${u.use2Name} ${u.unit}`, true);
             下.style.marginTop = '6px';   // 上の欄とくっつかないように
             /* ★上下に積むのは「折り返し」に頼らず、欄を1行ずつ（block）にして積みます。
                  行の一番右の枠には `.exp-total td:last-child { white-space: nowrap; }`（`css/style.css`）が効くので、
