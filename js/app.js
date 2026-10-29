@@ -1348,6 +1348,8 @@ function calcPadMake() {
     `border-top:3px solid ${朱}`,
     'box-shadow:0 -4px 16px rgba(35,25,22,.18)', 'overflow:hidden',
     'font-variant-numeric:tabular-nums',
+    // ★キーのあいだの空きを触っても、ページが動いたり拡大したりしないように（2026-10-29）
+    'touch-action:none', '-webkit-tap-highlight-color:transparent',
   ].join(';');
 
   /* ★会社のロゴを、キーの奥にうっすら敷きます（上の calcPad透かしを作る）。
@@ -1408,6 +1410,8 @@ function calcPadMake() {
     'width:100%', 'box-sizing:border-box', 'display:block',
     'background:transparent', 'border:0', 'outline:none', 'padding:0',
     'resize:none', `caret-color:${朱}`,
+    // ★窓の中だけは、長い式を指でなぞって送れるようにします（テンキー全体は touch-action:none）
+    'touch-action:pan-y',
   ].join(';');
   // 窓で打ったら、そのまま入力欄へ写します
   式.addEventListener('input', () => calcPad写す());
@@ -1482,11 +1486,32 @@ function calcPadMake() {
       'touch-action:none', '-webkit-user-select:none', 'user-select:none',
       '-webkit-touch-callout:none',
     ].join(';');
-    // ★押しても入力欄から離れないように、既定の動きを止めます
-    b.addEventListener('pointerdown', (e) => { e.preventDefault(); b.style.background = f.押; });
+    /* ★★押した**瞬間**に入れます（ko-dai さんの指示・2026-10-29
+         「押しても数字が入力されない、押した数字と違う数字が入力される、時差がある」）。
+
+         前は click（指を**離したとき**）で入れていました。iPhone の click には癖があります：
+           ・指が少しずれた／2本の指で速く打った ときは、click を出さないことがある → **何も入らない**
+           ・押した場所の近くのボタンに寄せて click を出すことがある → **隣のキーが入る**
+           ・離すまで出ない                                           → **遅れて入る**
+         pointerdown は指が触れたその時に、**指の下のキー**に1回だけ届きます。
+       ★押しても入力欄から離れないように、既定の動きは今までどおり止めます。
+       ★右クリックなど、主のボタンでない押し方は無視します。
+       ★キーボードや読み上げ機能で押したとき（pointerdown のない click）だけ、click で入れます。二重には入れません。 */
+    let 押した時 = 0;
+    b.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      if (typeof e.button === 'number' && e.button !== 0) return;
+      b.style.background = f.押;
+      押した時 = Date.now();
+      どうする();
+    });
     ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) =>
       b.addEventListener(ev, () => { b.style.background = f.地; }));
-    b.addEventListener('click', (e) => { e.preventDefault(); どうする(); });
+    b.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (Date.now() - 押した時 < 1000) return;   // ★押した瞬間にもう入れてあります
+      どうする();
+    });
     return b;
   };
 
