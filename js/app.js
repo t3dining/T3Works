@@ -11562,10 +11562,15 @@ function fillUtilForm() {
           const td = document.createElement('td');
           const 使用量か = box.f === u.use;
           if (side === 'last') td.style.background = UTIL_LAST_BG;
-          td.appendChild(欄を作る(s.id, side, box.f, u.use2 && 使用量か ? `上 ${u.unit}` : box.hint, 使用量か));
+          const 上 = td.appendChild(欄を作る(s.id, side, box.f, u.use2 && 使用量か ? `上 ${u.unit}` : box.hint, 使用量か));
           if (u.use2 && 使用量か) {
             const 下 = 欄を作る(s.id, side, u.use2, `下 ${u.unit}`, true);
             下.style.marginTop = '6px';   // 上の欄とくっつかないように
+            /* ★上下に積むのは「折り返し」に頼らず、欄を1行ずつ（block）にして積みます。
+                 行の一番右の枠には `.exp-total td:last-child { white-space: nowrap; }`（`css/style.css`）が効くので、
+                 折り返しに頼ると、昨年の電気使用量だけ上下が横に並んで、表の右からはみ出しました（2026-10-29、ko-dai さんの知らせ） */
+            上.style.display = 'block';
+            下.style.display = 'block';
             td.appendChild(下);
           }
           // ガスの種類（都市ガス・プロパン）は、今年の使用量の下に。スプレッドシートと同じ所です
