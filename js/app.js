@@ -1285,6 +1285,57 @@ const CALC_色 = { 墨: '#231916', 朱: '#cf131c', 地: '#fbf8f4', 消す: '#b31
  */
 const CALC_答えの色 = { 出た: '#1f7a4c', 途中: '#8f8379', だめ: '#b3121b', 途中へ: '#b35900', 途中への枠: '#e8912d' };
 
+/* ------------------------------------------------------------
+ *  テンキーを押した指が、裏にあるものまで押さないように（ko-dai さんの指示・2026-11-01）
+ *
+ *  「全部消す、閉じる、確定を押すと、その裏に隠れている日付タブまで押されて日付のページが変わってしまう」
+ *
+ *  ★キーは押した瞬間に動きます（2026-10-29）。「閉じる」などはそこでテンキーを隠すので、
+ *    指を離したときに作られる click が、**そのとき指の下にあるもの**に届いていました。
+ *    テンキーの下の段のすぐ裏は日付タブで、場所によっては「日報に書く」などのボタンもあります。
+ *  ★1枚目の守りは calcPadMake の touchstart（click を作らせない）です。
+ *    こちらは2枚目で、それでも届いた click を、押した場所の近くなら捨てます。
+ *    iPhone の動きは確認用のブラウザでは試せないので、別の作りのものを2枚重ねます。
+ *  ★捨てるのは、押している間と離してから 0.6 秒だけ、押した場所から 40px 以内だけです。
+ *    時間だけで見ると、すぐあとに別の場所を押したのまで捨ててしまいます。
+ * ---------------------------------------------------------- */
+const CALC_裏のclickの間 = 600;
+const CALC_裏のclickの幅 = 40;
+let calcPad押した = null;           // { x, y, 下, 時, 離した時 }
+
+function calcPad押した場所を覚える(e) {
+  calcPad押した = { x: e.clientX, y: e.clientY, 下: true, 時: Date.now(), 離した時: 0 };
+}
+
+/** 指が離れた時刻を覚えます（テンキーが消えたあとでも届くよう、一番外で聞きます） */
+function calcPad指が離れた() {
+  if (calcPad押した && calcPad押した.下) {
+    calcPad押した.下 = false;
+    calcPad押した.離した時 = Date.now();
+  }
+}
+
+/** その出来事は、テンキーを押した指が裏へ届いたものか */
+function calcPad裏のclickか(e) {
+  const p = calcPad押した;
+  if (!p) return false;
+  const 今 = Date.now();
+  // ★離れた合図が来ないまま長く残らないよう、押している間も 10 秒で忘れます
+  if (p.下 ? 今 - p.時 > 10000 : 今 - p.離した時 > CALC_裏のclickの間) { calcPad押した = null; return false; }
+  // テンキーが出ていて、その中に届いたものは、キーが自分で始末します
+  if (calcPad && calcPad.style.display !== 'none' && calcPad.contains(e.target)) return false;
+  return Math.abs(e.clientX - p.x) <= CALC_裏のclickの幅 && Math.abs(e.clientY - p.y) <= CALC_裏のclickの幅;
+}
+
+['pointerup', 'pointercancel', 'touchend', 'touchcancel'].forEach((名) =>
+  window.addEventListener(名, calcPad指が離れた, { capture: true, passive: true }));
+// ★click だけでなく mousedown も止めます（裏に入力欄があると、そこに focus が移ってテンキーが開き直すため）
+['mousedown', 'mouseup', 'click'].forEach((名) => window.addEventListener(名, (e) => {
+  if (!calcPad裏のclickか(e)) return;
+  e.stopImmediatePropagation();
+  e.preventDefault();
+}, true));
+
 /** 作った透かし（data URL）。1回だけ作って使い回します */
 let calcPad透かし = null;
 
@@ -1454,6 +1505,13 @@ function calcPadMake() {
     calcPadHold = Date.now();
     if (e.target !== 式 && !式.contains(e.target)) e.preventDefault();
   }, true);
+  /* ★★touchstart を止めると、この指からは click そのものが作られません（2026-11-01）。
+       「閉じる」などで押した瞬間にテンキーが消えると、指を離したときの click が
+       **裏にあるもの**（日付タブや、日報に書くボタン）に届いていたためです。下の calcPad裏のclickか が二重の守りです。
+     ★式の窓だけは止めません（指でなぞって送り、カーソルを置くところです）。 */
+  pad.addEventListener('touchstart', (e) => {
+    if (e.target !== 式 && !式.contains(e.target)) e.preventDefault();
+  }, { passive: false });
 
   /* ★キーの見た目の種類。地・ふち・字と、押している間の地です。
        ★押している間だけ色を変えます。**どのキーに指が当たったか**が見えるようにするためです
@@ -1496,20 +1554,25 @@ function calcPadMake() {
          pointerdown は指が触れたその時に、**指の下のキー**に1回だけ届きます。
        ★押しても入力欄から離れないように、既定の動きは今までどおり止めます。
        ★右クリックなど、主のボタンでない押し方は無視します。
-       ★キーボードや読み上げ機能で押したとき（pointerdown のない click）だけ、click で入れます。二重には入れません。 */
-    let 押した時 = 0;
+       ★キーボードや読み上げ機能で押したとき（pointerdown のない click）だけ、click で入れます。二重には入れません。
+         「もう入れた」は時間でなく印で見ます（時間で見ると、長く押して離したときに二重に入ります）。 */
+    let 入れた = false;
     b.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       if (typeof e.button === 'number' && e.button !== 0) return;
       b.style.background = f.押;
-      押した時 = Date.now();
+      入れた = true;
+      calcPad押した場所を覚える(e);    // ★先に覚えます（どうする の中でテンキーが消えることがあるため）
       どうする();
     });
     ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) =>
-      b.addEventListener(ev, () => { b.style.background = f.地; }));
+      b.addEventListener(ev, () => {
+        b.style.background = f.地;
+        if (ev !== 'pointerleave') setTimeout(() => { 入れた = false; }, CALC_裏のclickの間);
+      }));
     b.addEventListener('click', (e) => {
       e.preventDefault();
-      if (Date.now() - 押した時 < 1000) return;   // ★押した瞬間にもう入れてあります
+      if (入れた) { 入れた = false; return; }   // ★押した瞬間にもう入れてあります
       どうする();
     });
     return b;
