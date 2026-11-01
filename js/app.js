@@ -2458,6 +2458,257 @@ async function cashPullFromNippou(しずかに) {
   }
 }
 
+/* ------------------------------------------------------------
+ *  日報の数に戻す（ko-dai さんの指示・2026-11-02）
+ *
+ *  「バグるの10/1の仕入明細や人件費が、全く違う数字になりました。2台とも日報に書いた数字と違う」
+ *
+ *  ★壊れ方。2026-11-02 より前の版は、日報に書けたあと・日報から取り込んだあとに、
+ *    **そのとき開いている画面の中身**を、書いた日の記録として残していました。
+ *    書き終わるのを待たずに別の日へ移ると、移った先の日の数が、書いた日の欄に入ります。
+ *    道はふさぎました（日報に書いた値を残す・cash書きかけを残す）が、入ってしまった数は残ったままです。
+ *    書いた覚え（wrote）は正しいまま残るので、「書いたあとに直した」と出ます。
+ *  ★日報の方は正しい数を持っています。そこで日報を**読むだけ**で見くらべ、ちがう欄を並べて、
+ *    人が確かめてからアプリの欄を戻します。**日報には書きません。**
+ *  ★社員の金額（アプリが出す欄）と、出していない仕入先は見ません。5つ（写真の読み取り）は別の記録です。
+ *  ★戻す前の中身は、書きかけの「戻す前」に1回分だけ残します（消さずに残す）。
+ *  ★月の一覧の上に、同じ形の日を3か月分だけ並べます（journalちがう日を出す）。
+ * ---------------------------------------------------------- */
+
+/** その日の記録で、書いた数の覚えとちがっている欄の鍵（記録だけを見ます。画面は見ません） */
+function journal覚えとちがう欄(storeId, dateStr) {
+  const 手 = cashHandOf(storeId, dateStr);
+  const 覚え = 手.wrote || {};
+  const 出 = [];
+  // ★空と0は同じに見ます（0円は日報に書かないので）
+  const 見る = (鍵, 字) => {
+    if (Math.round(cashMinusNum(字) || 0) !== Math.round(cashMinusNum(覚え[鍵]) || 0)) 出.push(鍵);
+  };
+  const m = Object.keys(手.m || {}).length ? 手.m : ((cashOf(storeId, dateStr) || {}).m || {});
+  CASH_MINUS_ROWS.forEach((k) => {
+    if (覚え[NIPPOU_LABELS[k]] !== undefined) 見る(NIPPOU_LABELS[k], m[k]);
+  });
+  Object.keys(覚え).forEach((鍵) => {
+    const 切れ = 鍵.split('|');
+    if (切れ.length !== 2) return;                     // ★5つの行は写真の読み取りの記録なので、ここでは見ません
+    const [名, 大] = 切れ;
+    if (大 === 'G' && journal社員の行か(名)) return;    // ★アプリが出す欄です
+    if (journal出さない仕入先か(storeId, 名)) return;
+    const 持ち = (手.shiire || {})[名] || (手.jinken || {})[名] || {};
+    見る(鍵, 持ち[大 === 'F' ? 'f' : 'g']);
+  });
+  return 出;
+}
+
+/** 今の月と前の2か月で、書いた数の覚えとちがっている日（古い順） */
+function journal覚えとちがう日たち(storeId) {
+  const 出 = [];
+  for (let ずれ = -2; ずれ <= 0; ずれ++) {
+    const 月初 = new Date(TODAY.y, TODAY.m - 1 + ずれ, 1);
+    const ym = `${月初.getFullYear()}-${pad2(月初.getMonth() + 1)}`;
+    Object.keys(Store.getMonth(storeId, ym) || {}).sort().forEach((dd) => {
+      const dateStr = `${ym}-${pad2(Number(dd))}`;
+      if (journal覚えとちがう欄(storeId, dateStr).length) 出.push(dateStr);
+    });
+  }
+  return 出;
+}
+
+/**
+ * 日報の数と見くらべて、戻す欄を並べます（読むだけ。何も書きません）
+ *   res … 日報の「見る」の返事 / 画面 … cash書きかけの写し() / 覚え … 書いた数の覚え
+ *   返り … { 欄: [...], 次の覚え }
+ */
+function journal戻す欄(storeId, res, 画面, 覚え) {
+  const 欄 = [];
+  const 次の覚え = { ...(覚え || {}) };
+  const 空か = (x) => x === null || x === undefined || String(x).trim() === '';
+  const 見る = (一つ, 今の字, 日報の字) => {
+    const 日報 = cashMinusNum(日報の字);
+    if (日報 === null && !空か(日報の字)) return;       // ★読めない字のマスは、空と見なして消してしまわないように
+    if (日報) 次の覚え[一つ.鍵] = 日報;
+    else delete 次の覚え[一つ.鍵];
+    if (Math.round(cashMinusNum(今の字) || 0) === Math.round(日報 || 0)) return;
+    欄.push({ ...一つ, 今: 今の字, 日報 });
+  };
+  const 名から = {};
+  CASH_MINUS_ROWS.forEach((k) => { 名から[NIPPOU_LABELS[k]] = k; });
+  (res.rows || []).forEach((r) => {
+    const k = 名から[r.name];
+    if (k) 見る({ 節: 'm', 名: r.name, k, 鍵: r.name }, (画面.m || {})[k], r.before);
+  });
+  const w = nippouGridSplit(res.grid);
+  ['shiire', 'jinken'].forEach((節) => {
+    const 見ない = (名) => 節 === 'shiire' && journal出さない仕入先か(storeId, 名);
+    const 一つ = (名, c) => ({ 節, 名, 列: c, 大: c.toUpperCase(), 鍵: cashWroteKey(名, c.toUpperCase()) });
+    const 見た = {};
+    w[節].forEach((r) => {
+      if (!String(r.name || '').trim()) return;
+      見た[r.name] = true;
+      if (見ない(r.name)) return;
+      ['f', 'g'].forEach((c) => {
+        if (節 === 'jinken' && c === 'g' && journal社員の行か(r.name)) return;   // ★アプリが出す欄です
+        見る(一つ(r.name, c), ((画面[節] || {})[r.name] || {})[c], r[c]);
+      });
+    });
+    if (!w[節].length) return;                          // ★日報の行が読めなければ、何も消しません
+    // ★日報の行にない名前は、別の日から入ったものです。日報では空として並べます
+    Object.keys(画面[節] || {}).forEach((名) => {
+      if (見た[名] || 見ない(名)) return;
+      ['f', 'g'].forEach((c) => 見る(一つ(名, c), (画面[節][名] || {})[c], null));
+    });
+  });
+  return { 欄, 次の覚え };
+}
+
+/**
+ * その日の仕入・人件費が、丸ごと別の日の数と同じなら、その日を返します（前後の月まで）
+ * ★どの日の数が入ったのかの手がかりです。1つや2つなら、たまたま同じことがあるので8割で見ます
+ */
+function journal同じ数の日(storeId, dateStr) {
+  const 数たち = (手) => {
+    const 出 = {};
+    ['shiire', 'jinken'].forEach((節) => Object.keys(手[節] || {}).forEach((名) => ['f', 'g'].forEach((c) => {
+      if (節 === 'jinken' && c === 'g' && journal社員の行か(名)) return;
+      const n = cashMinusNum((手[節][名] || {})[c]);
+      if (n) 出[`${節}|${名}|${c}`] = n;
+    })));
+    return 出;
+  };
+  const 今 = 数たち(cashHandOf(storeId, dateStr));
+  const 鍵 = Object.keys(今);
+  const 要る = Math.max(2, Math.ceil(鍵.length * 0.8));
+  const [y, m] = dateStr.split('-').map(Number);
+  let 一番 = { 日: '', 同じ: 0 };
+  [-1, 0, 1].forEach((ずれ) => {
+    const 月初 = new Date(y, m - 1 + ずれ, 1);
+    const ym = `${月初.getFullYear()}-${pad2(月初.getMonth() + 1)}`;
+    Object.keys(Store.getMonth(storeId, ym) || {}).forEach((dd) => {
+      const 相手の日 = `${ym}-${pad2(Number(dd))}`;
+      if (相手の日 === dateStr) return;
+      const 相手 = 数たち(cashHandOf(storeId, 相手の日));
+      const 同じ = 鍵.filter((k) => 相手[k] === 今[k]).length;
+      if (同じ > 一番.同じ) 一番 = { 日: 相手の日, 同じ };
+    });
+  });
+  return 一番.同じ >= 要る ? 一番.日 : '';
+}
+
+/** 戻す欄を、確かめの文にします */
+function journal戻す文(欄, 同じ日) {
+  const 額 = (x) => {
+    const n = cashMinusNum(x);
+    return n === null ? '空' : n.toLocaleString('ja-JP');
+  };
+  const 出せる数 = 12;
+  const 行 = 欄.slice(0, 出せる数).map((x) => `${x.節 === 'm' ? x.名 : `${x.名}（${x.大}）`}：${額(x.今)} → ${額(x.日報)}`);
+  if (欄.length > 出せる数) 行.push(`他 ${欄.length - 出せる数}か所`);
+  const 手がかり = 同じ日 ? `★いまの数は ${Number(同じ日.slice(5, 7))}/${Number(同じ日.slice(8))} の数と同じです\n` : '';
+  return `${手がかり}いま → 日報\n${行.join('\n')}\n\n日報は書きかえません。アプリの欄だけを戻します`;
+}
+
+let journal戻し中 = false;
+
+/** 「日報の数に戻す」を押したとき */
+async function journal日報の数に戻す() {
+  if (journal戻し中) return;
+  const 店 = state.storeId;
+  const dateStr = ymd(state.y, state.m, state.d);
+  const 開いた鍵 = cashEdit.key;
+  const 先 = nippouいまの先();
+  const 先の知らせ = (t, k) => setNippouMsg(t, k, 先);
+  const 移った = () => cashEdit.key !== 開いた鍵 || state.storeId !== 店;
+  const test = nippouTestFor(店);
+  const folder = test ? '' : NippouFolders.get(店);
+  if (!test && !folder) { 先の知らせ('日報フォルダが登録されていません', 'warn'); return; }
+  const values = {};
+  CASH_MINUS_ROWS.forEach((k) => { values[NIPPOU_LABELS[k]] = 0; });
+
+  journal戻し中 = true;
+  nippou待ち('日報の数を読んでいます…', 先);
+  try {
+    const res = await Sync.ask('nippouWrite',
+      { mode: '見る', file: test, folder, day: dateStr, values, extra: [], calc: {} }, { ms: ASK_上限.日報, hedge: true });
+    if (移った()) return;                 // ★別の日の欄に、この日の数を入れないように
+    if (!res.grid) { 先の知らせ(res.error || '日報を開けませんでした', 'warn'); return; }
+    if (nippou版を覚える(res) !== NIPPOU_GAS_VERSION) { nippouGasOk(res); return; }
+
+    const { 欄, 次の覚え } = journal戻す欄(店, res, cash書きかけの写し(), cashWroteOf(店, dateStr));
+    if (!欄.length) {
+      cash書きかけを残す(店, dateStr, cashEdit.元 || {}, cash書きかけの写し(), { wrote: 次の覚え });
+      render();
+      先の知らせ('アプリの数は、日報と同じでした', 'ok');
+      return;
+    }
+    先の知らせ('');                       // ★読み終えたので、秒数を止めます
+    const ok = await askConfirm({
+      item: `${state.m}/${state.d} の数を、日報の数に戻します`,
+      message: journal戻す文(欄, journal同じ数の日(店, dateStr)),
+      okLabel: '日報の数に戻す',
+    });
+    if (移った()) return;
+    if (!ok) { 先の知らせ('戻しませんでした', ''); return; }
+
+    const 前 = cash書きかけの写し();
+    欄.forEach((x) => {
+      if (x.節 === 'm') {
+        if (x.日報 === null) delete cashEdit.m[x.k];
+        else cashEdit.m[x.k] = String(x.日報);
+        return;
+      }
+      if (x.日報 === null) {
+        if (cashEdit[x.節][x.名]) delete cashEdit[x.節][x.名][x.列];
+        return;
+      }
+      if (!cashEdit[x.節][x.名]) cashEdit[x.節][x.名] = {};
+      cashEdit[x.節][x.名][x.列] = String(x.日報);
+    });
+    cash書きかけを残す(店, dateStr, cashEdit.元 || {}, cash書きかけの写し(), {
+      wrote: 次の覚え,
+      戻す前: { at: new Date().toISOString(), m: 前.m, shiire: 前.shiire, jinken: 前.jinken },
+    });
+    render();
+    先の知らせ(`日報の数に戻しました（${欄.length}か所）`, 'ok');
+  } catch (e) {
+    先の知らせ(String(e && e.message || e), 'warn');
+  } finally {
+    journal戻し中 = false;
+  }
+}
+
+/** 月の一覧の上に、書いた数とちがっている日を並べます（押すとその日を開きます） */
+function journalちがう日を出す() {
+  let 箱 = document.getElementById('cashDiffDays');
+  const 日たち = JOURNAL_STORES.includes(state.storeId) ? journal覚えとちがう日たち(state.storeId) : [];
+  if (!日たち.length) { if (箱) 箱.remove(); return; }
+  if (!箱) {
+    箱 = document.createElement('div');
+    箱.id = 'cashDiffDays';
+    el.cashList.parentNode.insertBefore(箱, el.cashList);
+  }
+  箱.style.cssText = 'margin:0 0 10px;padding:10px 12px;border:2px solid var(--ng);border-radius:12px;'
+    + 'background:var(--surface);background:color-mix(in srgb,var(--ng) 10%,var(--surface));line-height:1.5';
+  箱.innerHTML = '<div style="font-weight:800;color:var(--ng)">★日報に書いた数とちがう日があります</div>'
+    + '<div style="font-size:13px;color:var(--text-sub);margin-bottom:6px">押すとその日を開きます</div>';
+  日たち.forEach((dateStr) => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn btn--small';
+    b.style.margin = '0 6px 6px 0';
+    b.textContent = `${m}/${d}`;
+    b.addEventListener('click', () => {
+      state.y = y; state.m = m; state.d = d;
+      cashTab = 'day';
+      writeHash();
+      render();
+      const 枠 = document.getElementById('cashWroteStatus');
+      if (枠) 枠.scrollIntoView({ block: 'center' });
+    });
+    箱.appendChild(b);
+  });
+}
+
 /** その日を開いたとき、1回だけ静かに読みにいきます */
 function cashPullAuto() {
   const key = `${state.storeId}/${ymd(state.y, state.m, state.d)}`;
@@ -3012,7 +3263,13 @@ function renderWroteStatus() {
   if (箱.previousElementSibling !== el.cashToNippou) el.cashToNippou.insertAdjacentElement('afterend', 箱);
   箱.style.display = '';
   let 具合;
-  try { 具合 = journal書けた具合(state.storeId, ymd(state.y, state.m, state.d)); } catch (e) {
+  let 戻せる = false;
+  try {
+    具合 = journal書けた具合(state.storeId, ymd(state.y, state.m, state.d));
+    // ★5つは写真の読み取りの記録なので、日報から戻しません
+    戻せる = 具合.some((x) => x.様 === 'ちがう' && x.種 !== 'journal')
+      || journal覚えとちがう欄(state.storeId, ymd(state.y, state.m, state.d)).length > 0;
+  } catch (e) {
     // ★見るだけのものなので、転んでも書く作業は止めません（コンソールには残します）
     console.error('日報に書けているかを出せませんでした', e);
     箱.style.display = 'none';
@@ -3041,7 +3298,13 @@ function renderWroteStatus() {
       + `<span style="flex:0 0 1.3em;font-size:18px;font-weight:900;color:${印.色}">${印.印}</span>`
       + `<span style="flex:1 1 auto;min-width:0"><span style="font-weight:800">${journalEsc(x.名)}</span><br>`
       + `<span style="font-weight:${赤 ? 800 : 600};color:${印.色}">${journalEsc(x.文)}</span></span></div>`;
-  }).join('');
+  }).join('') + (戻せる
+    ? '<button type="button" class="btn" id="cashBackToNippou" style="width:100%;margin-top:10px;font-weight:800">日報の数に戻す</button>'
+      + '<div style="margin-top:6px;font-size:13px;color:var(--text-sub)">直していないのに数がちがうときに押します。'
+      + '戻す数を見てから決められます。日報は書きかえません</div>'
+    : '');
+  const 戻す = document.getElementById('cashBackToNippou');
+  if (戻す) 戻す.addEventListener('click', journal日報の数に戻す);
 }
 
 /* ------------------------------------------------------------
@@ -8019,6 +8282,7 @@ function renderCashList() {
     p.textContent = 'この月は、まだ1日も記録がありません。';
     el.cashList.appendChild(p);
   }
+  journalちがう日を出す();
 }
 
 
