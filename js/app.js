@@ -1138,6 +1138,15 @@ async function cashResume() {
     cashTab = 'day';
     render();
 
+    /* ★★控えのあとで数を直していたら、続きをやめます（2026-11-02）。
+         控えの数は「押したときの数」です。そのまま続けると、あとで直した数を**古い数で日報に書き戻します。** */
+    if ((job.kind === 'send' || job.kind === 'part') && cash控えは古いか(job)) {
+      cashJobClear();
+      先の知らせ('前の書き込みは途中で切れていましたが、そのあと数を直しているので、続きはやめました。'
+        + 'もう一度「日報に書く」を押してください', 'warn');
+      return;
+    }
+
     if (job.kind === 'read' && job.image) {
       cashEdit.pending = job.image;
       el.cashShotImg.src = job.image;
@@ -1150,10 +1159,9 @@ async function cashResume() {
     } else if (job.kind === 'send') {
       if (job.sales !== undefined && job.sales !== null) el.cashSales.value = cashText(job.sales);
       if (job.by) fillStaffOptions(el.cashStaff, job.by);
+      // ★手で入れた数（m・手）は戻しません。打ったときに書きかけへ残っていて、控えの方が古いことがあるためです（上の見張り）
       cashEdit.j = job.j || cashEdit.j;
-      cashEdit.m = job.m || cashEdit.m;
       cashEdit.sure = job.sure || cashEdit.sure;
-      cashEdit.手 = job.手 || cashEdit.手;
       cashEdit.jok = true;
       render();
       先の知らせ('前の書き込みが途中でした。続きからやり直します…');
@@ -1189,7 +1197,7 @@ async function cashResume() {
           return;
         }
         cashJobClear();
-        cashWroteSave(job.date, job.values, job.extra, job.calc);
+        日報に書いた値を残す(job.store, job.date, job.values, job.extra, job.calc);
         先の知らせ(`${名}を日報に書きました（${res.sheet}日・${(res.rows || []).length}か所）`, 'ok');
       } finally { cashWakeOff(); }
     }
@@ -1767,7 +1775,8 @@ function calcPadInsert(c) {
   const t = calcPad打つ先();
   let at = t.selectionStart;
   let to = t.selectionEnd;
-  if (at === null || at === undefined) { at = t.value.length; to = at; }
+  // ★欄に本当の focus がないとき（下の calcPadDone の説明）は、打つ場所が当てになりません。一番うしろに入れます
+  if (at === null || at === undefined || document.activeElement !== t) { at = t.value.length; to = at; }
   t.value = t.value.slice(0, at) + c + t.value.slice(to);
   const 次 = at + c.length;
   /* ★一番うしろで打っているときは、打つ場所を置き直しません（中身を入れかえると、打つ場所はもう一番うしろです）。
@@ -1787,7 +1796,7 @@ function calcPadBack() {
   const t = calcPad打つ先();
   let at = t.selectionStart;
   let to = t.selectionEnd;
-  if (at === null || at === undefined) { at = t.value.length; to = at; }
+  if (at === null || at === undefined || document.activeElement !== t) { at = t.value.length; to = at; }
   if (at === to) {
     if (at === 0) return;
     t.value = t.value.slice(0, at - 1) + t.value.slice(to);
@@ -1835,6 +1844,12 @@ function calcPadDone() {
   if (!次) { calcPadClose(); return; }
   i.blur();                 // いまの欄を、その場で残します
   calcPadFor = 次;
+  /* ★★式を入れた欄は、離れている間「答え」（◯◯,◯◯◯）を出しています。押すと focus の見張りが式へ戻します。
+       ところがキーは指が触れた瞬間に動くので（2026-10-29）、iPhone はこの focus を断ることがあります。
+       断られると、**答えの字のうしろに打った数が続いて**、1けた多い別の金額になります。
+       focus に頼らず、ここで式へ戻します（ko-dai さん「記入した数字が勝手に変わる」・2026-11-02） */
+  const 式 = 次.dataset.raw;
+  if (式 !== undefined && 式 !== 次.value) 次.value = 式;
   次.focus();
   calcPadShow(次);
 }
@@ -2124,37 +2139,182 @@ function cashHandOf(storeId, dateStr) {
 }
 
 let cashHandTimer = null;
+let cashHandまだ = null;      // 待っている書き込み（{ key, put }）
+
+/* ------------------------------------------------------------
+ *  ★★書きかけは「自分が変えた欄だけ」を残します（ko-dai さん「記入した数字が勝手に変わる」・2026-11-02）
+ *
+ *  書きかけ（__cashHand）は1日分の出前館・仕入・人件費・手で直した数が1つにまとまった記録で、
+ *  前は保存のたびに**この端末が持っている中身で丸ごと**入れかえていました。
+ *  この端末の中身は、その日を開いた時点のものです。そのあと別の端末が入れた数も、
+ *  同期が届く前に開いた分も、**ここには入っていません。**しかも欄を触って離すだけで保存していたので、
+ *  打っていなくても、古い数で全体を戻していました。
+ *
+ *  ★いまは cashEdit.元（開いたときの中身）と見くらべ、**変えた欄だけ**を、記録の最新の中身に重ねます。
+ *    何も変えていなければ、保存しません。
+ *  ★別の端末が変えた欄は、同期が届いたら画面にも映します（cash他の端末の分を映す）。
+ *  ★同じ欄を2つの端末で同時に直したら、あとから残した方が勝ちます（欄より細かくは分けられません）。
+ *  ★ごく短い間に別の欄を同時に直して、同期が届く前に両方が残すと、片方が消えることはまだあります。
+ *    1日分を1つの記録にしている限り、なくせません（なくすには記録の形を変えます。本部の許可が要ります）。
+ * ---------------------------------------------------------- */
+
+/** 空と未入力を同じに見ます（数と字も、見た目が同じなら同じ） */
+function cash字(v) { return v === undefined || v === null ? '' : String(v); }
+
+/** いまの画面の書きかけの写し */
+function cash書きかけの写し() {
+  return JSON.parse(JSON.stringify({
+    m: cashEdit.m || {},
+    shiire: cashEdit.shiire || {},
+    jinken: cashEdit.jinken || {},
+    j手: cashEdit.手 || {},
+  }));
+}
+
+/** アプリが出す欄か（月額が分かっている店の社員の金額）。人が変えたものではないので、見くらべません */
+function cash自動の欄か(storeId, 節, 名, 列) {
+  return 節 === 'jinken' && 列 === 'g' && journal社員の行か(名) && journal社員の月額(storeId) !== null;
+}
+
+/** 2つの入れ物の鍵を合わせます */
+function cash鍵たち(a, b) { return [...new Set([...Object.keys(a || {}), ...Object.keys(b || {})])]; }
+
+/**
+ * 記録の最新の中身に、「元」から「画面」で変わった欄だけを重ねます
+ *
+ *   返り: { 出: { m, j手, shiire, jinken }, 変わった: 変えた欄の数 }
+ *
+ * ★書きかけがない古い日は、開いたときに記録した中身（m・h）から出しているので、元をそのまま土台にします。
+ *   空の記録を土台にすると、変えていない欄が消えます。
+ */
+function cash書きかけを重ねる(記録, 元, 画面, storeId) {
+  const 写す = (x) => JSON.parse(JSON.stringify(x || {}));
+  const 出 = {
+    m: 写す(Object.keys(記録.m || {}).length ? 記録.m : 元.m),
+    j手: 写す(記録.j手 !== undefined ? 記録.j手 : 元.j手),
+    shiire: 写す(記録.shiire),
+    jinken: 写す(記録.jinken),
+  };
+  let 変わった = 0;
+  ['m', 'j手'].forEach((節) => cash鍵たち(元[節], 画面[節]).forEach((k) => {
+    const 今 = (画面[節] || {})[k];
+    if (cash字(今) === cash字((元[節] || {})[k])) return;
+    変わった += 1;
+    if (今 === undefined) delete 出[節][k];
+    else 出[節][k] = 今;
+  }));
+  ['shiire', 'jinken'].forEach((節) => cash鍵たち(元[節], 画面[節]).forEach((名) => ['f', 'g'].forEach((列) => {
+    const 今 = ((画面[節] || {})[名] || {})[列];
+    if (cash字(今) === cash字(((元[節] || {})[名] || {})[列])) return;
+    if (cash自動の欄か(storeId, 節, 名, 列)) return;
+    変わった += 1;
+    if (今 === undefined) { if (出[節][名]) delete 出[節][名][列]; return; }
+    if (!出[節][名]) 出[節][名] = {};
+    出[節][名][列] = 今;
+  })));
+  return { 出, 変わった };
+}
+
+/**
+ * 書きかけを、記録へ残します
+ *
+ *   足す … 一緒に入れ直すもの（wrote など）。あれば、欄が変わっていなくても残します
+ *   返り … 残したか
+ */
+function cash書きかけを残す(storeId, dateStr, 元, 中身, 足す) {
+  const 記録 = cashHandOf(storeId, dateStr);
+  const 重ね = cash書きかけを重ねる(記録, 元, 中身, storeId);
+  if (!重ね.変わった && !足す) return false;     // ★何も変えていないなら、書きません
+  Store.setItem(storeId, dateStr, CASH_HAND, { value: { ...記録, ...重ね.出, ...(足す || {}) } });
+  // ★今も同じ日を開いていれば、残した欄を「元」に入れます（次は、そのあと変えた欄だけを見ます）
+  if (cashEdit.key === `${storeId}/${dateStr}`) cashEdit.元 = cash書きかけを重ねる(元, 元, 中身, storeId).出;
+  return true;
+}
+
+/**
+ * 別の端末が変えた欄を、開いている画面に映します（同期のあとの描き直しで呼びます）
+ *
+ * ★自分が変えていない欄だけです。打ちかけの欄は触りません。
+ */
+function cash他の端末の分を映す(storeId, dateStr) {
+  const 元 = cashEdit.元;
+  if (!元) return;
+  const 記録 = cashHandOf(storeId, dateStr);
+  const 映す = (画面, 土台, 届いた) => {
+    cash鍵たち(土台, 届いた).forEach((k) => {
+      const 新 = (届いた || {})[k];
+      if (cash字(新) === cash字((土台 || {})[k])) return;     // 別の端末は変えていません
+      if (cash字(画面[k]) === cash字((土台 || {})[k])) {       // 自分も変えていません
+        if (新 === undefined) delete 画面[k];
+        else 画面[k] = 新;
+      }
+      if (新 === undefined) delete 土台[k];
+      else 土台[k] = 新;
+    });
+  };
+  if (Object.keys(記録.m || {}).length) 映す(cashEdit.m, 元.m, 記録.m);
+  if (記録.j手 !== undefined) {
+    if (!cashEdit.手) cashEdit.手 = {};
+    映す(cashEdit.手, 元.j手, 記録.j手);
+  }
+  ['shiire', 'jinken'].forEach((節) => {
+    cash鍵たち(元[節], 記録[節]).forEach((名) => ['f', 'g'].forEach((列) => {
+      if (cash自動の欄か(storeId, 節, 名, 列)) return;
+      const 新 = ((記録[節] || {})[名] || {})[列];
+      const 前 = ((元[節] || {})[名] || {})[列];
+      if (cash字(新) === cash字(前)) return;
+      const 今 = ((cashEdit[節] || {})[名] || {})[列];
+      if (cash字(今) === cash字(前)) {
+        if (!cashEdit[節][名]) cashEdit[節][名] = {};
+        cashEdit[節][名][列] = 新;
+      }
+      if (!元[節]) 元[節] = {};
+      if (!元[節][名]) 元[節][名] = {};
+      元[節][名][列] = 新;
+    }));
+  });
+}
+
+/** 待っている書き込みを、今すぐ残します（別の日へ移る前・日報に書く前） */
+function cashHand待ちを書く() {
+  const 待ち = cashHandまだ;
+  if (!待ち) return;
+  cashHandまだ = null;
+  if (cashHandTimer) { clearTimeout(cashHandTimer); cashHandTimer = null; }
+  待ち.put();
+}
 
 /** 書きかけを残します（少し待ってからまとめて書きます） */
 function cashHandSave(now) {
-  const storeId = state.storeId;
-  const dateStr = ymd(state.y, state.m, state.d);
+  // ★どの店・どの日の中身かは、cashEdit の印で見ます（画面の state は、描き直す前に先へ進むことがあります）
+  const 開いている = /^(.*)\/(\d{4}-\d{2}-\d{2})$/.exec(String(cashEdit.key || ''));
+  if (!開いている) return;
+  const key = cashEdit.key;
+  const storeId = 開いている[1];
+  const dateStr = 開いている[2];
+  // ★別の日の分が待っていたら、捨てずに先に残します（前はここで取り消されて、別の日の打ちたての数が消えました）
+  if (cashHandまだ && cashHandまだ.key !== key) cashHand待ちを書く();
   /* ★★打った**その時の中身**を控えてから、少し待って書きます。
        前は書く瞬間（700ミリ秒あと）の中身を見ていました。そのあいだに別の日を開くと、
        **開いた日の数を前の日の書きかけに入れる**ことが起こりえます
        （自前のテンキーは欄から focus が外れていても打てるので、blur で先に書かれません）。
        実際に起きたのは見ていません。手で直す数（手）を足したので、
        よその日の数が「手で直した数」として出てこないよう、先に閉じておきます。 */
-  const 中身 = JSON.parse(JSON.stringify({
-    m: cashEdit.m || {},
-    shiire: cashEdit.shiire || {},
-    jinken: cashEdit.jinken || {},
-    j手: cashEdit.手 || {},
-  }));
+  const 中身 = cash書きかけの写し();
+  const 元 = cashEdit.元 || 中身;
   const put = () => {
     cashHandTimer = null;
+    cashHandまだ = null;
     /* ★★前にあった中身を**残したまま**入れかえます（2026-09-16）。
          前は m・shiire・jinken だけで作り直していたので、1文字打つたびに
          **「アプリが最後に日報へ書いた数」（wrote）が消えて**いました。
-         そのせいで「日報で直された数を取り込む」が、何も取り込めなくなっていました。
-         他の2か所（cashWroteSave・日報から取り込むところ）は残していました。 */
-    Store.setItem(storeId, dateStr, CASH_HAND, {
-      value: { ...cashHandOf(storeId, dateStr), ...中身 },
-    });
+         そのせいで「日報で直された数を取り込む」が、何も取り込めなくなっていました。 */
+    cash書きかけを残す(storeId, dateStr, 元, 中身);
   };
   if (cashHandTimer) clearTimeout(cashHandTimer);
-  if (now) put();
-  else cashHandTimer = setTimeout(put, 700);
+  if (now) { cashHandまだ = null; put(); return; }
+  cashHandまだ = { key, put };
+  cashHandTimer = setTimeout(put, 700);
 }
 
 /* ------------------------------------------------------------
@@ -2197,18 +2357,6 @@ function cashWrote足す(前, values, extra, calc) {
   return 次;
 }
 
-/** 書いたものを覚えます（日報の数と見くらべるため） */
-function cashWroteSave(dateStr, values, extra, calc) {
-  const 次 = cashWrote足す(cashWroteOf(state.storeId, dateStr), values, extra, calc);
-  const 手 = cashHandOf(state.storeId, dateStr);
-  Store.setItem(state.storeId, dateStr, CASH_HAND, {
-    value: {
-      ...手, m: cashEdit.m || {}, shiire: cashEdit.shiire || {}, jinken: cashEdit.jinken || {}, j手: cashEdit.手 || {}, wrote: 次,
-      wroteAt: new Date().toISOString(),   // ★日報に書けた時刻（journal書いた記録。日報に書く道からだけ呼ばれます）
-    },
-  });
-}
-
 /** この画面を開いてから、日報を読みにいった日 */
 const cashPulled = {};
 
@@ -2224,8 +2372,10 @@ async function cashPullFromNippou(しずかに) {
   const 先の知らせ = (t, k) => setNippouMsg(t, k, 先);
   const 先の待ち = (t) => nippou待ち(t, 先);
   const dateStr = ymd(state.y, state.m, state.d);
-  const wrote = cashWroteOf(state.storeId, dateStr);
-  if (!Object.keys(wrote).length) {
+  // ★待っている間に画面が移っても、始めた店・日の分だけを見ます（下で見くらべます）
+  const 店 = state.storeId;
+  const 開いた鍵 = cashEdit.key;
+  if (!Object.keys(cashWroteOf(店, dateStr)).length) {
     if (!しずかに) 先の知らせ('この日は、まだアプリから書いていません', 'warn');
     return;
   }
@@ -2245,6 +2395,11 @@ async function cashPullFromNippou(しずかに) {
     if (!res.ok && !res.grid) { if (!しずかに) 先の知らせ(res.error || '日報を開けませんでした', 'warn'); return; }
     if (nippou版を覚える(res) !== NIPPOU_GAS_VERSION) { if (!しずかに) nippouGasOk(res); return; }
 
+    /* ★★日報を読んでいる間（数秒）に別の店・別の日へ移っていたら、何もしません（2026-11-02）。
+         前は確かめずに**今開いている画面の中身に入れ、それを前の日の記録として残して**いました。 */
+    if (cashEdit.key !== 開いた鍵 || state.storeId !== 店) return;
+
+    const wrote = cashWroteOf(店, dateStr);     // ★読んでいる間に書けた分があるので、読み直します
     const 取り込み = [];
     const 次wrote = { ...wrote };
 
@@ -2256,6 +2411,8 @@ async function cashPullFromNippou(しずかに) {
       if (!k || wrote[r.name] === undefined) return;      // 書いた覚えのない欄は触りません
       const 日報 = cashMinusNum(r.before);
       if (日報 === null || 日報 === wrote[r.name]) return; // 直されていません
+      // ★アプリの欄を書いたあとに打ち直していたら、取り込みません（打った数を消さない・2026-11-02）
+      if (cashMinusNum(cashEdit.m[k]) !== wrote[r.name]) return;
       cashEdit.m[k] = String(日報);
       次wrote[r.name] = 日報;
       取り込み.push(`${r.name} ${日報.toLocaleString('ja-JP')}`);
@@ -2275,6 +2432,8 @@ async function cashPullFromNippou(しずかに) {
             if (wrote[key] === undefined) return;
             const 日報 = cashMinusNum(値);
             if (日報 === null || 日報 === wrote[key]) return;
+            // ★アプリの欄を書いたあとに打ち直していたら、取り込みません（打った数を消さない・2026-11-02）
+            if (cashMinusNum(((cashEdit[入れ先] || {})[r.name] || {})[c]) !== wrote[key]) return;
             if (!cashEdit[入れ先][r.name]) cashEdit[入れ先][r.name] = {};
             cashEdit[入れ先][r.name][c] = String(日報);
             次wrote[key] = 日報;
@@ -2289,10 +2448,8 @@ async function cashPullFromNippou(しずかに) {
       if (!しずかに) 先の知らせ('日報と同じでした（直されたものはありません）', 'ok');
       return;
     }
-    const 手 = cashHandOf(state.storeId, dateStr);
-    Store.setItem(state.storeId, dateStr, CASH_HAND, {
-      value: { ...手, m: cashEdit.m, shiire: cashEdit.shiire, jinken: cashEdit.jinken, j手: cashEdit.手 || {}, wrote: 次wrote },
-    });
+    // ★取り込んだ欄だけを残します（別の端末が入れた他の欄を、古い中身で戻さないように）
+    cash書きかけを残す(店, dateStr, cashEdit.元 || {}, cash書きかけの写し(), { wrote: 次wrote });
     // ★先に描き直します。render の中で知らせが消えるためです
     render();
     先の知らせ(`日報で直されていた数を取り込みました：${取り込み.join('、')}`, 'ok');
@@ -2360,6 +2517,7 @@ function renderCash() {
 
   // 日を移ったら、打ちかけの内容は持ち越しません
   if (cashEdit.key !== key) {
+    cashHand待ちを書く();        // ★前の日の打ちたての数を、先に残します
     cashEdit.key = key;
     cashEdit.photo = saved ? (saved.photo || '') : '';
     // ★Cloudflare に預けて、まだ fileId が分かっていない写真の印（2026-09-19・J1）
@@ -2394,6 +2552,7 @@ function renderCash() {
     cashEdit.手 = 書きかけ.j手 !== undefined
       ? { ...書きかけ.j手 }
       : { ...((saved && saved.h) || {}) };
+    cashEdit.元 = cash書きかけの写し();   // ★開いたときの中身。あとで「自分が変えた欄」を見分けます
     cashEdit.checks = [];
     cashEdit.sure = saved && saved.j ? Object.keys(saved.j).reduce((o, k) => { o[k] = true; return o; }, {}) : {};
     cashEdit.jok = !!(saved && saved.j);
@@ -2425,6 +2584,8 @@ function renderCash() {
       setCashMsg('さきほど読み取った分です。紙と見くらべてください', 'ok');
       showCashPhoto();
     }
+  } else {
+    cash他の端末の分を映す(state.storeId, dateStr);   // ★同期で届いた分を、変えていない欄に映します
   }
 
   el.cashTabDay.classList.toggle('is-on', cashTab === 'day');
@@ -2742,6 +2903,21 @@ function journal送る数(種) {
     if (typeof b === 'number' && Number.isFinite(b)) 出[名] = Math.round(b);
   });
   return 出;
+}
+
+/** 控えの手で入れた数と、今の数がちがうか（控えのあとで直したか） */
+function cash控えは古いか(job) {
+  const 今 = { ...journal送る数('delivery'), ...journal送る数('shiire'), ...journal送る数('jinken') };
+  const 控え = {};
+  CASH_MINUS_ROWS.forEach((k) => {
+    const n = cashMinusNum((job.values || {})[NIPPOU_LABELS[k]]);
+    if (n !== null) 控え[NIPPOU_LABELS[k]] = n;
+  });
+  (job.extra || []).forEach((x) => {
+    const n = cashMinusNum(x.value);
+    if (n !== null) 控え[cashWroteKey(x.name, x.col)] = n;
+  });
+  return Object.keys(控え).some((k) => 今[k] !== 控え[k]);
 }
 
 /** 覚え書きの鍵を、人が読む名前にします（'あ食品|G' → 'あ食品'） */
@@ -5584,6 +5760,8 @@ function nippouBtnDone(btn) {
  *   これで叶えています。**各区分のボタンはそのまま残します。**
  */
 async function nippouWritePart(part, btn) {
+  cashHand待ちを書く();         // ★打ちたての数を、先に残します
+  const 書く店 = state.storeId;  // ★書いている間に画面が移っても、書いた店の記録に覚えます
   // ★書き始めた画面（店舗・日）の知らせとして出します（途中で別の画面へ移っても、よその欄に出さない）
   const 先 = nippouいまの先();
   const 先の知らせ = (t, k) => setNippouMsg(t, k, 先);
@@ -5760,7 +5938,8 @@ async function nippouWritePart(part, btn) {
       return;
     }
     cashJobClear();                          // ここまで来たら、やり直す必要はありません
-    cashWroteSave(dateStr, values, extra, calc);   // ★日報で直されたかを見くらべるため
+    // ★日報で直されたかを見くらべるため。★今開いている画面ではなく、書いた店・日に入れます
+    日報に書いた値を残す(書く店, dateStr, values, extra, calc);
     journal秒を残す(`日報（${決.name}）`, { ms: 書.ms, 中: res.ms && res.ms.全部, 送り直した: res.送り直した || 0 });
     /* ★どのファイルに書いたかを出します。
          「アプリでは書けたことになっているのに、日報には入っていなかった」
@@ -6380,7 +6559,7 @@ function 日報の待ちを出す() {
 /**
  * 日報に書いた数を覚えます（あとで日報が手で直されたかを見くらべるため）
  *
- * ★cashWroteSave とちがい、**店と日を名指しで**入れます。
+ * ★**店と日を名指しで**入れます。
  *   預けた答えは、別の店・別の日を開いているときに届くことがあります。
  *   そのとき今の画面の書きかけを入れてしまうと、別の日の記録を壊します。
  */
@@ -6393,6 +6572,7 @@ function 日報に書いた値を残す(店, dateStr, values, extra, calc) {
 }
 
 async function nippouSendNow(values, dateStr, test, folder, extra, calc) {
+  const 書く店 = state.storeId;  // ★書いている間に画面が移っても、書いた店の記録に覚えます
   // ★書き始めた画面（店舗・日）の知らせとして出します（途中で別の画面へ移っても、よその欄に出さない）
   const 先 = nippouいまの先();
   const 先の知らせ = (t, k) => setNippouMsg(t, k, 先);
@@ -6439,7 +6619,7 @@ async function nippouSendNow(values, dateStr, test, folder, extra, calc) {
   }
 
   cashJobClear();            // ここまで来たら、やり直す必要はありません
-  cashWroteSave(dateStr, values, extra, calc);   // ★日報で直されたかを見くらべるため
+  日報に書いた値を残す(書く店, dateStr, values, extra, calc);   // ★日報で直されたかを見くらべるため
   journal秒を残す('日報（ジャーナル）', { ms: Date.now() - 書いた, 中: res.ms && res.ms.全部, 送り直した: res.送り直した || 0 });
 
   // ③ 書いたあとの検算（want は上で取ってあります）
@@ -7644,6 +7824,14 @@ function openShot() {
 /* -------- 記録する -------- */
 async function saveCash() {
   const dateStr = ymd(state.y, state.m, state.d);
+  const 記録する店 = state.storeId;
+  const 開いた鍵 = cashEdit.key;
+  // ★写真を待っている間に別の日・別の店を開いたら、その画面の中身を、この日の記録に入れません（2026-11-02）
+  const 移った = () => {
+    if (cashEdit.key === 開いた鍵 && state.storeId === 記録する店) return false;
+    setCashMsg('記録の途中で別の画面を開いたので、記録をやめました。もう一度押してください', 'warn');
+    return true;
+  };
   const sales = cashYen(el.cashSales.value);
 
   if (sales === null) {
@@ -7661,6 +7849,7 @@ async function saveCash() {
 
   // ★Cloudflare に預けた写真なら、様子を聞いて写真の欄を決めます（送り直しません。2026-09-19・J1）
   if (cashEdit.photoJob) await journal記録の写真を決める();
+  if (移った()) return false;
 
   // ★写真をドライブに残すのは、ここ（記録するを押したとき）です。
   //   同じ日の古い写真はサーバー側でゴミ箱に入るので、残るのは最後の1枚だけです
@@ -7687,6 +7876,7 @@ async function saveCash() {
     el.cashSave.textContent = before;
     cashEdit.saveMs = Date.now() - from;
 
+    if (移った()) return false;
     if (res.ok && !cashGasOk(res)) return false;
 
     if (!res.ok || !res.fileId) {
@@ -7701,7 +7891,7 @@ async function saveCash() {
 
   const now = new Date().toISOString();
 
-  Store.setItem(state.storeId, dateStr, CASH_ITEM, {
+  Store.setItem(記録する店, dateStr, CASH_ITEM, {
     done: true,
     value: {
       sales, photo: cashEdit.photo || '', ocr: cashEdit.ocr, at: now, by,
