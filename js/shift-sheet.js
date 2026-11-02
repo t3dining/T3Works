@@ -826,6 +826,59 @@ function shiftTodayStr() {
   return dateToStr(businessDate());
 }
 
+/* ---- 前の日・次の日へ動く（2026-11-02、ko-dai さんの指示） ----
+ *
+ *  ko-dai さん「今日のシフトを開いたところから前の日、次の日のシフトに移動できるようにしてください」。
+ *  ワークス・マインの小窓（js/app.js の openShiftToday）と、提出ページ（shift/js/submit.js の openToday）が使います。
+ *  ★どこまでも動けます。記録のない日は、表を描く部品が「まだ入っていません」などと出します。
+ *  ★見出しは「今日のシフト」のままにしません。別の日の表を、今日のつもりで読まないためです。
+ *  ★検算は .claude/skills/t3works-shift/day-nav.js。
+ */
+
+/** 'YYYY-MM-DD' から n 日ずらした日（月またぎ・年またぎも、カレンダーのとおり） */
+function shiftTodayMove(日, n) {
+  const [y, m, d] = String(日).split('-').map(Number);
+  return dateToStr(new Date(y, m - 1, d + n));
+}
+
+/** 見出しの字（今日のシフト／明日のシフト／昨日のシフト／それ以外は「11/5（木）のシフト」） */
+function shiftTodayHeading(日) {
+  const 今日 = shiftTodayStr();
+  if (日 === 今日) return '今日のシフト';
+  if (日 === shiftTodayMove(今日, 1)) return '明日のシフト';
+  if (日 === shiftTodayMove(今日, -1)) return '昨日のシフト';
+  return `${shiftDayLabel(日, DOW)}のシフト`;
+}
+
+/**
+ * 「‹ 前の日」「今日に戻る」「次の日 ›」のボタンの段
+ *
+ *   日   … いま出している日（'YYYY-MM-DD'）
+ *   移る … 押されたときに呼びます（動いた先の日を渡します）
+ *
+ * ★今日を出しているあいだは「今日に戻る」を見えなくします（場所は残します。前・次のボタンが左右に動かないように）。
+ * ★ボタンの見た目は、置いた画面の .btn です（ワークス・マインと提出ページで、それぞれの形になります）。
+ */
+function shiftTodayNav(日, 移る) {
+  shiftTodayStyle();
+  const nav = document.createElement('div');
+  nav.className = 'shift-tt__nav';
+  // 先 … 動く先の日。関数なら、押したときに数えます
+  const ボタン = (字, 先, cls) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn shift-tt__navbtn' + (cls ? ` ${cls}` : '');
+    b.textContent = 字;
+    b.addEventListener('click', () => 移る(typeof 先 === 'function' ? 先() : 先));
+    return b;
+  };
+  // ★「今日」は押したときに数えます（朝6時に日付が変わったあと、描き直しより先に押されても、新しい今日へ）
+  const 戻る = ボタン('今日に戻る', () => shiftTodayStr(), 'shift-tt__navbtn--today');
+  if (日 === shiftTodayStr()) 戻る.style.visibility = 'hidden';
+  nav.append(ボタン('‹ 前の日', shiftTodayMove(日, -1)), 戻る, ボタン('次の日 ›', shiftTodayMove(日, 1)));
+  return nav;
+}
+
 /**
  * 名前の列の幅と、1時間の列のこれより狭くしない幅（px）
  *
@@ -904,6 +957,9 @@ function shiftTodayStyle() {
     '.shift-tt__legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:8px 0 0;font-size:11.5px;line-height:1.6;color:var(--text-sub)}',
     '.shift-tt__key{display:inline-block;width:20px;height:10px;margin-right:5px;border-radius:3px;vertical-align:-1px;background:var(--tt-c)}',
     '.shift-tt__memo{margin:8px 0 0;font-size:12.5px;line-height:1.6;overflow-wrap:anywhere}',
+    // 前の日・次の日のボタン（→ shiftTodayNav）。3つを同じ幅に並べます。広い画面でも伸ばしすぎません
+    '.shift-tt__nav{display:flex;align-items:center;gap:8px;max-width:480px;margin:0 0 10px}',
+    '.shift-tt__nav .shift-tt__navbtn{flex:1 1 0;min-width:0;padding-left:6px;padding-right:6px;white-space:nowrap}',
     // ★名前と出勤時刻だけの一覧（時刻の表を出さない店舗）。持ち場ごとの箱を、**いつも横に並べます**（キッチンが左・ホールが右）。
     //   2026-10-12、ko-dai さん「キッチンとホールを横並びにできますか？」。前は、スマホの幅では縦に並んでいました。
     //   列の数は持ち場の数（--tt-lanes。shiftTodayListBox が入れます）。minmax(0,…) で、長い名前が箱を押し広げないようにします

@@ -404,6 +404,12 @@ body {
   font: inherit; font-size: 14px; line-height: 1; cursor: pointer;
 }
 .help__x:active { background: var(--line-2); }
+/* 「今日のシフト」の、前の日・次の日のボタンの段（見出しの下で動かしません。2026-11-02）。
+   ボタンの並びは js/shift-sheet.js の shiftTodayNav（.shift-tt__nav）。下の空きは、ここで決め直します */
+.help__nav { flex: 0 0 auto; padding: 10px 16px 0; background: var(--surface); }
+.help__nav:empty { display: none; }
+.help__nav .shift-tt__nav { margin: 0; }
+.help__nav .btn { padding-top: 9px; padding-bottom: 9px; }
 
 .help__body {
   flex: 1 1 auto; min-height: 0; overflow-y: auto;

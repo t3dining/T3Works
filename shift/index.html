@@ -45,8 +45,8 @@
 <link rel="apple-touch-icon" href="../img/shift-icon-180.png?v=ab0bd671">
 <link rel="icon" href="../img/shift-icon-64.png?v=0254ff8c">
 
-<link rel="stylesheet" href="css/submit.css?v=14174bc5">
-<meta name="app-version" content="2a0c0c61">
+<link rel="stylesheet" href="css/submit.css?v=e8a6d2b3">
+<meta name="app-version" content="2b0a12fd">
 </head>
 <body>
 
@@ -256,6 +256,8 @@
       <h2 class="help__title" id="todayTitle">今日のシフト</h2>
       <button type="button" class="help__x" id="todayClose" aria-label="閉じる">✕</button>
     </div>
+    <!-- 前の日・次の日のボタン（2026-11-02）。見出しの下で動かしません。中身は js/submit.js の drawToday が入れます -->
+    <div class="help__nav" id="todayNav"></div>
     <div class="help__body">
       <!-- ★min-width:0 … 枠が格子（grid）なので、付けないと表が枠ごと横に広がり、表だけを横に動かせません -->
       <div id="todayBody" style="min-width:0;"></div>
@@ -290,9 +292,9 @@
   </div>
 </div>
 
-<script src="../js/config.js?v=0ebfc3e2"></script>
+<script src="../js/config.js?v=fec66414"></script>
 <!-- シフト表を絵に描くところ。ワークスの「JPEGで保存」と同じものです -->
-<script src="../js/shift-sheet.js?v=59489822"></script>
-<script src="js/submit.js?v=cc176388"></script>
+<script src="../js/shift-sheet.js?v=202d99f9"></script>
+<script src="js/submit.js?v=87977fc9"></script>
 </body>
 </html>

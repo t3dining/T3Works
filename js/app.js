@@ -15604,6 +15604,7 @@ function openShiftToday() {
           <h2 class="modal__title" id="shiftTodayTitle">今日のシフト</h2>
           <button type="button" class="modal__x" data-shift-today-close title="閉じる" aria-label="閉じる">✕</button>
         </div>
+        <div id="shiftTodayNav"></div>
         <div class="modal__body" id="shiftTodayBody"></div>
       </div>`;
     document.body.appendChild(m);
@@ -15612,18 +15613,51 @@ function openShiftToday() {
     });
   }
   m.dataset.store = state.storeId;
+  // ★開くときは、いつも今日から（前に別の日を見ていても）
+  m.dataset.date = '';
   const body = m.querySelector('#shiftTodayBody');
-  shiftTodayDraw(body, state.storeId);
+  shiftTodayShowDay(m);
   m.classList.remove('is-hidden');
   body.scrollTop = 0;
   if (typeof shiftTodayToNow === 'function') shiftTodayToNow(body);
 }
 
 /**
+ * 小窓に、見ている日のシフトを描く（見出しと、前の日・次の日のボタンも一緒に直します）
+ *
+ * ★見ている日は m.dataset.date です。**空なら今日**（朝6時に日付が変わったら、新しい今日になります）。
+ *   別の日を見ているあいだは、その日のままです（同期の描き直しで今日に戻りません）。
+ * ★ボタンの部品（shiftTodayNav）は js/shift-sheet.js にあります（提出ページと同じもの）。
+ *   端末に古い js/shift-sheet.js が残っているときは、ボタンを出さずに今日の表だけ描きます（転ばないように）。
+ */
+function shiftTodayShowDay(m) {
+  const body = m.querySelector('#shiftTodayBody');
+  const nav = m.querySelector('#shiftTodayNav');
+  const 動ける = typeof shiftTodayNav === 'function' && typeof shiftTodayRender === 'function';
+  if (!動ける) m.dataset.date = '';
+  const 日 = m.dataset.date || (typeof shiftTodayStr === 'function' ? shiftTodayStr() : '');
+  shiftTodayDraw(body, m.dataset.store || state.storeId, 日 || undefined);
+  if (nav) nav.innerHTML = '';
+  if (!動ける) return;
+  m.querySelector('#shiftTodayTitle').textContent = shiftTodayHeading(日);
+  nav.appendChild(shiftTodayNav(日, (先) => {
+    const 横の位置 = () => body.querySelector('.shift-tt__scroll');
+    const 横 = 横の位置() ? 横の位置().scrollLeft : 0;
+    m.dataset.date = 先 === shiftTodayStr() ? '' : 先;
+    shiftTodayShowDay(m);
+    body.scrollTop = 0;
+    // 今日に戻ったら、いまの時刻のあたりから。別の日は、見ていた横の位置のまま（日を比べやすいように）
+    if (!m.dataset.date) shiftTodayToNow(body);
+    else if (横の位置()) 横の位置().scrollLeft = 横;
+  }));
+}
+
+/**
  * 小窓を開いているあいだに記録が届いたら、描き直す（renderShift が呼びます）
  *
  * ★同期は60秒ごとに描き直しを呼びます。開いたまま置いてある端末でも、他の端末の直しが出ます。
- *   日付が変わったあと（朝6時）は、新しい今日になります。見ていた位置は戻します。
+ *   今日を見ているときは、日付が変わったあと（朝6時）は新しい今日になります。
+ *   前の日・次の日へ動いているときは、その日のままです。見ていた位置は戻します。
  */
 function shiftTodayRefresh() {
   const m = document.getElementById('shiftTodayModal');
@@ -15632,7 +15666,7 @@ function shiftTodayRefresh() {
   const 横の位置 = () => body.querySelector('.shift-tt__scroll');
   const 横 = 横の位置() ? 横の位置().scrollLeft : 0;
   const 縦 = body.scrollTop;
-  shiftTodayDraw(body, m.dataset.store || state.storeId);
+  shiftTodayShowDay(m);
   if (横の位置()) 横の位置().scrollLeft = 横;
   body.scrollTop = 縦;
 }
@@ -16159,7 +16193,8 @@ function shiftGuideHtml(kind) {
     '確定を取り消して希望を集め直すときは<b>「募集をやり直す」</b>',
     '前の半月の表は<b>「これまでのシフト表」</b>で見られます',
     // ★「今日のシフト」（2026-10-11、ko-dai さんの指示）。この窓を開くボタンのすぐ下にあります
-    '今日入っている人は、この窓を開いたボタンのすぐ下の<b>「今日のシフト」</b>で、時刻の表（縦に名前・横に時刻）で見られます',
+    //   2026-11-02 から、前の日・次の日へ動けます（→ 今日のシフトの節の shiftTodayShowDay）
+    '今日入っている人は、この窓を開いたボタンのすぐ下の<b>「今日のシフト」</b>で見られます。<b>「‹ 前の日」</b><b>「次の日 ›」</b>で、前後の日にも動けます',
   ]));
 
   // ★行き先は、ワークスの使い方の6章（シフト）へ直に。マインの「使い方を見る」はマインの使い方（help/mine/）へ行き、

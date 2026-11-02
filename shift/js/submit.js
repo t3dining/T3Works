@@ -1779,23 +1779,35 @@ function renderDone() {
  */
 
 /**
- * 今日が入っている半月の、確定したシフトの今日の分
+ * その日が入っている半月の、確定したシフトのその日の分
  *
- *   返すもの … { 日: 'YYYY-MM-DD', 確定: その半月が確定して届いているか, day: 記録のままの1日（なければ空） }
+ *   日       … 'YYYY-MM-DD'（渡さなければ、業務上の今日）
+ *   返すもの … { 日, 確定: その半月が確定して届いているか, 届かない: 今日の半月より前なのに届いていないか,
+ *                day: 記録のままの1日（なければ空） }
+ *
+ * ★前の日・次の日へ動けます（2026-11-02、ko-dai さんの指示）。**サーバーには新しく何も聞きません。**
+ *   届いている確定ずみ（いまの半月と、過去の確定ずみ＝サーバーが最近の分だけ渡します）の中から探します。
+ *   今日の半月より前で見つからない日は「届かない」（古すぎる・確定しなかった）。
+ *   「まだ確定していません」とは出しません（終わった日を、これから決まるように読ませないため）。
+ *   ★境目は「今日の半月」です。「募集している半月」ではありません
+ *     （今日の半月がまだ確定しないうちに次の募集が始まっていても、今日は「まだ確定していません」）。
  */
-function todayPick() {
-  const 日 = shiftTodayStr();
+function todayPick(日) {
+  日 = 日 || shiftTodayStr();
   const [y, m, d] = 日.split('-').map(Number);
   const half = shiftHalfOf(d);
   const 同じ半月 = (v) => !!v && Number(v.y) === y && Number(v.m) === m && Number(v.half) === half;
   let 表 = null;
-  // いま出している半月が今日の半月で、確定している（見本の「確定後」で作った見本の表は、本物ではないので使いません）
+  // いま出している半月がその日の半月で、確定している（見本の「確定後」で作った見本の表は、本物ではないので使いません）
   if (!me.demo && built && typeof built === 'object' && 同じ半月(period)) 表 = built;
   if (!表) {
     const v = (past || []).find(同じ半月);
     if (v && v.built && typeof v.built === 'object') 表 = v.built;
   }
-  return { 日, 確定: !!表, day: (表 && 表[日]) || {} };
+  // 比べる元は、今日の半月
+  const 番号 = (yy, mm, hh) => (yy * 1000) + (mm * 10) + hh;
+  const [ty, tm, td] = shiftTodayStr().split('-').map(Number);
+  return { 日, 確定: !!表, 届かない: !表 && 番号(y, m, half) < 番号(ty, tm, shiftHalfOf(td)), day: (表 && 表[日]) || {} };
 }
 
 /** 見本の番号のとき、今日の分が確定していなければ出す、見本の1日（送りも保存もしません） */
@@ -1807,7 +1819,27 @@ function todayDemoDay() {
 }
 
 function openToday() {
-  const 今日 = todayPick();
+  // ★開くときは、いつも今日から（前に別の日を見ていても）
+  drawToday(shiftTodayStr());
+  el('today').classList.remove('is-hidden');
+  document.body.classList.add('is-help');
+  // 表が横に動く幅（スマホの縦持ち）では、いまの時刻のあたりから見えるようにします
+  shiftTodayToNow(el('todayBody'));
+  el('todayClose').focus();
+}
+
+/**
+ * その日のシフトを描く（見出しと、前の日・次の日のボタンも一緒に直します。2026-11-02）
+ *
+ * ★ボタンの部品（shiftTodayNav）は js/shift-sheet.js にあります（ワークス・マインと同じもの）。
+ *   端末に古い js/shift-sheet.js が残っているときは、ボタンを出さずに今日の表だけ描きます（転ばないように）。
+ */
+function drawToday(日) {
+  const 動ける = typeof shiftTodayNav === 'function';
+  if (!動ける) 日 = shiftTodayStr();
+  const 今日か = 日 === shiftTodayStr();
+  const この日 = 今日か ? '今日' : 'この日';
+  const 今日 = todayPick(日);
   const store = getStore(me.store);
   const 中身 = {
     storeId: me.store,
@@ -1815,24 +1847,37 @@ function openToday() {
     day: 今日.day,
     title: `${shiftDayLabel(今日.日, DOW)}　${(store && store.name) || ''}`,
     notes: isClosedOn(今日.日) ? [{ text: 'この日は定休日です。' }] : [],
-    empty: 今日.確定 ? '今日のシフトには、誰も入っていません。' : '今日のシフトは、まだ確定していません。',
+    empty: 今日.確定 ? `${この日}のシフトには、誰も入っていません。`
+      : 今日.届かない ? 'この日のシフトは、ここでは見られません（見られるのは、最近の確定したシフトだけです）。'
+        : `${この日}のシフトは、まだ確定していません。`,
     memo: 今日.確定 ? (今日.day.memo || '') : '',
     me: me.name,
   };
-  // ★見本の番号で、今日の分がまだ確定していないとき：見本の表を出します（どう見えるかを確かめるため）
+  // ★見本の番号で、その日の分がまだ確定していないとき：見本の表を出します（どう見えるかを確かめるため）
   if (!今日.確定) {
     const 見本 = todayDemoDay();
     if (見本) {
       中身.day = 見本;
-      中身.notes.push({ text: '★見本の表です（今日のシフトは、まだ確定していません。見本の番号のときだけ出ます）。', warn: true });
+      中身.notes.push({ text: `★見本の表です（${この日}のシフトは、まだ確定していません。見本の番号のときだけ出ます）。`, warn: true });
     }
   }
   shiftTodayRender(el('todayBody'), 中身);
-  el('today').classList.remove('is-hidden');
-  document.body.classList.add('is-help');
-  // 表が横に動く幅（スマホの縦持ち）では、いまの時刻のあたりから見えるようにします
-  shiftTodayToNow(el('todayBody'));
-  el('todayClose').focus();
+  const nav = el('todayNav');
+  if (nav) nav.innerHTML = '';
+  if (!動ける || !nav) return;
+  el('todayTitle').textContent = shiftTodayHeading(日);
+  nav.appendChild(shiftTodayNav(日, (先) => {
+    const sc = el('todayBody').querySelector('.shift-tt__scroll');
+    const 横 = sc ? sc.scrollLeft : 0;
+    drawToday(先);
+    // 縦は上から（新しい表の日付から読めるように）。動くのは表の外の枠です
+    const 枠 = el('todayBody').closest('.help__body');
+    if (枠) 枠.scrollTop = 0;
+    // 今日に戻ったら、いまの時刻のあたりから。別の日は、見ていた横の位置のまま
+    const sc2 = el('todayBody').querySelector('.shift-tt__scroll');
+    if (先 === shiftTodayStr()) shiftTodayToNow(el('todayBody'));
+    else if (sc2) sc2.scrollLeft = 横;
+  }));
 }
 
 function closeToday() {
