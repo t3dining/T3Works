@@ -14427,7 +14427,11 @@ function openShiftRecruit() {
   const label = shiftRangeLabel(state.y, state.m, shiftHalf);
   const other = shiftOtherOpen();
   el.shiftOpenWhen.textContent = `${state.y}年 ${label} の募集`;
-  el.shiftOpenDue.value = shiftDueOf(shiftRec()) || shiftDueDefault(state.y, state.m, shiftHalf);
+  // ★前の期限がもう過ぎていたら使いません（そのまま始めると、始めたとたんに締め切りになります。2026-11-02）
+  const 前の期限 = shiftDueOf(shiftRec());
+  el.shiftOpenDue.min = shiftCalToday();
+  el.shiftOpenDue.value = 前の期限 && 前の期限 >= shiftCalToday()
+    ? 前の期限 : shiftDueDefault(state.y, state.m, shiftHalf);
   el.shiftOpenNote.textContent = other
     ? `今募集中の ${other.label} は締め切られます。始めると、みんなの提出ページには ${label} が出ます。`
     : 'みんなの提出ページに、この期間と期限が出るようになります。';
@@ -14438,6 +14442,11 @@ function openShiftRecruit() {
 function startShiftRecruit() {
   const due = el.shiftOpenDue.value;
   if (!due) { el.shiftOpenNote.textContent = '提出の期限を選んでください。'; return; }
+  // ★期限の次の日の 0:00 から出せなくなります（2026-11-02）。過ぎた日だと、始めたとたんに締め切りです
+  if (due < shiftCalToday()) {
+    el.shiftOpenNote.textContent = '提出の期限が、もう過ぎた日になっています。今日か、それより後の日を選んでください。';
+    return;
+  }
 
   const other = shiftOtherOpen();
   if (other) shiftSetPhase(other.y, other.m, other.half, SHIFT_BUILT);
@@ -14477,9 +14486,84 @@ function shiftSetPhase(y, m, half, v, due) {
   const keep = due === undefined
     ? shiftDueOf(Store.getDay(SHIFT_STORE, key))
     : (due || '');
+  // ★一時的な再開（reopen）は、募集を始め直す・確定するときに消します（setItem は前の中身に重ねるため）
   Store.setItem(SHIFT_STORE, key, SHIFT_PHASE_KEY, {
-    v, at: new Date().toISOString(), due: keep,
+    v, at: new Date().toISOString(), due: keep, reopen: '',
   });
+}
+
+/* -------- 提出を一時的に再開する（2026-11-02、ko-dai さんの指示） --------
+ *
+ *  期限の次の日の 0:00 から、提出ページで出せなくなります（サーバーが断ります）。
+ *  出し忘れた人がいたときは、ここで**今日の 24時まで**受け付けます。
+ *  ★再開した日は items.phase.reopen。期限は書き換えません（提出ページに元の期限を出すため）。
+ *  ★再開しているあいだは、もう出した人も直せます（人ごとには分けていません）。
+ */
+function shiftSetReopen(d) {
+  Store.setItem(SHIFT_STORE, shiftKey(state.storeId, state.y, state.m, shiftHalf), SHIFT_PHASE_KEY, {
+    at: new Date().toISOString(), reopen: d,
+  });
+}
+
+async function shiftReopenStart() {
+  const 今日 = shiftCalToday();
+  const ok = await askConfirm({
+    item: `${shiftRangeLabel(state.y, state.m, shiftHalf)} の提出を、今日だけ再開します`,
+    message: `今日 ${shiftDayLabel(今日, DOW)} の24時まで、提出ページから出せるようになります。\n`
+      + '出し忘れた人に知らせてください。\n'
+      + 'このあいだは、もう出した人も直せます。日付が変わると、また締め切られます。',
+    okLabel: '再開する',
+  });
+  if (!ok) return;
+  shiftSetReopen(今日);
+  render();
+}
+
+async function shiftReopenEnd() {
+  const ok = await askConfirm({
+    item: '再開を終えます',
+    message: 'いまから、提出ページで出せなくなります。',
+    okLabel: '終える',
+  });
+  if (!ok) return;
+  shiftSetReopen('');
+  render();
+}
+
+/**
+ * 組む画面の上に「提出を一時的に再開する」（期限を過ぎた募集中の半月だけ）
+ *
+ * ★ヘルプ要請と同じく、**自分の段に置きます**（同じ段に足すとスマホで押し込まれます → helpReqBtnSync）。
+ *   index.html は本部のファイルなので、段はここで作ります。
+ */
+function shiftReopenSync(rec) {
+  const 前の段 = document.querySelector('#shiftTop .shift-top__acts');
+  if (!前の段) return;
+  const due = shiftDueOf(rec);
+  const on = shiftPhaseOf(rec) === SHIFT_OPEN && !!due && shiftCalToday() > due;
+  let row = document.getElementById('shiftReopenActs');
+  if (!row) {
+    if (!on) return;
+    row = document.createElement('div');
+    row.id = 'shiftReopenActs';
+    row.className = 'shift-top__acts';
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.id = 'shiftReopenBtn';
+    b.className = 'btn';
+    b.addEventListener('click', () => {
+      if (shiftLateOf(shiftRec())) shiftReopenStart();
+      else shiftReopenEnd();
+    });
+    row.appendChild(b);
+    前の段.insertAdjacentElement('afterend', row);
+  }
+  row.style.display = on ? '' : 'none';
+  if (!on) return;
+  const b = document.getElementById('shiftReopenBtn');
+  const late = shiftLateOf(rec);
+  b.textContent = late ? '提出を一時的に再開する' : '再開を終える（いま締め切る）';
+  b.classList.toggle('btn--primary', late);
 }
 
 /** いま募集中の、他の半月（前後4つ分を見ます） */
@@ -15868,6 +15952,10 @@ function shiftGuideHtml(kind) {
     'コピーした文を LINE に貼った見本です'));
   out.push(shiftGuideUl([
     '募集できるのは、店舗ごとに<b>1つの半月だけ</b>です。次の半月の募集を始めると、前の半月は締め切られます',
+    // ★2026-11-02、ko-dai さんの指示（期限の次の日の 0:00 から出せない・一時的に再開できる）
+    '<b>提出の期限の日のうちは</b>出せます。<b>次の日の0時から</b>、提出ページで出せなくなります（表の上が<b>「締め切りました」</b>になります）',
+    '出し忘れた人がいたら<b>「提出を一時的に再開する」</b>を押すと、<b>その日の24時まで</b>出せるようになります。'
+      + '早く締めたいときは<b>「再開を終える（いま締め切る）」</b>',
   ]));
 
   /* ---- 5 アルバイトの提出 ---- */
@@ -15891,7 +15979,7 @@ function shiftGuideHtml(kind) {
   }
   // ★提出ページのボタンは「提出する」です（shift/index.html の #send。2026-09-25 まで「出す」と書きまちがえていた）
   提出の手順.push('日ごとの<b>連絡</b>（例：20時まで）も書けます。最後に一番下の<b>「提出する」</b>');
-  提出の手順.push('締め切りまでは、何度でも出し直せます');
+  提出の手順.push('提出の期限の日の24時までは、何度でも出し直せます');
   out.push(shiftGuideOl(提出の手順));
   const 日のカード = (() => {
     const 箱 = 'style="border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--surface);margin-bottom:10px;"';
@@ -16153,8 +16241,12 @@ function renderShift() {
   const phase = shiftPhaseOf(rec);
 
   /* -------- 募集の状態 -------- */
-  el.shiftPhase.textContent = shiftPhaseText(phase);
-  el.shiftPhase.className = 'shift-phase shift-phase--' + (phase || 'yet');
+  // ★期限を過ぎた募集中は「締め切りました」（提出ページで出せません。2026-11-02）。札の色は「まだ」と同じ灰色
+  const 締め切り = shiftLateOf(rec);
+  const 再開した日 = phase === SHIFT_OPEN && !締め切り ? shiftReopenOf(rec) : '';
+  const 再開中 = !!再開した日 && shiftCalToday() > shiftDueOf(rec);
+  el.shiftPhase.textContent = 締め切り ? '締め切りました' : 再開中 ? '再開中' : shiftPhaseText(phase);
+  el.shiftPhase.className = 'shift-phase shift-phase--' + (締め切り ? 'yet' : (phase || 'yet'));
   el.shiftOpenBtn.classList.toggle('is-hidden', phase === SHIFT_OPEN);
   el.shiftOpenBtn.textContent = phase === SHIFT_BUILT ? '募集をやり直す' : 'シフト募集を始める';
   // 確定は、募集をはじめてからでないと押せません
@@ -16178,8 +16270,11 @@ function renderShift() {
   // 募集中は、決めた期限も添えます
   const due = shiftDueOf(rec);
   if (phase === SHIFT_OPEN && due) {
-    el.shiftWishNote.textContent += `　／　提出 ${shiftDueLabel(due, DOW)}`;
+    el.shiftWishNote.textContent += `　／　提出 ${shiftDueLabel(due, DOW)}`
+      + (再開中 ? '（いまは再開中。今日の24時まで出せます）'
+        : 締め切り ? '（期限を過ぎたので、いまは出せません）' : '');
   }
+  shiftReopenSync(rec);
 
   // ★順番が大事です。**幅を先に測ってから、中身を消します。**
   //

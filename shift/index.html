@@ -46,7 +46,7 @@
 <link rel="icon" href="../img/shift-icon-64.png?v=0254ff8c">
 
 <link rel="stylesheet" href="css/submit.css?v=14174bc5">
-<meta name="app-version" content="48b4c2ee">
+<meta name="app-version" content="2a0c0c61">
 </head>
 <body>
 
@@ -204,7 +204,7 @@
 
     <!-- 募集していないときは、ここだけ出します -->
     <div class="card is-hidden" id="closedBox">
-      <h2 class="card__title">今は募集していません</h2>
+      <h2 class="card__title" id="closedTitle">今は募集していません</h2>
       <p class="card__note" id="closedNote">
         次のシフトの募集がはじまると、ここに出ます。しばらくお待ちください。
       </p>
@@ -237,7 +237,7 @@
 
       <div class="foot">
         <button type="button" class="btn btn--primary btn--wide" id="send">提出する</button>
-        <p class="foot__note">締切までは、何度でも出し直せます。</p>
+        <p class="foot__note">提出の期限の日の24時までは、何度でも出し直せます。</p>
       </div>
     </div>
 
@@ -290,9 +290,9 @@
   </div>
 </div>
 
-<script src="../js/config.js?v=2f821bd8"></script>
+<script src="../js/config.js?v=0ebfc3e2"></script>
 <!-- シフト表を絵に描くところ。ワークスの「JPEGで保存」と同じものです -->
 <script src="../js/shift-sheet.js?v=59489822"></script>
-<script src="js/submit.js?v=9a2f4e10"></script>
+<script src="js/submit.js?v=cc176388"></script>
 </body>
 </html>

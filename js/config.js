@@ -7805,6 +7805,36 @@ function shiftDueOf(rec) {
 }
 
 /**
+ * 提出の期限（2026-11-02、ko-dai さんの指示）
+ *
+ *  「24日締め切りなら、25日 0:00 に出せなくなる。その日のうちは出せる」
+ *  「出し忘れた人がいたときに、一時的に再開できる」
+ *
+ *  ★期限は**暦の日**で数えます。朝の区切り（businessDate）は使いません。
+ *    サーバー（cloudflare/worker.js・gas/シフト.gs の shiftLate）も同じ数え方です。
+ *  ★再開した日は items.phase.reopen に入ります。**期限より後の日のときだけ**効きます。
+ *    その日の 24時で、また締め切られます。
+ */
+function shiftCalToday(now) {
+  return dateToStr(now ? new Date(now) : new Date());
+}
+
+/** 一時的に再開した日（'YYYY-MM-DD'。期限より後の日だけ。なければ空） */
+function shiftReopenOf(rec) {
+  const v = (rec.items || {})[SHIFT_PHASE_KEY];
+  const d = v && v.reopen;
+  const due = shiftDueOf(rec);
+  return due && /^\d{4}-\d{2}-\d{2}$/.test(d || '') && d > due ? d : '';
+}
+
+/** 期限を過ぎて、いまは受け付けていないか（募集中の半月だけ。期限がなければ止めません） */
+function shiftLateOf(rec, today) {
+  const due = shiftDueOf(rec);
+  if (shiftPhaseOf(rec) !== SHIFT_OPEN || !due) return false;
+  return (today || shiftCalToday()) > (shiftReopenOf(rec) || due);
+}
+
+/**
  * 提出期限の初期値
  *
  * その半月が始まる5日前にします。組む時間を数日残すためです。

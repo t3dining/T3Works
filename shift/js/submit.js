@@ -74,6 +74,13 @@ let period = null;
 let phase = '';
 /** 提出の期限（'YYYY-MM-DD'。決まっていなければ空） */
 let due = '';
+/** お店が一時的に再開した日（'YYYY-MM-DD'。期限より後の日だけ。なければ空。2026-11-02） */
+let reopen = '';
+/**
+ * 期限を過ぎて、もう出せないか（サーバーが決めます。2026-11-02）
+ * ★端末の時計では決めません。サーバー（cloudflare/worker.js の shiftLate）が日本時間で数えた答えを使います
+ */
+let late = false;
 /** いま入れている希望。{ 'YYYY-MM-DD': [{ s, t }] } */
 let picked = {};
 /** 日ごとの連絡。{ 'YYYY-MM-DD': '文' } */
@@ -263,10 +270,13 @@ async function call(body, opt) {
   }
 }
 
-/** きょうから期限まで、あと何日か（すぎていたら負の数） */
+/**
+ * きょうから期限まで、あと何日か（すぎていたら負の数）
+ * ★期限は暦の日で数えます（期限の次の日の 0:00 で締め切り。2026-11-02）。朝の区切り（businessDate）は使いません
+ */
 function daysLeft(dateStr) {
   const [y, m, d] = dateStr.split('-').map(Number);
-  const t = businessDate();
+  const t = new Date();
   const today = new Date(t.getFullYear(), t.getMonth(), t.getDate());
   return Math.round((new Date(y, m - 1, d) - today) / 86400000);
 }
@@ -333,6 +343,8 @@ function applyOpen(res) {
   period = res.period || null;
   phase = res.phase || '';
   due = res.due || '';
+  reopen = /^\d{4}-\d{2}-\d{2}$/.test(res.reopen || '') ? res.reopen : '';
+  late = res.late === true;
 
   // 定休日はマネージで変えられます。変えていない店舗は null で返ってくるので、
   // そのときは config.js に書いてある初期値（バグるなら火曜）を使います。
@@ -993,9 +1005,14 @@ function renderPeriod() {
   renderDemoSwitch();
 
   // ★見本は、押した方の画面だけを出します（募集の状態は見ません）
+  // ★期限を過ぎたら出せません（見本も同じ。アルバイトに何が見えるかを確かめるため。2026-11-02）
   const canSend = me.demo
-    ? demoView === 'entry'
-    : (!!period && phase === 'open');
+    ? demoView === 'entry' && !late
+    : (!!period && phase === 'open' && !late);
+  const 締め切り = late && phase === 'open';
+  // ★見出しは shift/index.html の #closedTitle。古い HTML が端末に残っているとないので、あるときだけ書きます
+  const 見出し = el('closedTitle');
+  if (見出し) 見出し.textContent = 締め切り ? '受け付けは終わりました' : '今は募集していません';
   // ★「決まったシフト」の欄に何を出すかを、ここで1つに決めます。
   //   押して選んだ過去があればそれ。なければ、いまの半月が確定ずみならそれ。
   //
@@ -1048,10 +1065,14 @@ function renderPeriod() {
   // 提出の期限。募集しているあいだだけ出します
   const showDue = canSend && due;
   el('periodDue').classList.toggle('is-hidden', !showDue);
-  if (showDue) {
+  if (showDue && reopen) {
+    // ★お店が一時的に再開しているあいだ（再開した日の 24時まで）
+    el('periodDue').textContent = `提出の期限は過ぎましたが、お店が受け付けを再開しています（${shiftDueLabel(reopen, DOW)}）`;
+    el('periodDue').className = 'period__due is-near';
+  } else if (showDue) {
     const left = daysLeft(due);
     el('periodDue').textContent = `提出は ${shiftDueLabel(due, DOW)}`
-      + (left === 0 ? '（きょうまでです）' : left > 0 ? `（あと${left}日）` : '（期限をすぎています）');
+      + (left === 0 ? '（きょうの24時までです）' : left > 0 ? `（あと${left}日）` : '（期限をすぎています）');
     el('periodDue').className = 'period__due' + (left <= 1 ? ' is-near' : '');
   }
 
@@ -1063,9 +1084,16 @@ function renderPeriod() {
   const on = days.filter((s) => (picked[s] || []).length).length;
 
   if (!canSend) {
+    // ★期限を過ぎた（2026-11-02）。「次の募集を待って」ではなく、お店に連絡してもらいます
+    const 最後の日 = reopen || due;
     el('periodState').textContent = hasBuilt ? 'シフトが決まりました'
+      : 締め切り ? '提出の期限を過ぎました'
       : sentAt ? '受け付けは終わりました' : '';
-    el('closedNote').textContent = sentAt
+    el('closedNote').textContent = 締め切り
+      ? (最後の日 ? `提出の受け付けは ${shiftDayLabel(最後の日, DOW)} で終わりました。` : '提出の受け付けは終わりました。')
+        + '出し忘れたときは、お店に連絡してください。'
+        + (sentAt ? '出した内容は下のとおりです。' : '')
+      : sentAt
       ? 'この期間の受け付けは終わりました。出した内容は下のとおりです。'
       : '次のシフトの募集がはじまると、ここに出ます。しばらくお待ちください。';
     renderDone();
@@ -1675,8 +1703,8 @@ function setTime(dateStr, slotId, t) {
 function renderDone() {
   if (!sentAt || !period) return;
   el('doneTitle').textContent = `${shiftRangeLabel(period.y, period.m, period.half)} を出しました`;
-  if (due && phase === 'open') {
-    el('doneTitle').textContent += `（${shiftDueLabel(due, DOW)}直せます）`;
+  if (due && phase === 'open' && !late) {
+    el('doneTitle').textContent += `（${shiftDueLabel(reopen || due, DOW)}直せます）`;
   }
   el('doneList').innerHTML = '';
 
@@ -1959,6 +1987,14 @@ async function send() {
   // ★待っているあいだに店舗を切り替えた・番号を入れ直した、なら、この返事は
   //   今の画面のものではありません。当てません（別の店舗を「出しました」にしないため）
   if (`${me.store}|${period ? period.key : ''}` !== 送った先 || !me.code) return;
+  // ★開いたあとに期限を過ぎた（夜中の0時をまたいだ）・お店が再開を終えた。受け付けの終わった画面に替えます
+  if (!res.ok && res.late === true) {
+    late = true;
+    // ★この店舗の控えも古くなっています。切り替えて戻ったときに、また「出す」が出ないようにします
+    delete 店舗の控え[me.store];
+    renderPeriod();
+    return;
+  }
   if (!res.ok) return setErr('sendErr', res.error || '出せませんでした');
   sentAt = res.sentAt || new Date().toISOString();
   renderPeriod();
