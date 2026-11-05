@@ -20,6 +20,19 @@
 Sync._pinKey = APP.storageKey + ':adminPin';
 Sync._outboxKey = APP.storageKey + ':adminOutbox';
 Sync._sinceKey = APP.storageKey + ':adminSince';
+/* ★管理用PINは、端末の保存場所（localStorage）に置きません（2026-11-05、ko-dai さんの指示）。
+     この画面を開いているあいだだけ覚え、アプリを閉じたら、開くたびに聞きます（js/sync.js の `PINは今だけ`）。
+     t3dining.github.io の保存場所は、お客さまの画面と同じ1つで、同じ場所のどのページからも読めるためです。 */
+Sync.PINは今だけ = true;
+/* ★前の版が端末に置いた管理用PINを、今だけの場所へ移して、端末からは消します。
+     移すので、版が上がった直後に聞き直すことはありません（次にアプリを閉じて開いたときから聞きます）。 */
+(function 管理用PINを今だけへ移す() {
+  try {
+    const 前 = localStorage.getItem(Sync._pinKey);
+    if (前 && !Sync._今だけのPIN()) Sync._今だけに入れる(前);
+    localStorage.removeItem(Sync._pinKey);
+  } catch (e) { /* 移せなくても、PINを聞き直すだけです */ }
+})();
 
 const DOW = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -2032,6 +2045,11 @@ function 番号は必須か() {
  * ★**全員に番号を配り終えてから**押してください。配る前に押すと、全員が止まります。
  */
 async function 締めつけを切り替える(する) {
+  // ★名簿がまだ届いていなければ、数えられません（0人と取りちがえます）
+  if (する && !StaffAccounts.届いたか()) {
+    alert(名簿がまだの文);
+    return;
+  }
   const 生きている = StaffAccounts.ordered().filter((v) => !v.off).length;
   if (する && !生きている) {
     alert('番号がまだ1つもありません。先に「追加して番号を作る」で作ってください。');
@@ -2083,6 +2101,17 @@ function renderAccounts() {
       ? '必須です。新しい人には、番号を渡してから使ってもらってください。'
       : '全員に番号を配り終えてから押してください。';
   }
+  /* ★名簿は端末に置かず、開くたびにサーバーから受け取ります（2026-11-05。js/storage.js の StaffAccounts）。
+       届くまでは「まだ登録なし」と出さず、足すこともできないようにします。
+       届く前の空の名簿に1人足して送ると、**サーバーの名簿がその1人だけで上書きされる**ためです。 */
+  const 届いた = StaffAccounts.届いたか();
+  if (el.acctAdd) el.acctAdd.disabled = !届いた;
+  if (el.acctName) el.acctName.disabled = !届いた;
+  if (!届いた) {
+    el.acctCount.textContent = 'サーバーから読み込んでいます…';
+    el.acctList.innerHTML = '';
+    return;
+  }
   const 生きている = 並び.filter((v) => !v.off).length;
   el.acctCount.textContent = 並び.length
     ? `${生きている}人（使えなくした人 ${並び.length - 生きている}）` : 'まだ登録なし';
@@ -2127,7 +2156,7 @@ function renderAccounts() {
     box.addEventListener('change', () => {
       const map = StaffAccounts.all();
       map[code].admin = box.checked;
-      StaffAccounts.save(map);
+      if (!名簿を保存する(map)) return;
       renderAccounts(); 保存しました();
     });
     adm.appendChild(box);
@@ -2175,7 +2204,7 @@ function renderAccounts() {
         + '打ちまちがいを消すときだけ、こちらを使ってください。')) return;
       const map = StaffAccounts.all();
       delete map[code];
-      StaffAccounts.save(map);
+      if (!名簿を保存する(map)) return;
       renderAccounts(); 保存しました();
     });
 
@@ -2192,7 +2221,7 @@ function renderAccounts() {
       const map = StaffAccounts.all();
       map[code].off = !戻す;
       if (!戻す) map[code].admin = false;   // 使えなくするときは管理も外します
-      StaffAccounts.save(map);
+      if (!名簿を保存する(map)) return;
       renderAccounts(); 保存しました();
     });
 
@@ -2209,8 +2238,23 @@ function applyAcctOrder(順) {
   順.forEach((code, n) => {
     if (map[code]) map[code].at = new Date(Date.UTC(2000, 0, 1) + n * 60000).toISOString();
   });
-  StaffAccounts.save(map);
+  if (!名簿を保存する(map)) return;
   renderAccounts(); 保存しました();
+}
+
+const 名簿がまだの文 = '社員のアカウントを、まだサーバーから受け取っていません。\n少し待ってから、もう一度押してください。';
+
+/**
+ * 社員の名簿を保存して送ります
+ *
+ * ★名簿がまだ届いていなければ保存しません（js/storage.js の StaffAccounts.save が false を返します）。
+ *   画面は届くまで足せないようにしてありますが、押せてしまったときの受け止めです。
+ */
+function 名簿を保存する(map) {
+  if (StaffAccounts.save(map)) return true;
+  alert(名簿がまだの文);
+  renderAccounts();
+  return false;
 }
 
 function 保存しました() {
@@ -2229,7 +2273,7 @@ function addAccount() {
   if (!code) { window.alert('番号を作れませんでした。もう一度押してください。'); return; }
   // ★登録した時刻。これがないと、あとで「入れた順」に並べ直せません
   map[code] = { n: name, admin: false, off: false, at: new Date().toISOString() };
-  StaffAccounts.save(map);
+  if (!名簿を保存する(map)) return;
   el.acctName.value = '';
   renderAccounts(); 保存しました();
 }
@@ -4270,13 +4314,20 @@ async function init() {
 
   if (!Sync.enabled()) {
     // 共有先が未設定のときは、この端末の中だけで編集できます
+    /* ★社員の名簿は、サーバーから届くまで足せない作りです（2026-11-05）。共有先がない画面（プレビュー・配布用）では
+         届くことがないので、空の名簿を受け取ったことにします（端末には置かず、画面のあいだだけです） */
+    StaffAccounts._受け取る({});
+    renderAccounts();
     return;
   }
   // 同期で最新を受け取ったら、あとから決まった項目を足します
   /* ★番号が要ると言われたら、1回だけ聞きます（js/app.js と同じ考え。2026-09-16） */
   let 番号を聞いた = false;
+  // ★社員の名簿が届いたら、名簿の欄だけは打ちかけの帯を待たずに描き直します（届くまでは足せないようにしてあるため）
+  let 名簿を出した = false;
   打ちかけを見張る();
   Sync.onChange = () => {
+    if (!名簿を出した && StaffAccounts.届いたか()) { 名簿を出した = true; renderAccounts(); }
     renderSyncStatus();
     addLaterItems();
     定休日をそろえる();

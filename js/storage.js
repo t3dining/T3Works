@@ -979,14 +979,59 @@ const CatchStaff = {
  *    ・番号は6桁。1〜9で始まります（シフトの番号と同じ作り方）
  *    ・辞めた人は **off: true** にします。**消さずに残す**のは、
  *      過去の記録に名前が出ているためです（消すと誰の記録か分からなくなります）
+ *
+ *  ★**端末の保存場所（localStorage）には置きません**（2026-11-05、ko-dai さんの指示）。
+ *    t3dining.github.io の保存場所は、お客さまの画面（/baguru-app/・/baguru/）と**同じ1つ**で、
+ *    同じ場所のどのページからも読めます。全員分の合言葉の写しを、そこに置き続けないためです。
+ *    **マネージを開いているあいだだけ**、下の `_mem` に持ちます。名簿の本物はサーバーにあります。
+ *  ★**サーバーの名簿が届く前は、保存させません**（`save` が false を返します）。
+ *    届く前の空の名簿に1人足して送ると、**サーバーの名簿がその1人だけで上書きされます。**
  * ============================================================ */
 const StaffAccounts = {
+  /* ★この名前は、前の版が端末に置いた写しを片づけるためだけに使います（`_全部を受け取った` と、このファイルの下の片づけ） */
   _key: APP.storageKey + ':staffAccounts',
+  /** サーバーから届いた名簿（この画面を開いているあいだだけ）。null ＝ まだ届いていない */
+  _mem: null,
+
+  /** サーバーの名簿が、この画面に届いたか */
+  届いたか() { return this._mem !== null; },
+
+  /** サーバーから届いた名簿を持ちます（js/sync.js の取り込みが呼びます。マネージだけ） */
+  _受け取る(map) {
+    this._mem = (map && typeof map === 'object' && !Array.isArray(map)) ? JSON.parse(JSON.stringify(map)) : {};
+  },
+
+  /**
+   * 開いてはじめて、設定を全部受け取ったとき（js/sync.js が呼びます。マネージが管理として通ったときだけ）
+   *
+   * ★前の版がこの端末に置いた写しを、ここで消します。
+   * ★ただし**サーバーに名簿がないのに写しがある**ときは、写しを送り直してから消します。
+   *   2026-09-11、端末の写しが**唯一の控え**だったことがあります（送り方の不具合で、サーバーに届いていなかった）。
+   *   名簿を全部消したときもサーバーには `{}` が残るので、「サーバーにない」はこの形のときだけです。
+   * ★まだ送っていない名簿（送信箱）があれば、そちらが一番新しいので、それを持ちます（写しは送り直しません）。
+   */
+  _全部を受け取った(サーバーにあった, 送っていない) {
+    let 写し = null;
+    try { 写し = JSON.parse(localStorage.getItem(this._key) || 'null'); } catch (e) { 写し = null; }
+    if (!サーバーにあった) {
+      if (送っていない !== undefined) {
+        this._受け取る(送っていない);
+      } else if (写し && typeof 写し === 'object' && !Array.isArray(写し) && Object.keys(写し).length) {
+        this._mem = 写し;
+        if (typeof Sync !== 'undefined' && Sync.enqueue) {
+          Sync.enqueue({ t: 'setting', n: 'staffAccounts', v: 写し }, true);
+        }
+      } else {
+        this._mem = {};
+      }
+    }
+    try { localStorage.removeItem(this._key); } catch (e) { /* 消せなくても、次に開いたときにまた消します */ }
+  },
 
   /** { 番号: { n, admin, off } } をまるごと */
   all() {
     try {
-      const saved = JSON.parse(localStorage.getItem(this._key) || 'null');
+      const saved = this._mem;
       if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
         const out = {};
         Object.keys(saved).forEach((code) => {
@@ -1035,14 +1080,17 @@ const StaffAccounts = {
     return v ? v.n : '';
   },
 
+  /** 保存して、サーバーへ送ります。★名簿がまだ届いていなければ何もせず false を返します */
   save(map) {
-    localStorage.setItem(this._key, JSON.stringify(map || {}));
+    if (!this.届いたか()) return false;
+    this._mem = JSON.parse(JSON.stringify(map || {}));
     if (typeof Sync !== 'undefined' && Sync.enqueue) {
       // ★`enqueue` は**opを1つ**受け取ります。配列を渡すと、送信箱に配列がそのまま入り、
       //   サーバーは設定として読めません。**黙ってサーバーに届きません。**
       //   2026-09-11、これで登録した名簿が端末の中だけにあり、消えたときに戻せませんでした
       Sync.enqueue({ t: 'setting', n: 'staffAccounts', v: map || {} }, true);
     }
+    return true;
   },
 
   /**
@@ -1064,6 +1112,21 @@ const StaffAccounts = {
     return '';
   },
 };
+
+/* ★前の版が置いた社員の名簿の写しを、現場の端末から片づけます（2026-11-05）。
+     2026-09-10 まではサーバーが全部の端末に名簿を配っていたので、そのころの写しが残っている端末があります。
+   ★**この端末でマネージを開いたことがあれば、触りません。**マネージで入れて、
+     まだサーバーに届いていない控えかもしれないためです（2026-09-11 の件）。そちらはマネージが、
+     サーバーの名簿を受け取ったあとに片づけます（`StaffAccounts._全部を受け取った`）。
+     マネージを開いたかは、マネージだけが使う送信箱（`:adminOutbox`）があるかで見ます。 */
+(function 名簿の写しを片づける() {
+  try {
+    if (typeof window !== 'undefined' && window.T3_ADMIN_PAGE) return;
+    if (localStorage.getItem(StaffAccounts._key) === null) return;
+    if (localStorage.getItem(APP.storageKey + ':adminOutbox') !== null) return;
+    localStorage.removeItem(StaffAccounts._key);
+  } catch (e) { /* 消せなくても、アプリは動きます */ }
+})();
 
 const ShiftStaff = {
   _key: APP.storageKey + ':shiftStaff',

@@ -283,6 +283,17 @@ const Sync = {
   /** サーバー側で保存できなかった／上限に近い記録の知らせ */
   serverWarn: '',
   _pinKey: APP.storageKey + ':pin',
+  /* ★**管理として通る合言葉は、端末の保存場所（localStorage）に置きません**（2026-11-05、ko-dai さんの指示）。
+       t3dining.github.io の保存場所は、お客さまの画面（/baguru-app/・/baguru/）と**同じ1つ**で、
+       同じ場所のどのページからも読めます。管理用PINが読まれると、全店舗の記録と設定と社員のアカウントまで触れます。
+       置くのは、**この画面を開いているあいだだけの場所**（sessionStorage）です。アプリを閉じると消え、開くたびに聞きます。
+         マネージ … 管理用PINしか使わないので、はじめから今だけにします（manage/js/admin.js が `PINは今だけ` を立てます）
+         ワークス・マイン・配達記録 … 入れたPINが管理用だと**サーバーの返事で分かったら**、今だけに移します（`_管理のPINなら今だけにする`）
+     ★現場用PINは、今までどおり端末に覚えます（お店の端末で毎回聞くと、閉店の作業が止まります）。
+     ★sessionStorage は**タブ（アプリの窓）ごと**です。同じ場所の別のタブからは読めません。 */
+  PINは今だけ: false,
+  /** sessionStorage が使えない端末の逃げ場（この画面のあいだだけ。端末には残りません） */
+  _今だけの控え: '',
   // ★自分の番号と、自分の名前だけを持ちます。**名簿は持ちません**
   //   （名簿を配ると、6店舗の端末に全員分の合言葉の写しが置かれます）
   _codeKey: APP.storageKey + ':staffCode',
@@ -418,7 +429,40 @@ const Sync = {
     return !!(APP.syncUrl && APP.syncUrl.trim());
   },
   pin() {
-    return localStorage.getItem(this._pinKey) || '';
+    return this._今だけのPIN() || localStorage.getItem(this._pinKey) || '';
+  },
+  /** この画面のあいだだけ覚えているPIN（なければ空） */
+  _今だけのPIN() {
+    try {
+      const v = sessionStorage.getItem(this._pinKey);
+      if (v) return v;
+    } catch (e) { /* 使えない端末は、下の控えを見ます */ }
+    return this._今だけの控え || '';
+  },
+  _今だけに入れる(v) {
+    this._今だけの控え = String(v || '');
+    try { sessionStorage.setItem(this._pinKey, this._今だけの控え); } catch (e) { /* 控えだけで動きます */ }
+  },
+  _今だけを消す() {
+    this._今だけの控え = '';
+    try { sessionStorage.removeItem(this._pinKey); } catch (e) { /* 消せなくても、閉じれば消えます */ }
+  },
+  /**
+   * 管理として通ったPINなら、端末から外して、この画面のあいだだけにします
+   *
+   * ★サーバーの返事の `admin` は「管理として通ったか」です。**番号の人が管理（`who.admin`）なら、
+   *   管理になったのは番号のおかげで、PINは現場用です。**そのときは触りません。
+   *   （番号もPINも管理のときは、PINがどちらかを見分けられないので、今までどおり端末に残ります）
+   * ★返事を待つあいだにPINを入れ直していたら、触りません（新しいPINの返事に任せます）。
+   */
+  _管理のPINなら今だけにする(json, 送ったPIN) {
+    if (!json || !json.ok || json.admin !== true) return;
+    if (json.who && json.who.admin) return;
+    let 端末の = null;
+    try { 端末の = localStorage.getItem(this._pinKey); } catch (e) { return; }
+    if (!端末の || 端末の !== 送ったPIN) return;
+    this._今だけに入れる(端末の);
+    try { localStorage.removeItem(this._pinKey); } catch (e) { /* 消せなくても、同期は続けます */ }
   },
   /** 自分の番号（PINのあとに入れるもの）。まだ入れていなければ空 */
   code() {
@@ -453,10 +497,18 @@ const Sync = {
     }
   },
   setPin(pin) {
-    localStorage.setItem(this._pinKey, String(pin).trim());
+    const v = String(pin).trim();
+    this._今だけを消す();
+    if (this.PINは今だけ) {
+      this._今だけに入れる(v);
+      localStorage.removeItem(this._pinKey);
+      return;
+    }
+    localStorage.setItem(this._pinKey, v);
   },
   clearPin() {
     localStorage.removeItem(this._pinKey);
+    this._今だけを消す();
   },
 
   /* -------- 送信箱 -------- */
@@ -640,6 +692,10 @@ const Sync = {
     /* ★送った番号を覚えておきます。返事を待つあいだに人が番号を入れ直すと、
          **古い返事の「番号が要る」で、入れたばかりの番号を消してしまう**ためです（2026-09-16）。 */
     const 送った番号 = this.code();
+    // ★送ったPINも覚えます（管理用PINだと分かったら、今だけに移すため。`_管理のPINなら今だけにする`）
+    const 送ったPIN = this.pin();
+    // ★開いてはじめての全部取りか（マネージが社員の名簿を受け取ったと分かるのは、この返事です）
+    const 全部取り = !this._settingsPulled;
 
     try {
       // 返事が返ってこないまま止まらないよう、時間を切ります。
@@ -658,11 +714,11 @@ const Sync = {
         } catch (e) { return null; }
       })();
       const body = JSON.stringify({
-        pin: this.pin(),
+        pin: 送ったPIN,
         code: this.code(),
         action: 'sync',
         since: 送った印,
-        settingsAll: !this._settingsPulled,
+        settingsAll: 全部取り,
         ops,
         ...(待っている ? { jobs: 待っている } : {}),
       });
@@ -725,6 +781,7 @@ const Sync = {
       }
       this.needStaffCode = false;
       this._rememberWho(json);
+      this._管理のPINなら今だけにする(json, 送ったPIN);
 
       // 送れた分だけ送信箱から取り除く（送信中に増えた分は残す）
       const rest = this.outbox().slice(sending.length);
@@ -751,6 +808,16 @@ const Sync = {
       }
 
       this._applyPulled(json.records || [], json.settings);
+      /* ★マネージ：開いてはじめての全部取りで、**管理として通ったときだけ**、社員の名簿を受け取ったことにします
+           （js/storage.js の StaffAccounts。受け取るまでは名簿を保存させません）。
+           サーバーは管理のときだけ名簿を返すので、管理でない返事で「受け取った」にすると、
+           空の名簿に足して送れてしまいます（サーバーは断りますが、画面がうそをつきます）。 */
+      if (全部取り && json.admin === true && typeof window !== 'undefined' && window.T3_ADMIN_PAGE
+          && typeof StaffAccounts !== 'undefined' && StaffAccounts._全部を受け取った) {
+        const 送っていない名簿 = this.outbox().filter((op) => op.t === 'setting' && op.n === 'staffAccounts').pop();
+        StaffAccounts._全部を受け取った(!!(json.settings && json.settings.staffAccounts !== undefined),
+          送っていない名簿 ? 送っていない名簿.v : undefined);
+      }
       // ★相乗りで返ってきた「日報に書く頼み」の答えを、ジャーナルに渡します（中身は見ません）
       if (json.jobs && json.jobs.length) {
         try {
@@ -948,11 +1015,12 @@ const Sync = {
       return { ok: false, error: '共有の設定がされていません', code: '', who: null, admin: false };
     }
     const 送った番号 = this.code();
+    const 送ったPIN = this.pin();
     try {
       const res = await fetch(同期の口(), {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ pin: this.pin(), code: 送った番号, action: 'ping' }),
+        body: JSON.stringify({ pin: 送ったPIN, code: 送った番号, action: 'ping' }),
       });
       const json = await 返事を読む(res);
       if (!json.ok) {
@@ -964,6 +1032,7 @@ const Sync = {
       }
       this.needStaffCode = false;
       this._rememberWho(json);
+      this._管理のPINなら今だけにする(json, 送ったPIN);
       return { ok: true, error: '', code: '', who: json.who || null, admin: !!json.admin };
     } catch (e) {
       return { ok: false, error: '通信できませんでした。電波の良いところでもう一度お試しください。',
@@ -1094,11 +1163,13 @@ const Sync = {
       // 取り込む**前**の中身（見くらべるため。★マネージだけの書き込みより前に取ります。社員のアカウントと番号の締めつけはマネージだけが持ちます）
       const 見る箱 = { ...設定の入れ先 };
       if (window.T3_ADMIN_PAGE) {
-        見る箱.staffAccounts = StaffAccounts._key;
         見る箱.staffCodeRequired = APP.storageKey + ':staffCodeRequired';
       }
       const 前 = {};
       Object.keys(見る箱).forEach((n) => { 前[n] = localStorage.getItem(見る箱[n]); });
+      // ★社員の名簿は端末に置かないので、画面のあいだだけの入れ物（StaffAccounts._mem）で見くらべます
+      const 名簿を見る = !!window.T3_ADMIN_PAGE && typeof StaffAccounts !== 'undefined' && !!StaffAccounts._受け取る;
+      const 名簿の前 = 名簿を見る ? JSON.stringify(StaffAccounts._mem) : '';
 
       /* ★社員のアカウント（番号）だけは、**マネージにしか入れません。**
            番号は合言葉です。ふつうの設定と同じに配ると、**6店舗全部の端末に
@@ -1106,9 +1177,10 @@ const Sync = {
            2026-09-10、ko-dai さんが登録した直後にこの形になっていました
            （サーバーは設定を選ばずに全部返します）。
            ★サーバー側でも止めます（gas/コード.gs）。ここは二重の押さえです。
-           ★現場の端末に残っている写しは、その場で消します。 */
-      if (window.T3_ADMIN_PAGE && settings.staffAccounts) {
-        localStorage.setItem(StaffAccounts._key, JSON.stringify(settings.staffAccounts));
+           ★**マネージでも、端末の保存場所には置きません**（2026-11-05）。開いているあいだだけ持ちます
+             （js/storage.js の StaffAccounts の説明）。前の版の写しは、マネージが受け取ったあとに片づけます。 */
+      if (名簿を見る && settings.staffAccounts) {
+        StaffAccounts._受け取る(settings.staffAccounts);
       }
       /* ★番号の締めつけ（`staffCodeRequired`）。**マネージの画面に出すためだけ**に持ちます。
            ★「番号が要るか」を決めるのは**サーバー**です（`gas/コード.gs` の `staffCodeRequired_`）。
@@ -1140,6 +1212,11 @@ const Sync = {
       //   教育・日報フォルダ・定休日も同じ道を通ります
       this.outbox().forEach((op) => {
         if (op.t !== 'setting') return;
+        // ★社員の名簿も貼り直します（届いたあとだけ。届く前は、受け取ったときに `_全部を受け取った` が見ます）
+        if (op.n === 'staffAccounts') {
+          if (名簿を見る && StaffAccounts.届いたか()) StaffAccounts._受け取る(op.v);
+          return;
+        }
         const 箱 = 設定の入れ先[op.n];
         if (箱) localStorage.setItem(箱, JSON.stringify(op.v));
       });
@@ -1147,6 +1224,7 @@ const Sync = {
       Object.keys(見る箱).forEach((n) => {
         if (localStorage.getItem(見る箱[n]) !== 前[n]) 変わった.settings.push(n);
       });
+      if (名簿を見る && JSON.stringify(StaffAccounts._mem) !== 名簿の前) 変わった.settings.push('staffAccounts');
     } catch (e) {
       // 設定はまだ localStorage に置いています。ここが満杯でも黙って落とさず知らせます
       storeFail('設定を端末に保存できませんでした', e);
