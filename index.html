@@ -103,7 +103,7 @@
 <link rel="icon" type="image/png" sizes="64x64" href="img/works-icon-64.png?v=0f9cbed2">
 <title>T3 Works｜T3Dining株式会社</title>
 <link rel="stylesheet" href="css/style.css?v=fe10c428">
-<meta name="app-version" content="3b238a25">
+<meta name="app-version" content="5c931ee7">
 </head>
 <body>
 
@@ -196,7 +196,7 @@
       <span class="stores-big-btn__icon" aria-hidden="true">🕒</span>
       <span class="stores-big-btn__text">
         <span class="stores-big-btn__name">今日のシフト</span>
-        <span class="stores-big-btn__sub">店舗を選んで、今日だれが何時に入るかを見る</span>
+        <span class="stores-big-btn__sub">店舗を選んで、だれが何時に入るかを見る（前の日・次の日も）</span>
       </span>
       <span class="stores-big-btn__arrow" aria-hidden="true">›</span>
     </button>
@@ -575,7 +575,7 @@
   <section class="view view--today is-hidden" id="viewToday">
     <div class="report-head today-head">
       <div class="report-head__row">
-        <h2 class="report-head__title"><span aria-hidden="true">🕒</span> 今日のシフト</h2>
+        <h2 class="report-head__title"><span aria-hidden="true">🕒</span> <span id="todayTitle">今日のシフト</span></h2>
         <button type="button" class="btn" id="todayBack">店舗一覧に戻る</button>
       </div>
       <p class="today-head__date" id="todayDate"></p>
@@ -586,6 +586,8 @@
     </div>
     <div class="today-table is-hidden" id="todayTable">
       <button type="button" class="btn today-table__back" id="todayPickBack">‹ 店舗を選び直す</button>
+      <!-- 前の日・次の日のボタン（2026-11-15、ko-dai さんの指示）。中身はシフトの部署の shiftTodayNav が入れます -->
+      <div id="todayNav"></div>
       <div id="todayBody"></div>
     </div>
   </section>
@@ -1791,7 +1793,7 @@
 <!-- 会議資料の中身。スプレッドシートから取り込んだ数字と議事メモです -->
 <!-- シフト表を絵に描くところ。提出ページ（shift/）でも同じものを使います -->
 <script src="js/shift-sheet.js?v=202d99f9"></script>
-<script src="js/app.js?v=75a4d304"></script>
+<script src="js/app.js?v=db8fc54b"></script>
 <script src="js/interview.js?v=9c08c637"></script>
 <script src="js/share.js?v=88023092"></script>
 <script src="js/voice.js?v=3aa252ba"></script>

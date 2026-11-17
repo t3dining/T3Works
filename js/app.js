@@ -52,6 +52,7 @@ const el = {
   viewReport: $('viewReport'), storeHead: $('storeHead'),
   viewToday: $('viewToday'), todayDate: $('todayDate'), todayPick: $('todayPick'),
   todayStores: $('todayStores'), todayTable: $('todayTable'), todayBody: $('todayBody'),
+  todayTitle: $('todayTitle'), todayNav: $('todayNav'),
   reportMonth: $('reportMonth'), reportMonthSummary: $('reportMonthSummary'),
   calHead: $('calHead'), calGrid: $('calGrid'),
   missModal: $('missModal'), missFormTitle: $('missFormTitle'),
@@ -222,12 +223,14 @@ const el = {
  *   #/report/{YYYY-MM-DD}       全店舗の提出記録（店舗に属さない）
  *   #/weekall/{YYYY-MM-DD}      全店舗の週間掃除 達成状況
  *   #/today                     今日のシフト：店舗を選ぶ（店舗に属さない）
- *   #/today/{店舗}              今日のシフト：その店舗の表（★2つ目は日付ではなく店舗です。日付はいつも「今日」）
+ *   #/today/{店舗}              今日のシフト：その店舗の表（★2つ目は日付ではなく店舗です。前の日・次の日へ動いても、日付は URL に書きません。読み込み直すと今日）
  */
 const ALL_STORE_VIEWS = ['report', 'weekall', 'expense', 'catch', 'settle', 'meeting'];
 
 /** 「今日のシフト」（下の renderToday）で選んだ店舗。'' ＝ まだ選んでいない（店舗を選ぶ画面） */
 let todayShiftStore = '';
+/** 「今日のシフト」で見ている日（'YYYY-MM-DD'）。'' ＝ 今日（朝6時に日付が変わったら、新しい今日になります） */
+let todayShiftDay = '';
 
 /**
  * いま出さない画面。URLを直に叩かれても入れないようにします
@@ -9240,6 +9243,9 @@ function goTasks() {
  *    「表示の仕方はシフト部署が作成したものを全く同じように」という指示です。写すと、片方だけ直した日にずれます。
  *    見た目（.shift-tt…）も、あちらの shiftTodayStyle が自分で入れます。css/style.css には書いていません。
  *  ★「今日」は、あちらの shiftTodayStr()（業務上の今日。朝6時までは前の日）。本部で別に決めません。
+ *  ★前の日・次の日へも動けます（2026-11-15、ko-dai さん「ここの今日のシフトもシフト作成ページと同じように次の日などが見れるように」）。
+ *    ボタンと見出しは、あちらの shiftTodayNav・shiftTodayHeading（シフトの小窓・提出ページと同じ部品）。見ている日は todayShiftDay。
+ *    店舗を開く・選び直すと今日に戻ります。同期の描き直しでは、動いた日のままです。
  *  ★店舗を選ぶ所は、アプリを開いたときの店舗選択（renderStorePicker）と**わざと形を変えてあります**
  *    （ko-dai さん「混同しないよう、店舗選択のデザインは少し変えて」。決まりは css/style.css の .today-…）。
  *  ★読むだけです。記録には何も書きません。開いたときに、最新を取りに行くだけです（Sync.scheduleFlush）。
@@ -9256,6 +9262,7 @@ function openTodayShift(storeId) {
   state.storeId = '';
   state.view = 'today';
   todayShiftStore = storeId || '';
+  todayShiftDay = '';        // ★店舗を開く・選び直すときは、いつも今日から（前に別の日を見ていても）
   todayShiftDrawn = '';
   writeHash();
   render();
@@ -9274,6 +9281,8 @@ function renderToday() {
      ★ないときに、本部で「今日」を決め直しません（決め方が2か所になるため） */
   if (typeof shiftTodayStr !== 'function') {
     el.todayDate.textContent = '';
+    if (el.todayTitle) el.todayTitle.textContent = '今日のシフト';
+    if (el.todayNav) el.todayNav.innerHTML = '';
     el.todayPick.classList.add('is-hidden');
     el.todayTable.classList.remove('is-hidden');
     el.todayBody.textContent = '新しい版を読み込んでいる途中です。画面を読み込み直してください。';
@@ -9281,16 +9290,25 @@ function renderToday() {
     return;
   }
   const 今日 = shiftTodayStr();
-  const [y, m, d] = 今日.split('-').map(Number);
-  el.todayDate.textContent = `${y}年${m}月${d}日（${DOW[new Date(y, m - 1, d).getDay()]}）`;
-
   const 店 = todayShiftStores().find((s) => s.id === todayShiftStore);
+  /* ★前の日・次の日へ動く部品（shiftTodayNav・shiftTodayHeading）も js/shift-sheet.js にあります（2026-11-15、ko-dai さんの指示。
+       シフトの小窓・提出ページと同じもの）。古い js/shift-sheet.js のときは、ボタンを出さずに今日だけを出します
+     ★index.html が古いまま（ボタンを置く場所がない）ときも同じです。転ばずに、今日だけを出します */
+  const 動ける = typeof shiftTodayNav === 'function' && typeof shiftTodayHeading === 'function' && !!el.todayNav;
+  if (!店 || !動ける) todayShiftDay = '';
+  const 日 = todayShiftDay || 今日;
+  const [y, m, d] = 日.split('-').map(Number);
+  el.todayDate.textContent = `${y}年${m}月${d}日（${DOW[new Date(y, m - 1, d).getDay()]}）`;
+  // ★見出しは「今日のシフト」のままにしません。別の日の表を、今日のつもりで読まないためです
+  if (el.todayTitle) el.todayTitle.textContent = 店 && 動ける ? shiftTodayHeading(日) : '今日のシフト';
+
   el.todayPick.classList.toggle('is-hidden', !!店);
   el.todayTable.classList.toggle('is-hidden', !店);
 
   /* ---- 店舗を選ぶ ---- */
   if (!店) {
     todayShiftDrawn = '';
+    if (el.todayNav) el.todayNav.innerHTML = '';
     el.todayStores.innerHTML = '';
     todayShiftStores().forEach((s) => {
       const li = document.createElement('li');
@@ -9324,15 +9342,26 @@ function renderToday() {
     return;
   }
 
-  /* ---- その店舗の今日のシフト（描くのはシフトの部署の関数） ---- */
+  /* ---- その店舗の、見ている日のシフト（描くのはシフトの部署の関数） ---- */
   const 横の入れ物 = () => el.todayBody.querySelector('.shift-tt__scroll');
-  const これ = `${店.id}/${今日}`;
+  const これ = `${店.id}/${日}`;
   const 同じ表 = todayShiftDrawn === これ;
   const 横 = 同じ表 && 横の入れ物() ? 横の入れ物().scrollLeft : null;
-  shiftTodayDraw(el.todayBody, 店.id);
+  shiftTodayDraw(el.todayBody, 店.id, 日);
   todayShiftDrawn = これ;
   if (横 !== null && 横の入れ物()) 横の入れ物().scrollLeft = 横;   // 同期の描き直し：見ていた横の位置のまま
   else if (typeof shiftTodayToNow === 'function') shiftTodayToNow(el.todayBody);   // 開いたとき：いまの時刻の少し前から
+
+  /* ---- 前の日・次の日のボタン（表の外に置きます。表の中は shiftTodayDraw が毎回入れかえるため） ---- */
+  if (!動ける) return;
+  el.todayNav.innerHTML = '';
+  el.todayNav.appendChild(shiftTodayNav(日, (先) => {
+    const 前の横 = 横の入れ物() ? 横の入れ物().scrollLeft : 0;
+    todayShiftDay = 先 === shiftTodayStr() ? '' : 先;
+    renderToday();
+    // 今日に戻ったら、いまの時刻のあたりから（上の描き直しがそうします）。別の日は、見ていた横の位置のまま（日を比べやすいように）
+    if (todayShiftDay && 横の入れ物()) 横の入れ物().scrollLeft = 前の横;
+  }));
 }
 
 /* ------------------------------------------------------------
