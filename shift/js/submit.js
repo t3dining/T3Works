@@ -81,6 +81,35 @@ let reopen = '';
  * ★端末の時計では決めません。サーバー（cloudflare/worker.js の shiftLate）が日本時間で数えた答えを使います
  */
 let late = false;
+/**
+ * まとめて募集している期間（{ from, to }。半月1つの募集なら null。2026-11-19）
+ * ★こじゃれ・炭まろ・ちゃこる・おいでんテラスは、何か月分かをまとめて募集できます（js/config.js の「何か月分をまとめて募集する」）。
+ *   サーバーが res.span で渡します。period はその期間の一番古い半月です。
+ * ★出すときは、この期間も一緒に送ります（サーバーが「同じ期間を見ているか」を確かめるため → cloudflare/worker.js の shiftSameSpan）
+ */
+let span = null;
+
+/** いま出している期間の日（まとめた期間なら始め〜終わりの全部。半月1つなら、その半月） */
+function periodDays() {
+  if (!period) return [];
+  return span ? shiftSpanDays(span.from, span.to) : shiftDays(period.y, period.m, period.half);
+}
+
+/** いま出している期間の見出し（「12/1〜12/31」） */
+function periodLabel() {
+  if (!period) return '';
+  return span ? shiftSpanLabel(span.from, span.to) : shiftRangeLabel(period.y, period.m, period.half);
+}
+
+/** 確定のシフトを出すときの日（いまの期間なら期間の日、過去の半月ならその半月の日） */
+function shownDays(v) {
+  return v.days || shiftDays(v.y, v.m, v.half);
+}
+
+/** 確定のシフトを出すときの見出し */
+function shownLabel(v) {
+  return v.label || shiftRangeLabel(v.y, v.m, v.half);
+}
 /** いま入れている希望。{ 'YYYY-MM-DD': [{ s, t }] } */
 let picked = {};
 /** 日ごとの連絡。{ 'YYYY-MM-DD': '文' } */
@@ -345,6 +374,8 @@ function applyOpen(res) {
   due = res.due || '';
   reopen = /^\d{4}-\d{2}-\d{2}$/.test(res.reopen || '') ? res.reopen : '';
   late = res.late === true;
+  // ★まとめて募集している期間（形の合わないものは、半月1つとして読みます）
+  span = res.span && shiftSpanHalves(res.span.from, res.span.to) ? { from: res.span.from, to: res.span.to } : null;
 
   // 定休日はマネージで変えられます。変えていない店舗は null で返ってくるので、
   // そのときは config.js に書いてある初期値（バグるなら火曜）を使います。
@@ -981,7 +1012,7 @@ function demoBuilt() {
   const out = {};
   const slots = shiftSlotsOf(me.store);
   const 時刻で入れる = shiftUsesRange(me.store);
-  shiftDays(period.y, period.m, period.half).forEach((d, i) => {
+  periodDays().forEach((d, i) => {
     if (isClosedOn(d)) return;
     const day = { open: [], lunch: [], dinner: [], memo: i === 0 ? '見本です' : '', patty: '', short: {} };
     slots.forEach((slot, si) => {
@@ -1024,8 +1055,9 @@ function renderPeriod() {
   //       募集が始まったら       … 希望を入れる画面だけ。前回は**ボタンの中**
   //     「1つ前のシフト」を押したときだけ出す、が ko-dai さんの言う「格納」です。
   //   絵にして保存するのも、ここで決めた方です
+  // ★まとめて募集した期間は、期間の日と見出しを持たせます（2026-11-19）
   const いまの = built && Object.keys(built).length && period
-    ? { y: period.y, m: period.m, half: period.half, built, 前か: false } : null;
+    ? { y: period.y, m: period.m, half: period.half, built, 前か: false, days: periodDays(), label: periodLabel() } : null;
   const 選んだ = pastPick ? past.find((v) => v.key === pastPick) : null;
   const 過去の = (v) => (v ? { y: v.y, m: v.m, half: v.half, built: v.built, 前か: true } : null);
   // ★見本（テスト用）でも、過去のシフトは出します。
@@ -1059,8 +1091,11 @@ function renderPeriod() {
     return;
   }
 
-  el('periodMain').textContent = shiftRangeLabel(period.y, period.m, period.half);
-  el('periodSub').textContent = `${period.y}年${period.m}月 ${period.half === 1 ? '前半' : '後半'}`;
+  el('periodMain').textContent = periodLabel();
+  // ★まとめて募集した期間は「2026年・31日間」（前半・後半とは言えないため。2026-11-19）
+  el('periodSub').textContent = span
+    ? `${span.from.slice(0, 4)}年${span.to.slice(0, 4) !== span.from.slice(0, 4) ? `〜${span.to.slice(0, 4)}年` : ''}・${periodDays().length}日間`
+    : `${period.y}年${period.m}月 ${period.half === 1 ? '前半' : '後半'}`;
 
   // 提出の期限。募集しているあいだだけ出します
   const showDue = canSend && due;
@@ -1080,7 +1115,7 @@ function renderPeriod() {
   //   出し直されると、休みの日に入る希望が残ってしまうためです
   Object.keys(picked).forEach((s) => { if (isClosedOn(s)) delete picked[s]; });
 
-  const days = shiftDays(period.y, period.m, period.half).filter((s) => !isClosedOn(s));
+  const days = periodDays().filter((s) => !isClosedOn(s));
   const on = days.filter((s) => (picked[s] || []).length).length;
 
   if (!canSend) {
@@ -1170,7 +1205,7 @@ function renderPastBar() {
   // いまの半月が確定ずみなら、そこへ戻るボタンも並べます
   // ★見本のときは、押した方（希望を入れる／確定後）で決まるので出しません
   if (!me.demo && built && Object.keys(built).length && period) {
-    box.appendChild(pastBtn(`${shiftRangeLabel(period.y, period.m, period.half)}（今）`,
+    box.appendChild(pastBtn(`${periodLabel()}（今）`,
       null, !pastPick));
   }
   past.forEach((v) => {
@@ -1208,11 +1243,11 @@ function renderBuilt() {
   //   「9/1〜9/15 のシフト」とだけ出すと、募集中の半月と取りちがえます。
   //   「前回の」とは書きません。3つ前を選んでいることもあるためです
   el('builtTitle').textContent = shown.前か
-    ? `過去のシフト（${shiftRangeLabel(shown.y, shown.m, shown.half)}）`
-    : `${shiftRangeLabel(shown.y, shown.m, shown.half)} のシフト`;
+    ? `過去のシフト（${shownLabel(shown)}）`
+    : `${shownLabel(shown)} のシフト`;
   el('builtList').innerHTML = '';
 
-  shiftDays(shown.y, shown.m, shown.half).forEach((dateStr) => {
+  shownDays(shown).forEach((dateStr) => {
     const [, m, d] = dateStr.split('-').map(Number);
     const dow = new Date(dateStr.replace(/-/g, '/')).getDay();
     const day = built[dateStr];
@@ -1310,9 +1345,10 @@ function builtSheetModel() {
   // ★出しているもの（shown）から作ります。前の半月を出しているときは、
   //   その半月の絵になります（画面と、保存する絵がずれないように）
   const built = shown.built;
-  const days = shiftDays(shown.y, shown.m, shown.half);
+  const days = shownDays(shown);
   const blocks = [];
-  const per = shiftPrintCols(days.length);
+  // ★まとめて募集した期間（2026-11-19）は、半月の絵と同じ列の数で段を増やします（1段に何十日も並べると読めないため）
+  const per = shiftPrintCols(Math.min(days.length, 16));
 
   for (let from = 0; from < days.length; from += per) {
     const part = days.slice(from, from + per);
@@ -1373,7 +1409,7 @@ function builtSheetModel() {
   return {
     // ★店舗の名前は焼き込みません。前は「バグる」と書いてあったので、
     //   他の店舗の人にも「バグる シフト表」と出るところでした
-    title: `${shiftRangeLabel(shown.y, shown.m, shown.half)} `
+    title: `${shownLabel(shown)} `
       + `${(getStore(me.store) || {}).name || ''} シフト表`,
     slots: shiftSlotsOf(me.store),
     blocks,
@@ -1468,7 +1504,7 @@ async function saveBuiltImage() {
     drawShiftSheet(canvas, builtSheetModel());
     const blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.95));
     if (!blob) throw new Error('絵が作れませんでした');
-    const name = `シフト_${shiftRangeLabel(shown.y, shown.m, shown.half).replace(/[/〜]/g, '-')}.jpg`;
+    const name = `シフト_${shownLabel(shown).replace(/[/〜]/g, '-')}.jpg`;
     const file = new File([blob], name, { type: 'image/jpeg' });
     try {
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -1501,7 +1537,7 @@ async function saveBuiltImage() {
 
 function renderDays() {
   el('days').innerHTML = '';
-  shiftDays(period.y, period.m, period.half).forEach((dateStr) => {
+  periodDays().forEach((dateStr) => {
     el('days').appendChild(dayCard(dateStr));
   });
 }
@@ -1702,13 +1738,13 @@ function setTime(dateStr, slotId, t) {
 /* -------- 出した内容の控え -------- */
 function renderDone() {
   if (!sentAt || !period) return;
-  el('doneTitle').textContent = `${shiftRangeLabel(period.y, period.m, period.half)} を出しました`;
+  el('doneTitle').textContent = `${periodLabel()} を出しました`;
   if (due && phase === 'open' && !late) {
     el('doneTitle').textContent += `（${shiftDueLabel(reopen || due, DOW)}直せます）`;
   }
   el('doneList').innerHTML = '';
 
-  const days = shiftDays(period.y, period.m, period.half)
+  const days = periodDays()
     .filter((s) => (picked[s] || []).length || notes[s]);
 
   if (!days.length) {
@@ -1799,7 +1835,9 @@ function todayPick(日) {
   const 同じ半月 = (v) => !!v && Number(v.y) === y && Number(v.m) === m && Number(v.half) === half;
   let 表 = null;
   // いま出している半月がその日の半月で、確定している（見本の「確定後」で作った見本の表は、本物ではないので使いません）
-  if (!me.demo && built && typeof built === 'object' && 同じ半月(period)) 表 = built;
+  // ★まとめて募集した期間（2026-11-19）は、期間のどの日でも、届いている確定の表から取ります
+  const 期間の日 = !!span && 日 >= span.from && 日 <= span.to;
+  if (!me.demo && built && typeof built === 'object' && (同じ半月(period) || 期間の日)) 表 = built;
   if (!表) {
     const v = (past || []).find(同じ半月);
     if (v && v.built && typeof v.built === 'object') 表 = v.built;
@@ -2025,7 +2063,8 @@ async function send() {
   const 送った中身 = JSON.stringify([picked, notes]);
   const 送った先 = `${me.store}|${period ? period.key : ''}`;
 
-  const res = await call({ mode: 'put', days: picked, notes });
+  // ★まとめて募集している期間も送ります（サーバーが「同じ期間を見ているか」を確かめます。2026-11-19）
+  const res = await call(span ? { mode: 'put', days: picked, notes, span } : { mode: 'put', days: picked, notes });
   btn.disabled = false;
   btn.textContent = 元の字;
 
@@ -2040,6 +2079,8 @@ async function send() {
     renderPeriod();
     return;
   }
+  // ★お店が募集の期間を変えた（2026-11-19）。この店舗の控えは古いので捨て、断りの文を出します
+  if (!res.ok && res.stale === true) delete 店舗の控え[me.store];
   if (!res.ok) return setErr('sendErr', res.error || '出せませんでした');
   sentAt = res.sentAt || new Date().toISOString();
   renderPeriod();

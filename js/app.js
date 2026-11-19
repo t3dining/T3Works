@@ -1267,8 +1267,101 @@ function calcTouch() {
 }
 
 let calcPad = null;
-let calcPadFor = null;      // いま打っている入力欄
+let calcPadFor = null;      // いま打っている入力欄（★変えるときは calcPad打つ先にする を通します）
 let calcPadHold = 0;        // テンキーの中を触った時刻（閉じないようにするため）
+
+/* ------------------------------------------------------------
+ *  打つ先は、指で触った欄だけにします（ko-dai さん・2026-11-19）
+ *
+ *  「（ある仕入先）の仕入れ明細を入力しようと数字を入力しても、別業者の枠に飛んで入力ができません」（★仕入先の名前は書きません）
+ *  「全ての枠でこのようなことが起こらないようにしてください」
+ *
+ *  ★打つ先（calcPadFor）は、欄に focus が来たときに移していました。iPhone では、**指で触っていない欄にも
+ *    focus が来る**ことがあります。考えられる道は3つです（ここでは iPhone の本物を試せないので、どれが起きたかは確かめていません）：
+ *      ① 欄を押してテンキーが出ると、画面が動きます。iPhone が指を離したあとに作る「押した」が、
+ *         **動いたあと指の下に来た別の欄**に届くことがある
+ *      ② キーボードの上に iPhone が出す「∧ ∨ 完了」の帯の矢印は、**となりの欄へ focus を移します**
+ *      ③ 欄を押したつもりでテンキーの上の窓などに当たると、**前の欄が打つ先のまま**残る
+ *  ★いまは「テンキーで打つ欄を、指で軽く触れて離した」ことを覚えます（なぞって画面を送ったのは入れません）。
+ *      ・focus が来ても、触った欄でなければ移しません（触った欄、なければ打っている欄に戻します）
+ *      ・キーを押したとき、打つ先を決めたあとに触った別の欄があれば、そちらへ移してから入れます
+ *    アプリが自分で移すとき（確定で次の欄へ・取り返し）は、先に打つ先を決めてから focus するので、そのまま通ります。
+ *  ★いま打っている欄には、はっきり枠を付けます（数がどこに入るか、ひと目で分かるように）。
+ * ---------------------------------------------------------- */
+const CALC_触れた間 = 1500;        // 触ってから、この間に来た focus は「その指の focus」と見ます
+const CALC_なぞりの幅 = 10;        // これより動いたら、触ったのではなく、なぞった（画面を送った）と見ます
+let calcPad触れはじめ = null;      // { 欄, x, y }
+let calcPad触れた欄 = null;        // { 欄, 時 }（テンキーで打つ欄を、最後に指で触って離した）
+let calcPad決めた時 = 0;           // 打つ先を決めた時刻
+
+/** テンキーで打つ欄か（出前館などの欄・仕入と人件費・手で直す欄） */
+function calcPad打つ欄か(t) {
+  return !!(t && t.dataset && (t.dataset.k || t.dataset.grid || t.dataset.te));
+}
+
+/** いま打っている欄に、はっきり枠を付けます（外すときは 付ける=false） */
+function calcPad目印(欄, 付ける) {
+  if (!欄 || !欄.style) return;
+  欄.style.outline = 付ける ? `3px solid ${CALC_答えの色.途中への枠}` : '';
+  欄.style.outlineOffset = 付ける ? '1px' : '';
+}
+
+/** 打つ先を決めます（★ここ1か所で。決めた時刻と、目印の枠もここで付け替えます） */
+function calcPad打つ先にする(欄) {
+  const 前 = calcPadFor;
+  calcPadFor = 欄 || null;
+  calcPad決めた時 = Date.now();
+  if (前 && 前 !== 欄) calcPad目印(前, false);
+  if (欄) calcPad目印(欄, true);
+}
+
+/**
+ * focus が来た欄を、打つ先にしてよいか
+ *   返り … null（その欄を打つ先にしてよい）／欄（その欄ではなく、こちらを打つ先にする）
+ */
+function calcPad戻す先(欄) {
+  if (calcPadFor === 欄) return null;                       // ★アプリが自分で移した（確定・取り返し）
+  const 触 = calcPad触れた欄;
+  const 最近 = !!(触 && Date.now() - 触.時 < CALC_触れた間 && calcPadAlive(触.欄));
+  if (最近) return 触.欄 === 欄 ? null : 触.欄;            // ★触った欄なら移す。ちがう欄なら、触った欄へ（①）
+  // ★触っていない欄に focus が来た（②など）。テンキーで別の欄を打っている最中なら、その欄のままにします
+  if (calcPadFor && calcPadAlive(calcPadFor) && calcPad && calcPad.style.display !== 'none') return calcPadFor;
+  return null;
+}
+
+/** その欄を打つ先にして、テンキーを出します */
+function calcPad欄を選ぶ(欄) {
+  calcPad打つ先にする(欄);
+  const 式 = 欄.dataset ? 欄.dataset.raw : undefined;
+  if (式 !== undefined && 式 !== 欄.value) 欄.value = 式;   // ★離れている間は「答え」を出しているので、式に戻します
+  if (document.activeElement !== 欄) {
+    try { 欄.focus({ preventScroll: true }); } catch (e) { /* 断られても打てます（打つ場所は一番うしろ） */ }
+  }
+  calcPadShow(欄);
+}
+
+/** キーを押したとき：打つ先を決めたあとに、指で触った別の欄があれば、そちらへ移します（③） */
+function calcPad触った欄へ移す() {
+  const 触 = calcPad触れた欄;
+  // ★決めたのと同じ時刻に触ったものは「決める前」と見ます（触った欄に focus が来て決めた、がふつうの順なので）
+  if (!触 || 触.欄 === calcPadFor || 触.時 <= calcPad決めた時 || !calcPadAlive(触.欄) || 触.欄.readOnly) return;
+  calcPad欄を選ぶ(触.欄);
+}
+
+// ★指で軽く触れて離した欄を覚えます（見るだけで、何も止めません）。iPhone は focus より先に pointerup が来ます
+// ★touch ではなく pointer で見ます。指・ペン・iPad につないだマウスのどれでも届きます
+//   （touch だけで見ると、マウスで押したときに「触っていない」となり、他の欄へ移れません）。
+//   画面を送ったときは pointercancel になり、pointerup が来ないので、覚えません
+document.addEventListener('pointerdown', (e) => {
+  calcPad触れはじめ = calcPad打つ欄か(e.target) ? { 欄: e.target, x: e.clientX, y: e.clientY } : null;
+}, { passive: true, capture: true });
+document.addEventListener('pointerup', (e) => {
+  const p = calcPad触れはじめ;
+  calcPad触れはじめ = null;
+  if (!p) return;
+  if (Math.abs(e.clientX - p.x) > CALC_なぞりの幅 || Math.abs(e.clientY - p.y) > CALC_なぞりの幅) return;
+  calcPad触れた欄 = { 欄: p.欄, 時: Date.now() };
+}, { passive: true, capture: true });
 
 /**
  * テンキーの色（会社のロゴから測った色）
@@ -1667,12 +1760,14 @@ function calcPadEcho() {
        気づかずに打つと、数字が式の途中に入って金額が変わります。 */
   const 途中へ = (() => {
     const t = calcPad打つ先();
-    if (!t || typeof t.selectionStart !== 'number') return false;
+    // ★入力欄に打つときは、いつも一番うしろに入ります（2026-11-19）。途中に入るのは窓に打つときだけです
+    if (!t || t !== 式 || typeof t.selectionStart !== 'number') return false;
     const 長さ = String(t.value || '').length;
     return t.selectionStart < 長さ || t.selectionEnd < 長さ;
   })();
-  欄名.style.color = 途中へ ? CALC_答えの色.途中へ : '';
-  欄名.style.fontWeight = 途中へ ? '700' : '';
+  // ★どの欄に入るかを、太い濃い字で出します（2026-11-19。別の欄に入っていないか、ひと目で分かるように）
+  欄名.style.color = 途中へ ? CALC_答えの色.途中へ : CALC_色.墨;
+  欄名.style.fontWeight = '700';
   if (途中へ) 欄名.textContent = '★式の途中に入ります　' + 欄名.textContent;
   式.style.boxShadow = 途中へ ? `inset 0 0 0 2px ${CALC_答えの色.途中への枠}` : '';
   式.style.borderRadius = 途中へ ? '4px' : '';
@@ -1773,6 +1868,7 @@ function calcPad打つ先() {
 
 /** カーソルのところに字を入れます */
 function calcPadInsert(c) {
+  calcPad触った欄へ移す();     // ★打つ先を決めたあとに指で触った欄があれば、そちらへ（2026-11-19）
   const i = calcPadFor;
   if (!i || i.readOnly) return;
   if (!calcPadAlive(i)) { calcPadClose(); return; }   // ★欄が作り直されて外れています
@@ -1780,7 +1876,10 @@ function calcPadInsert(c) {
   let at = t.selectionStart;
   let to = t.selectionEnd;
   // ★欄に本当の focus がないとき（下の calcPadDone の説明）は、打つ場所が当てになりません。一番うしろに入れます
-  if (at === null || at === undefined || document.activeElement !== t) { at = t.value.length; to = at; }
+  // ★★入力欄に打つときは、いつも一番うしろに入れます（2026-11-19。押したキーと違う数が入る、の守り）。
+  //   iPhone は欄を押した場所や、あとから打つ場所を置くことがあり、気づかないうちに途中へ入っていました。
+  //   途中を直すのは、テンキーの上の窓だけです（窓は字が全部見え、「★式の途中に入ります」と出ます）
+  if (t !== calcPad窓() || at === null || at === undefined || document.activeElement !== t) { at = t.value.length; to = at; }
   t.value = t.value.slice(0, at) + c + t.value.slice(to);
   const 次 = at + c.length;
   /* ★一番うしろで打っているときは、打つ場所を置き直しません（中身を入れかえると、打つ場所はもう一番うしろです）。
@@ -1794,13 +1893,15 @@ function calcPadInsert(c) {
 
 /** 1文字消します */
 function calcPadBack() {
+  calcPad触った欄へ移す();
   const i = calcPadFor;
   if (!i || i.readOnly) return;
   if (!calcPadAlive(i)) { calcPadClose(); return; }
   const t = calcPad打つ先();
   let at = t.selectionStart;
   let to = t.selectionEnd;
-  if (at === null || at === undefined || document.activeElement !== t) { at = t.value.length; to = at; }
+  // ★入力欄では、いつも一番うしろを消します（上の calcPadInsert と同じ。途中を消すのは窓だけ）
+  if (t !== calcPad窓() || at === null || at === undefined || document.activeElement !== t) { at = t.value.length; to = at; }
   if (at === to) {
     if (at === 0) return;
     t.value = t.value.slice(0, at - 1) + t.value.slice(to);
@@ -1818,6 +1919,7 @@ function calcPadBack() {
 
 /** 全部消します */
 function calcPadClear() {
+  calcPad触った欄へ移す();
   const i = calcPadFor;
   if (!i || i.readOnly) return;
   if (!calcPadAlive(i)) { calcPadClose(); return; }
@@ -1830,7 +1932,7 @@ function calcPadClear() {
 /** 閉じる … その場で残して、テンキーを引っこめます */
 function calcPadClose() {
   const i = calcPadFor;
-  calcPadFor = null;
+  calcPad打つ先にする(null);
   calcPadHide();
   if (i) i.blur();          // blur で、待たずにその場で残ります
 }
@@ -1842,12 +1944,13 @@ function calcPadClose() {
  *   そのまま次の欄へ送ります。最後の欄まで来たら、閉じます。
  */
 function calcPadDone() {
+  calcPad触った欄へ移す();
   const i = calcPadFor;
   if (!i) { calcPadClose(); return; }
   const 次 = calcPadNext(i);
   if (!次) { calcPadClose(); return; }
   i.blur();                 // いまの欄を、その場で残します
-  calcPadFor = 次;
+  calcPad打つ先にする(次);
   /* ★★式を入れた欄は、離れている間「答え」（◯◯,◯◯◯）を出しています。押すと focus の見張りが式へ戻します。
        ところがキーは指が触れた瞬間に動くので（2026-10-29）、iPhone はこの focus を断ることがあります。
        断られると、**答えの字のうしろに打った数が続いて**、1けた多い別の金額になります。
@@ -2092,7 +2195,11 @@ function calcPadBind(input) {
     calcPadEcho();
   }, 0);
   input.addEventListener('focus', () => {
-    calcPadFor = input;
+    /* ★★指で触っていない欄に来た focus では、打つ先を移しません（2026-11-19・上の「打つ先は、指で触った欄だけ」）。
+         触った欄（なければ、いま打っている欄）に戻します */
+    const 戻す = calcPad戻す先(input);
+    if (戻す && 戻す !== input) { calcPad欄を選ぶ(戻す); return; }
+    calcPad打つ先にする(input);
     calcPadShow(input);
     一番うしろへ();
   });
@@ -2131,7 +2238,7 @@ function calcPadBind(input) {
         }
         return;
       }
-      if (calcPadFor === input) { calcPadFor = null; calcPadHide(); }
+      if (calcPadFor === input) { calcPad打つ先にする(null); calcPadHide(); }
     }, 120);
   });
 }
@@ -14562,20 +14669,82 @@ async function onShiftTake() {
  * ★同じ店舗で募集中の半月は1つだけにします。
  *   2つ開いていると、アルバイトの提出ページにどちらを出すか決められません。
  */
-/** 募集を始める画面を開く（期限をここで決めます） */
+/** 募集を始める画面を開く（期限をここで決めます。4店舗は期間の終わりも。2026-11-19） */
 function openShiftRecruit() {
-  const label = shiftRangeLabel(state.y, state.m, shiftHalf);
-  const other = shiftOtherOpen();
-  el.shiftOpenWhen.textContent = `${state.y}年 ${label} の募集`;
   // ★前の期限がもう過ぎていたら使いません（そのまま始めると、始めたとたんに締め切りになります。2026-11-02）
   const 前の期限 = shiftDueOf(shiftRec());
   el.shiftOpenDue.min = shiftCalToday();
   el.shiftOpenDue.value = 前の期限 && 前の期限 >= shiftCalToday()
     ? 前の期限 : shiftDueDefault(state.y, state.m, shiftHalf);
-  el.shiftOpenNote.textContent = other
-    ? `今募集中の ${other.label} は締め切られます。始めると、みんなの提出ページには ${label} が出ます。`
-    : 'みんなの提出ページに、この期間と期限が出るようになります。';
+  shiftSpanFieldSync();
+  shiftOpenWhenSync();
   el.shiftOpenModal.classList.remove('is-hidden');
+}
+
+/**
+ * 募集を始める画面の「募集する期間」（こじゃれ・炭まろ・ちゃこる・おいでんテラスだけ。2026-11-19、ko-dai さんの指示）
+ *
+ * ★始めは、いま開いている半月の初日です（1日か16日）。終わりを、15日か月末で選びます（SHIFT_SPAN_MAX 個の半月まで）。
+ * ★index.html は本部のファイルなので、欄はここで作って、期限の欄の上に差し込みます。他の店舗では隠します。
+ * ★初めの値は、いまの半月がまとめた期間の始めなら、その期間の終わり。そうでなければ「この半月だけ」です。
+ */
+function shiftSpanFieldSync() {
+  let box = document.getElementById('shiftOpenSpanField');
+  const on = shiftUsesSpan(state.storeId);
+  if (!box) {
+    if (!on) return;
+    box = document.createElement('label');
+    box.className = 'field';
+    box.id = 'shiftOpenSpanField';
+    const cap = document.createElement('span');
+    cap.className = 'field__label';
+    cap.textContent = '募集する期間（始めは、いま開いている半月の初日です）';
+    const sel = document.createElement('select');
+    sel.className = 'field__input';
+    sel.id = 'shiftOpenSpanTo';
+    sel.addEventListener('change', shiftOpenWhenSync);
+    box.append(cap, sel);
+    el.shiftOpenDue.closest('.field').insertAdjacentElement('beforebegin', box);
+  }
+  box.style.display = on ? '' : 'none';
+  if (!on) return;
+  const sel = document.getElementById('shiftOpenSpanTo');
+  const いまの期間 = shiftSpanOf(shiftRec(), state.y, state.m, shiftHalf);
+  const 始め = shiftDays(state.y, state.m, shiftHalf)[0];
+  sel.innerHTML = '';
+  shiftSpanChoices(state.y, state.m, shiftHalf).forEach((c) => {
+    const o = document.createElement('option');
+    o.value = c.to;
+    o.textContent = c.label;
+    sel.appendChild(o);
+  });
+  sel.value = いまの期間 && いまの期間.from === 始め ? いまの期間.to : sel.options[0].value;
+}
+
+/** 募集を始める画面で選んでいる期間の半月（{ y, m, half } の配列。4店舗でなければ、いまの半月だけ） */
+function shiftOpenHalves() {
+  const sel = document.getElementById('shiftOpenSpanTo');
+  if (!shiftUsesSpan(state.storeId) || !sel || !sel.value) return [{ y: state.y, m: state.m, half: shiftHalf }];
+  return shiftSpanHalves(shiftDays(state.y, state.m, shiftHalf)[0], sel.value) || [{ y: state.y, m: state.m, half: shiftHalf }];
+}
+
+/** 募集を始める画面の見出しと説明を、選んでいる期間に合わせる */
+function shiftOpenWhenSync() {
+  const halves = shiftOpenHalves();
+  const 始め = shiftDays(halves[0].y, halves[0].m, halves[0].half)[0];
+  const 最後 = halves[halves.length - 1];
+  const 終わりの日 = shiftDays(最後.y, 最後.m, 最後.half);
+  const label = halves.length > 1 ? shiftSpanLabel(始め, 終わりの日[終わりの日.length - 1]) : shiftRangeLabel(state.y, state.m, shiftHalf);
+  el.shiftOpenWhen.textContent = `${state.y}年 ${label} の募集`;
+  const 入る = (p) => halves.some((h) => h.y === p.y && h.m === p.m && h.half === p.half);
+  const others = shiftOpenOthers().filter((p) => !入る(p));
+  // ★期間に入る半月がもう確定ずみなら、そう書きます（募集中に戻るため）
+  const 確定ずみ = halves.slice(1).filter((p) => shiftPhaseOf(Store.getDay(SHIFT_STORE, shiftKey(state.storeId, p.y, p.m, p.half))) === SHIFT_BUILT);
+  el.shiftOpenNote.textContent = (others.length
+    ? `今募集中の ${others.map((p) => p.label).join('・')} は締め切られます。始めると、みんなの提出ページには ${label} が出ます。`
+    : 'みんなの提出ページに、この期間と期限が出るようになります。')
+    + (halves.length > 1 ? `アルバイトは ${label} の全部の日を、1回でまとめて出します。` : '')
+    + (確定ずみ.length ? `${確定ずみ.map((p) => shiftRangeLabel(p.y, p.m, p.half)).join('・')} は確定ずみですが、募集中に戻ります。` : '');
 }
 
 /** 募集を始める */
@@ -14588,23 +14757,59 @@ function startShiftRecruit() {
     return;
   }
 
-  const other = shiftOtherOpen();
-  if (other) shiftSetPhase(other.y, other.m, other.half, SHIFT_BUILT);
-  shiftSetPhase(state.y, state.m, shiftHalf, SHIFT_OPEN, due);
+  // ★まとめて募集する期間（4店舗だけ。2026-11-19）。全部の半月に、同じ期限と同じ始め・終わりを入れます。
+  //   半月1つのときは始め・終わりを空にします（前にまとめていた印を残さないため）
+  const halves = shiftOpenHalves();
+  const 始め = shiftDays(halves[0].y, halves[0].m, halves[0].half)[0];
+  const 最後 = shiftDays(halves[halves.length - 1].y, halves[halves.length - 1].m, halves[halves.length - 1].half);
+  const 期間 = halves.length > 1 ? { from: 始め, to: 最後[最後.length - 1] } : null;
+  const 入る = (p) => halves.some((h) => h.y === p.y && h.m === p.m && h.half === p.half);
+  shiftOpenOthers().filter((p) => !入る(p)).forEach((p) => shiftSetPhase(p.y, p.m, p.half, SHIFT_BUILT));
+  halves.forEach((p) => shiftSetPhase(p.y, p.m, p.half, SHIFT_OPEN, due, 期間));
   el.shiftOpenModal.classList.add('is-hidden');
   render();
 }
 
+/**
+ * いま開いている半月と同じ期間にまとめた半月（{ y, m, half } の配列。自分を含む・古い順）
+ *
+ * ★まとめていなければ、いまの半月だけです。
+ * ★始め・終わりと募集の状態がそろっている半月だけを入れます（同期の途中で、片方の半月だけ新しいことがあるため。
+ *   サーバーの shiftSpanOf と同じ決まり）。確定・再開は、ここで返した半月の全部にかけます。
+ */
+function shiftSpanHalvesHere() {
+  const here = { y: state.y, m: state.m, half: shiftHalf };
+  const rec = shiftRec();
+  const sp = shiftSpanOf(rec, state.y, state.m, shiftHalf);
+  if (!sp) return [here];
+  const phase = shiftPhaseOf(rec);
+  return (shiftSpanHalves(sp.from, sp.to) || [here]).filter((p) => {
+    const r = Store.getDay(SHIFT_STORE, shiftKey(state.storeId, p.y, p.m, p.half));
+    const s = shiftSpanOf(r, p.y, p.m, p.half);
+    return shiftPhaseOf(r) === phase && !!s && s.from === sp.from && s.to === sp.to;
+  });
+}
+
+/** 確定・再開の確認に出す期間の見出し（まとめた期間なら「12/1〜12/31」） */
+function shiftSpanLabelHere() {
+  const sp = shiftSpanOf(shiftRec(), state.y, state.m, shiftHalf);
+  return sp ? shiftSpanLabel(sp.from, sp.to) : shiftRangeLabel(state.y, state.m, shiftHalf);
+}
+
 /** 確定する（提出を締め切る） */
 async function buildShiftDone() {
-  const label = shiftRangeLabel(state.y, state.m, shiftHalf);
-  const rec = shiftRec();
-  const n = shiftDays(state.y, state.m, shiftHalf)
-    .filter((s) => !shiftClosedOn(s))
-    .reduce((sum, s) => {
-      const day = shiftDayOf(rec, s);
-      return sum + shiftSlotsOf(state.storeId).reduce((k, slot) => k + day[slot.id].length, 0);
-    }, 0);
+  const label = shiftSpanLabelHere();
+  // ★まとめて募集した期間（2026-11-19）は、期間の全部の半月をまとめて確定します。人数も期間の全部で数えます
+  const halves = shiftSpanHalvesHere();
+  const n = halves.reduce((sum0, p) => {
+    const rec = Store.getDay(SHIFT_STORE, shiftKey(state.storeId, p.y, p.m, p.half));
+    return sum0 + shiftDays(p.y, p.m, p.half)
+      .filter((s) => !shiftClosedOn(s))
+      .reduce((sum, s) => {
+        const day = shiftDayOf(rec, s);
+        return sum + shiftSlotsOf(state.storeId).reduce((k, slot) => k + day[slot.id].length, 0);
+      }, 0);
+  }, 0);
 
   const ok = await askConfirm({
     item: `${label} のシフトを確定します`,
@@ -14615,11 +14820,17 @@ async function buildShiftDone() {
     danger: true,
   });
   if (!ok) return;
-  shiftSetPhase(state.y, state.m, shiftHalf, SHIFT_BUILT);
+  halves.forEach((p) => shiftSetPhase(p.y, p.m, p.half, SHIFT_BUILT));
   render();
 }
 
-function shiftSetPhase(y, m, half, v, due) {
+/**
+ * 半月の募集の状態を書く
+ *
+ *   期間 … まとめて募集する期間（{ from, to }。2026-11-19）。渡さなければ前のものを残します（確定するときに、まとめた印を消さないため）。
+ *          null なら消します（半月1つで募集を始めるとき）
+ */
+function shiftSetPhase(y, m, half, v, due, 期間) {
   const key = shiftKey(state.storeId, y, m, half);
   // 期限は、渡されなければ前のものをそのまま残します
   // （確定するときに、募集のときに決めた期限を消さないため）
@@ -14627,9 +14838,13 @@ function shiftSetPhase(y, m, half, v, due) {
     ? shiftDueOf(Store.getDay(SHIFT_STORE, key))
     : (due || '');
   // ★一時的な再開（reopen）は、募集を始め直す・確定するときに消します（setItem は前の中身に重ねるため）
-  Store.setItem(SHIFT_STORE, key, SHIFT_PHASE_KEY, {
-    v, at: new Date().toISOString(), due: keep, reopen: '',
-  });
+  const 中身 = { v, at: new Date().toISOString(), due: keep, reopen: '' };
+  // ★始め・終わりも、空で上書きしないと前のものが残ります（setItem は重ねるため）
+  if (期間 !== undefined) {
+    中身.from = 期間 ? 期間.from : '';
+    中身.to = 期間 ? 期間.to : '';
+  }
+  Store.setItem(SHIFT_STORE, key, SHIFT_PHASE_KEY, 中身);
 }
 
 /* -------- 提出を一時的に再開する（2026-11-02、ko-dai さんの指示） --------
@@ -14640,15 +14855,17 @@ function shiftSetPhase(y, m, half, v, due) {
  *  ★再開しているあいだは、もう出した人も直せます（人ごとには分けていません）。
  */
 function shiftSetReopen(d) {
-  Store.setItem(SHIFT_STORE, shiftKey(state.storeId, state.y, state.m, shiftHalf), SHIFT_PHASE_KEY, {
-    at: new Date().toISOString(), reopen: d,
+  // ★まとめて募集した期間（2026-11-19）は、期間の全部の半月にかけます（サーバーは期間の一番古い半月で数えます）
+  const at = new Date().toISOString();
+  shiftSpanHalvesHere().forEach((p) => {
+    Store.setItem(SHIFT_STORE, shiftKey(state.storeId, p.y, p.m, p.half), SHIFT_PHASE_KEY, { at, reopen: d });
   });
 }
 
 async function shiftReopenStart() {
   const 今日 = shiftCalToday();
   const ok = await askConfirm({
-    item: `${shiftRangeLabel(state.y, state.m, shiftHalf)} の提出を、今日だけ再開します`,
+    item: `${shiftSpanLabelHere()} の提出を、今日だけ再開します`,
     message: `今日 ${shiftDayLabel(今日, DOW)} の24時まで、提出ページから出せるようになります。\n`
       + '出し忘れた人に知らせてください。\n'
       + 'このあいだは、もう出した人も直せます。日付が変わると、また締め切られます。',
@@ -14706,18 +14923,24 @@ function shiftReopenSync(rec) {
   b.classList.toggle('btn--primary', late);
 }
 
-/** いま募集中の、他の半月（前後4つ分を見ます） */
-function shiftOtherOpen() {
+/**
+ * いま募集中の、他の半月（全部。前後8つ分を見ます）
+ *
+ * ★まとめて募集した期間（2026-11-19）は、募集中の半月が2つ以上あります。新しく募集を始めるときに、全部締め切ります。
+ *   前は「1つだけ」探していました（半月1つしか募集しなかったため）。
+ */
+function shiftOpenOthers() {
   const here = shiftKey(state.storeId, state.y, state.m, shiftHalf);
-  for (let i = -4; i <= 4; i += 1) {
+  const out = [];
+  for (let i = -8; i <= 8; i += 1) {
     const p = shiftStep(state.y, state.m, shiftHalf, i);
     const key = shiftKey(state.storeId, p.y, p.m, p.half);
     if (key === here) continue;
     if (shiftPhaseOf(Store.getDay(SHIFT_STORE, key)) === SHIFT_OPEN) {
-      return { ...p, label: shiftRangeLabel(p.y, p.m, p.half) };
+      out.push({ ...p, label: shiftRangeLabel(p.y, p.m, p.half) });
     }
   }
-  return null;
+  return out;
 }
 
 /* -------- 描画 -------- */
@@ -16108,6 +16331,10 @@ function shiftGuideHtml(kind) {
   out.push(shiftGuideOl([
     '表の上の<b>‹ ›</b> で、組みたい半月（例：10/1〜10/15）にします。<b>「今期」</b>でいまの半月に戻ります',
     '<b>「シフト募集を始める」</b>を押します',
+    // ★仕込み・営業の4店舗は、何か月分かをまとめて募集できます（2026-11-19、ko-dai さんの指示 → 「何か月分をまとめて募集する」）
+    ...(kind === 'yoru' ? ['何か月分かをまとめて募集するときは、<b>「募集する期間」</b>で終わりの日を選びます'
+      + '（例：12/1〜12/31。始めは開いている半月の初日、終わりは15日か月末で、3か月まで）。'
+      + 'アルバイトは期間の全部の日を1回で出し、確定と「提出を一時的に再開する」も期間の全部にかかります'] : []),
     '<b>提出の期限</b>（この日までに出してもらう日）を選んで<b>「始める」</b>',
   ]));
   out.push(shiftGuideShot(shiftGuidePanel('シフト募集を始める',
@@ -16448,6 +16675,12 @@ function renderShift() {
     el.shiftWishNote.textContent += `　／　提出 ${shiftDueLabel(due, DOW)}`
       + (再開中 ? '（いまは再開中。今日の24時まで出せます）'
         : 締め切り ? '（期限を過ぎたので、いまは出せません）' : '');
+  }
+  // ★まとめて募集した期間（2026-11-19）。この半月がどの期間の一部かを添えます（確定・再開は期間の全部にかかるため）
+  const まとめた期間 = phase ? shiftSpanOf(rec, state.y, state.m, shiftHalf) : null;
+  if (まとめた期間) {
+    el.shiftWishNote.textContent += `　／　${shiftSpanLabel(まとめた期間.from, まとめた期間.to)} をまとめて`
+      + (phase === SHIFT_OPEN ? '募集しています' : '確定しました');
   }
   shiftReopenSync(rec);
 
@@ -18392,10 +18625,18 @@ function shiftShortDays(rec) {
   //   「◯/◯(◯)ランチキッチン◯人のように、いつどの時間帯でどこのポジションが何人必要か」→ shiftShortByLane）
   const 分ける = shiftShortByLane(state.storeId);
   const out = [];
-  shiftDays(state.y, state.m, shiftHalf).forEach((dateStr) => {
+  // ★まとめて募集した期間（2026-11-19）は、期間の全部の半月から探します（LINE の文が、開いている半月の分だけにならないように）
+  const 半月たち = shiftSpanHalvesHere();
+  const 日と記録 = [];
+  半月たち.forEach((p) => {
+    const ここ = p.y === state.y && p.m === state.m && p.half === shiftHalf;
+    const r = ここ ? rec : Store.getDay(SHIFT_STORE, shiftKey(state.storeId, p.y, p.m, p.half));
+    shiftDays(p.y, p.m, p.half).forEach((dateStr) => 日と記録.push([dateStr, r]));
+  });
+  日と記録.forEach(([dateStr, r]) => {
     if (dateStr < 今日) return;
     if (shiftClosedOn(dateStr)) return;
-    const day = shiftDayOf(rec, dateStr);
+    const day = shiftDayOf(r, dateStr);
     const まとめ = {};
     枠一覧.forEach((slot) => {
       SHIFT_LANES.forEach((lane) => {
@@ -18458,7 +18699,9 @@ function shiftLineMessage(kindId, list) {
 function shiftOpenDays() {
   const 定休 = Closed.dows(state.storeId);
   if (!定休.length) return [];
-  return shiftDays(state.y, state.m, shiftHalf).filter((dateStr) => {
+  // ★まとめて募集した期間（2026-11-19）は、期間の全部の日から探します
+  const sp = shiftSpanOf(shiftRec(), state.y, state.m, shiftHalf);
+  return (sp ? shiftSpanDays(sp.from, sp.to) : shiftDays(state.y, state.m, shiftHalf)).filter((dateStr) => {
     if (Closed.exceptionOn(state.storeId, dateStr) !== 'open') return false;
     return 定休.includes(new Date(dateStr.replace(/-/g, '/')).getDay());
   }).map((dateStr) => {
@@ -18471,7 +18714,9 @@ function shiftOpenDays() {
 /** 募集を始めたことを知らせる文 */
 function shiftOpenMessage() {
   const 表 = {};
-  表[SHIFT_LINE_MARK_HALF] = shiftHalfLabel(state.m, shiftHalf);
+  // ★まとめて募集した期間（2026-11-19）は「12月」「12/16〜1/15」。半月1つなら今までどおり「12月前半」
+  const sp = shiftSpanOf(shiftRec(), state.y, state.m, shiftHalf);
+  表[SHIFT_LINE_MARK_HALF] = sp ? shiftSpanLineLabel(sp.from, sp.to) : shiftHalfLabel(state.m, shiftHalf);
   表[SHIFT_LINE_MARK_DUE] = shiftDueText(shiftDueOf(shiftRec()), DOW);
   表[SHIFT_LINE_MARK_OPEN] = shiftOpenDays().join('・');
   // ★期限が入っていない半月もあります（期限を決められるようになる前に

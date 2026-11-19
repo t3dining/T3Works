@@ -7871,6 +7871,119 @@ function shiftPhaseText(phase) {
   return 'まだ募集していません';
 }
 
+/* -------- 何か月分をまとめて募集する（2026-11-19、ko-dai さんの指示） --------
+ *
+ *  ko-dai さん「こじゃれ、炭まろ、ちゃこる、おいでんテラスのみシフト募集の期間を指定できるようにしてください」
+ *  「アルバイトの提出を12/1〜12/31と期間を指定できるようにする」「31日分をまとめて出す」
+ *  「1日か16日に始まる期間」（★どの日からでも、ではありません。半月の途中で切りかわると、
+ *   半月ごとに1つしか持てない「募集中／確定ずみ」が表せないため）。
+ *
+ *  ★記録の持ち方は変えません。半月の行はそのまま、希望の行も**半月ごと・人ごと**のままです。
+ *    まとめた半月の全部の items.phase に、**同じ** from（始め）・to（終わり）を入れるだけです。
+ *      { v: 'open', at, due, reopen, from: '2026-12-01', to: '2026-12-31' }
+ *    募集中・確定ずみ・期限・再開も、半月ごとに今までどおり持ちます（全部の半月に同じものを入れます）。
+ *  ★始めは1日か16日、終わりは15日か月末、長さは SHIFT_SPAN_MAX 個の半月まで。
+ *    半月1つだけのときは from・to を入れません（今までと同じ形）。
+ *  ★サーバー（cloudflare/worker.js の shiftSpanOf・gas/シフト.gs の shiftSpanOf_）も同じ決まりで読みます。
+ *    from・to のそろった半月だけを1つの期間として出し、「出す」も半月ごとの希望の行に分けて書きます。
+ *  ★検算は .claude/skills/t3works-shift/span.js（画面）と gas-shift.js の「まとめて募集」（サーバー）。
+ */
+
+/** 何か月分かをまとめて募集できる店舗（名指し。2026-11-19） */
+const SHIFT_SPAN_STORES = ['kojare', 'sumimaro', 'chacoru', 'oiden'];
+/** まとめられる半月の数（6 = 3か月）。★サーバーの SHIFT_SPAN_MAX と同じ数（ずれたら span.js が鳴ります） */
+const SHIFT_SPAN_MAX = 6;
+
+/** その店舗で、期間をまとめて募集できるか */
+function shiftUsesSpan(storeId) {
+  return SHIFT_SPAN_STORES.includes(storeId);
+}
+
+/** 'YYYY-MM-DD' の日が入っている半月（{ y, m, half }） */
+function shiftHalfAt(dateStr) {
+  const [y, m, d] = String(dateStr).split('-').map(Number);
+  return { y, m, half: shiftHalfOf(d) };
+}
+
+/**
+ * 始め〜終わりに入る半月（{ y, m, half } の配列。古い順）
+ *
+ * ★形が決まりに合わなければ null（始めが1日か16日でない・終わりが15日か月末でない・
+ *   始めが終わりより後・半月が SHIFT_SPAN_MAX を超える）
+ */
+function shiftSpanHalves(from, to) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from || '') || !/^\d{4}-\d{2}-\d{2}$/.test(to || '') || from > to) return null;
+  const a = shiftHalfAt(from);
+  const b = shiftHalfAt(to);
+  if (shiftDays(a.y, a.m, a.half)[0] !== from) return null;
+  const bd = shiftDays(b.y, b.m, b.half);
+  if (bd[bd.length - 1] !== to) return null;
+  const out = [];
+  for (let p = a, i = 0; i < SHIFT_SPAN_MAX; i += 1, p = shiftStep(p.y, p.m, p.half, 1)) {
+    out.push(p);
+    if (p.y === b.y && p.m === b.m && p.half === b.half) return out;
+  }
+  return null;
+}
+
+/**
+ * その半月の行が入っている、まとめた期間（{ from, to }。半月1つだけ・形が合わないときは null）
+ *
+ *   y, m, half … その行の半月（★期間の中にこの半月が入っていなければ、まとめていないものとして読みます）
+ */
+function shiftSpanOf(rec, y, m, half) {
+  const v = ((rec && rec.items) || {})[SHIFT_PHASE_KEY];
+  const from = v && v.from;
+  const to = v && v.to;
+  const halves = shiftSpanHalves(from, to);
+  if (!halves || halves.length < 2) return null;
+  return halves.some((p) => p.y === y && p.m === m && p.half === half) ? { from, to } : null;
+}
+
+/** 始め〜終わりの日（'YYYY-MM-DD' の配列） */
+function shiftSpanDays(from, to) {
+  const halves = shiftSpanHalves(from, to) || [];
+  return halves.reduce((out, p) => out.concat(shiftDays(p.y, p.m, p.half)), []);
+}
+
+/** 「12/1〜12/31」のような見出し */
+function shiftSpanLabel(from, to) {
+  const [, fm, fd] = String(from).split('-').map(Number);
+  const [, tm, td] = String(to).split('-').map(Number);
+  return `${fm}/${fd}〜${tm}/${td}`;
+}
+
+/**
+ * LINE の文に入れる期間の名前（{期間}。半月なら「12月前半」と言っていた所）
+ *
+ * ★1か月まるごとなら「12月」、それ以外は「12/16〜1/15」（「12月後半〜1月前半」と書くより短く、取りちがえないため）
+ */
+function shiftSpanLineLabel(from, to) {
+  const [fy, fm, fd] = String(from).split('-').map(Number);
+  const [ty, tm, td] = String(to).split('-').map(Number);
+  if (fy === ty && fm === tm && fd === 1 && td === new Date(ty, tm, 0).getDate()) return `${fm}月`;
+  return shiftSpanLabel(from, to);
+}
+
+/**
+ * 募集を始める画面で選べる「期間の終わり」（2026-11-19）
+ *
+ *   返すもの … [{ to: 'YYYY-MM-DD', label: '12/1〜12/31（31日間）', halves: [{ y, m, half }, …] }, …]（短い順）
+ */
+function shiftSpanChoices(y, m, half) {
+  const from = shiftDays(y, m, half)[0];
+  const out = [];
+  for (let i = 0; i < SHIFT_SPAN_MAX; i += 1) {
+    const p = shiftStep(y, m, half, i);
+    const days = shiftDays(p.y, p.m, p.half);
+    const to = days[days.length - 1];
+    const halves = shiftSpanHalves(from, to);
+    const n = shiftSpanDays(from, to).length;
+    out.push({ to, halves, label: `${shiftSpanLabel(from, to)}（${i === 0 ? 'この半月だけ' : `${n}日間`}）` });
+  }
+  return out;
+}
+
 /**
  * 一度取り込んだ組み合わせを控えておく入れ先
  *
