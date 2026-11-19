@@ -39,6 +39,21 @@
   }
   見た();
   document.addEventListener('visibilitychange', () => { if (!document.hidden) 見た(); });
+
+  /* 知らせを押したとき、アプリがもう開いていたら、sw.js が「この画面へ」と伝えてきます（2026-11-21）。
+     ★iPhone は開いている画面を外から動かせないことがあるので、ここで動きます。
+     同じページなら # だけを変えます（アプリは # の変化で画面を描き直します）。よその所へは動きません */
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      const d = e.data || {};
+      if (d.t3 !== 'open' || typeof d.url !== 'string') return;
+      let u;
+      try { u = new URL(d.url, location.href); } catch (err) { return; }
+      if (u.origin !== location.origin) return;
+      if (u.pathname === location.pathname) { if (u.hash && u.hash !== location.hash) location.hash = u.hash; }
+      else location.href = u.href;
+    });
+  }
 })();
 
 const NotifyView = (() => {
