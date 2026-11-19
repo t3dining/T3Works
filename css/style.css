@@ -3078,6 +3078,12 @@ body.is-wide .page { max-width: 1700px; }
 /* ★指を下ろしたところで持ち上がるまで、行の上では縦スクロールだけ受け付けます */
 .acct-row { touch-action: pan-y; }
 .acct-row.is-off .acct-row__name { text-decoration: line-through; }
+/* 通知（クローズ・ジャーナル）を受け取る店舗（2026-11-21）。行の下に1段 */
+.acct-row__push {
+  flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;
+  font-size: 12px; color: var(--text-sub); padding-left: 2px;
+}
+.acct-row__push-label { font-weight: 700; }
 .admin-warn { color: var(--ng); }
 /* -------- 表を見せるモーダル（出してもらった希望） --------
    パソコン・タブレットでは画面いっぱいに広げて、横スクロールを減らします。

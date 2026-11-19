@@ -2225,7 +2225,41 @@ function renderAccounts() {
       renderAccounts(); 保存しました();
     });
 
-    [name, num, copy, adm, drv, off, 消す].forEach((n) => li.appendChild(n));
+    /* ★通知（クローズ・ジャーナル）を受け取る店舗（2026-11-21、ko-dai さん「マネージの個人の番号に紐づけて、
+         誰にどの店舗の通知を送るか決めれるようにしてください」）。
+         ★この人の番号が入った端末（ワークス・マインで「通知を受け取る」を押した端末）にだけ、チェックした店舗の知らせが届きます。
+           送り分けるのは Cloudflare です（cloudflare/worker.js の「アプリの知らせ」が、この名簿の ps を読みます）
+         ★全部にチェック＝欄を持たない（あとで店舗が増えても、その店も届きます）。1つも付けない＝何も届きません
+         ★使えなくした人には、チェックに関係なく届きません */
+    const 通知 = document.createElement('div');
+    通知.className = 'acct-row__push';
+    const 見出し = document.createElement('span');
+    見出し.className = 'acct-row__push-label';
+    見出し.textContent = '通知：';
+    通知.appendChild(見出し);
+    const 店たち = STORES.map((s) => s.id);
+    const 今の = Array.isArray(v.ps) ? v.ps : 店たち;
+    店たち.forEach((id) => {
+      const lab = document.createElement('label');
+      lab.className = 'acct-row__admin';
+      const pbox = document.createElement('input');
+      pbox.type = 'checkbox'; pbox.checked = 今の.includes(id); pbox.disabled = !!v.off;
+      pbox.dataset.store = id;
+      pbox.addEventListener('change', () => {
+        const 選んだ = [...通知.querySelectorAll('input[type=checkbox]')].filter((b) => b.checked).map((b) => b.dataset.store);
+        const map = StaffAccounts.all();
+        if (!map[code]) return;
+        if (選んだ.length === 店たち.length) delete map[code].ps;
+        else map[code].ps = 選んだ;
+        if (!名簿を保存する(map)) return;
+        renderAccounts(); 保存しました();
+      });
+      lab.appendChild(pbox);
+      lab.appendChild(document.createTextNode((getStore(id) || {}).short || id));
+      通知.appendChild(lab);
+    });
+
+    [name, num, copy, adm, drv, off, 消す, 通知].forEach((n) => li.appendChild(n));
     el.acctList.appendChild(li);
   });
 }

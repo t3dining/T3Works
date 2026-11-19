@@ -138,7 +138,8 @@ const NotifyView = (() => {
       return;
     }
     字.textContent = '確かめています…';
-    const r = await 頼む('state', { sub: { endpoint: 登録.endpoint } });
+    // ★app も送ります。前に登録した端末に、番号とアプリを Cloudflare が書き足します（誰に送るかを名簿で決めるため）
+    const r = await 頼む('state', { sub: { endpoint: 登録.endpoint }, app: マイン ? 'mine' : 'works' });
     if (r.ok && r.on) {
       見せる('この端末は受け取ります（クローズとジャーナルの未提出）。', [試す, やめる]);
     } else if (r.ok) {

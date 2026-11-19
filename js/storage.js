@@ -1028,7 +1028,9 @@ const StaffAccounts = {
     try { localStorage.removeItem(this._key); } catch (e) { /* 消せなくても、次に開いたときにまた消します */ }
   },
 
-  /** { 番号: { n, admin, off } } をまるごと */
+  /** { 番号: { n, admin, off, at, ps? } } をまるごと
+   *  ★ps … 通知（クローズ・ジャーナル）を受け取る店舗の id の並び（2026-11-21、ko-dai さんの指示）。
+   *    ない＝全店舗。★ここで落とすと、マネージで誰かを直すたびに全員の通知の店舗が消えます（読み直して保存する作りのため） */
   all() {
     try {
       const saved = this._mem;
@@ -1044,6 +1046,7 @@ const StaffAccounts = {
             //   （担当者のリストと同じで、あとから増えた人が下に付きます）
             at: String(v.at || ''),
           };
+          if (Array.isArray(v.ps)) out[String(code)].ps = v.ps.map(String);
         });
         return out;
       }
