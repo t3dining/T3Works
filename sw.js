@@ -23,7 +23,7 @@
  *      一覧まるごとがコメントに刺さります（2026-09-13 に実際にそうなりました）。
  * ============================================================ */
 
-const VERSION = 'db5e03fe';
+const VERSION = '33a5d1e5';
 
 /* ★控えの名前に版の印を入れません。**2026-09-13 まで入れていました。**
  *
@@ -46,7 +46,7 @@ const CACHE = 't3works';
 
 /* いまの版が使うファイルの一覧（`?v=` 付き）。公開用を作る.py が入れます。
  * ★ここにない控えだけを捨てます。**あるものは残します。** */
-const KEEP_LIST = ["css/style.css?v=fe10c428", "drive/js/drive.js?v=2c2de0e7", "help/css/help.css?v=4011d0ad", "help/js/help.js?v=0619d3be", "img/chacoru.png?v=3406529b", "img/drive-icon-180.png?v=cf8bda78", "img/drive-icon-512.png?v=7c78116c", "img/drive-icon-64.png?v=7088d4ae", "img/kojare.png?v=c5b494db", "img/manage-icon-180.png?v=ac18efea", "img/manage-icon-64.png?v=2b8a9145", "img/mine-icon-180.png?v=cbafcd5d", "img/mine-icon-512.png?v=2dbb903e", "img/mine-icon-64.png?v=ea09f133", "img/owner-icon-180.png?v=cbb1087e", "img/owner-icon-512.png?v=7972b6a3", "img/owner-icon-64.png?v=ce05c3fc", "img/shift-icon-180.png?v=ab0bd671", "img/shift-icon-64.png?v=0254ff8c", "img/shift-qr.png?v=3509f79d", "img/t3dining-mark.png?v=c9163364", "img/works-icon-180.png?v=a0ee5b78", "img/works-icon-512.png?v=dddd764f", "img/works-icon-64.png?v=0f9cbed2", "img/works-qr.png?v=facd8cdc", "js/app.js?v=b4fbd8a0", "js/config.js?v=9d91ed9f", "js/interview.js?v=9c08c637", "js/notify.js?v=fd091945", "js/share.js?v=88023092", "js/shift-sheet.js?v=202d99f9", "js/storage.js?v=3d5fd037", "js/sync.js?v=33c12037", "js/update.js?v=b2294857", "js/voice.js?v=3aa252ba", "manage/css/admin.css?v=eae657ea", "manage/js/admin.js?v=d63ec218", "shift/css/submit.css?v=e8a6d2b3", "shift/js/submit.js?v=45f4a638", "story/css/story.css?v=55f08ac0", "story/js/story.js?v=0f730e6d"];
+const KEEP_LIST = ["css/style.css?v=fe10c428", "drive/js/drive.js?v=2c2de0e7", "help/css/help.css?v=4011d0ad", "help/js/help.js?v=0619d3be", "img/chacoru.png?v=3406529b", "img/drive-icon-180.png?v=cf8bda78", "img/drive-icon-512.png?v=7c78116c", "img/drive-icon-64.png?v=7088d4ae", "img/kojare.png?v=c5b494db", "img/manage-icon-180.png?v=ac18efea", "img/manage-icon-64.png?v=2b8a9145", "img/mine-icon-180.png?v=cbafcd5d", "img/mine-icon-512.png?v=2dbb903e", "img/mine-icon-64.png?v=ea09f133", "img/owner-icon-180.png?v=cbb1087e", "img/owner-icon-512.png?v=7972b6a3", "img/owner-icon-64.png?v=ce05c3fc", "img/shift-icon-180.png?v=ab0bd671", "img/shift-icon-64.png?v=0254ff8c", "img/shift-qr.png?v=3509f79d", "img/t3dining-mark.png?v=c9163364", "img/works-icon-180.png?v=a0ee5b78", "img/works-icon-512.png?v=dddd764f", "img/works-icon-64.png?v=0f9cbed2", "img/works-qr.png?v=facd8cdc", "js/app.js?v=b4fbd8a0", "js/config.js?v=9d91ed9f", "js/interview.js?v=9c08c637", "js/notify.js?v=c99db2eb", "js/share.js?v=88023092", "js/shift-sheet.js?v=202d99f9", "js/storage.js?v=3d5fd037", "js/sync.js?v=33c12037", "js/update.js?v=b2294857", "js/voice.js?v=3aa252ba", "manage/css/admin.css?v=eae657ea", "manage/js/admin.js?v=d63ec218", "shift/css/submit.css?v=e8a6d2b3", "shift/js/submit.js?v=45f4a638", "story/css/story.css?v=55f08ac0", "story/js/story.js?v=0f730e6d"];
 
 /**
  * この控えを捨てるか
@@ -211,18 +211,33 @@ self.addEventListener('fetch', (e) => {
  *  ★iPhone は、届いた知らせを**必ず画面に出さないと**、何回かで知らせを止めてしまいます。
  *    だから中身が読めなくても、何かは必ず出します。
  *  ★押したら、アプリ（マイン）の、その店のその日の画面を開きます（開いていれば、その画面を前に出します）。
- *  ★アイコンの数（2026-11-21、ko-dai さんの指示）は「まだ見ていない知らせの数」＝いま通知の一覧に出ている知らせの数です。
- *    届いたとき・押したときに数え直します。アプリを開いたら消します（js/notify.js）。
+ *  ★アイコンの数（2026-11-21、ko-dai さんの指示）は「アプリを最後に開いてから届いた知らせの数」です。
+ *    届くたびに1つ足し、知らせを押したとき・アプリを開いたとき（js/notify.js）に0へ戻します。
+ *    ★はじめは「通知の一覧に出ている知らせの数」を数えていました。iPhone ではアプリを開いても一覧から下がらず、
+ *      前の分に足されていきました（ko-dai さんの報告）。いまは数を自分で持ちます。
+ *    数を持つ所は、控え（CACHE）の中の1行です（BADGE_KEY。版の印 ?v= がないので、片づけでは捨てられません）。
+ *    ★js/notify.js も同じ所に0を書きます。名前を変えるときは2か所一緒に（test_sw_push.js が見ています）。
  *    数を出せない端末（古い iPhone など）でも、知らせは今までどおり出ます。
  * ============================================================ */
+const BADGE_KEY = 'app-badge-count';
 
-/** アイコンの数を、いま出ている知らせの数にそろえます（0 なら消します） */
-async function 数を出す() {
+async function 数の控え() {
+  return { c: await caches.open(CACHE), u: new URL(BADGE_KEY, self.registration.scope).href };
+}
+
+/** アイコンの数を、1つ足すか（足す＝true）、0に戻します */
+async function 数を出す(足す) {
   try {
     const n = self.navigator;
     if (!n || typeof n.setAppBadge !== 'function') return;
-    const 出ている = await self.registration.getNotifications();
-    if (出ている.length) await n.setAppBadge(出ている.length);
+    const 控え = await 数の控え();
+    let 数 = 0;
+    if (足す) {
+      const r = await 控え.c.match(控え.u);
+      数 = (r ? Number(await r.text()) || 0 : 0) + 1;
+    }
+    await 控え.c.put(控え.u, new Response(String(数)));
+    if (数) await n.setAppBadge(数);
     else if (typeof n.clearAppBadge === 'function') await n.clearAppBadge();
   } catch (err) { /* 数を出せなくても、知らせは出ています */ }
 }
@@ -233,7 +248,7 @@ self.addEventListener('push', (e) => {
   const 題 = String(d.title || 'T3 Works');
   const 決め = { body: String(d.body || ''), data: { url: String(d.url || '') } };
   if (d.tag) 決め.tag = String(d.tag);
-  e.waitUntil(self.registration.showNotification(題, 決め).then(数を出す));
+  e.waitUntil(self.registration.showNotification(題, 決め).then(() => 数を出す(true)));
 });
 
 self.addEventListener('notificationclick', (e) => {
@@ -244,7 +259,7 @@ self.addEventListener('notificationclick', (e) => {
   // ★よその所へは開きません（行き先はアプリの中だけ）
   if (url.indexOf(self.registration.scope) !== 0) url = self.registration.scope;
   e.waitUntil((async () => {
-    await 数を出す();   // 押した知らせは一覧から下がるので、その分だけ減ります
+    await 数を出す(false);   // 押したらアプリが開くので、0に戻します（開いたアプリの側でも戻します）
     const 窓たち = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const w of 窓たち) {
       if (w.url.indexOf(self.registration.scope) === 0 && 'focus' in w) {

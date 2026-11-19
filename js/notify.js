@@ -19,16 +19,22 @@
  *  ★検算は .claude/skills/t3works-zentai/test_notify_ui.js（jsc）。
  * ============================================================ */
 /* ---------- アイコンの数（2026-11-21、ko-dai さんの指示） ----------
- *  アプリを開いたら、届いた知らせは見たことにします（LINE やメールと同じ）。
- *  数を消し、通知の一覧からも下げます。★下げないと、次に届いたときに、見た分まで数え直してしまいます（sw.js の 数を出す）。
+ *  アプリを開いたら、届いた知らせは見たことにします（LINE やメールと同じ）。数を0に戻し、次に届いたら1からです。
+ *  ★数は sw.js が控え（'t3works'）の中の1行に持っています（BADGE_KEY）。ここでも同じ所に0を書きます。
+ *    消すだけだと、次に届いたときに前の分に足されます（2026-11-21、ko-dai さんの報告。はじめは通知の一覧を数えていました）。
+ *    ★名前（'t3works'・'app-badge-count'）を変えるときは sw.js と一緒に（test_sw_push.js が見ています）。
  *  ワークスにもマインにも効きます。数を出せない端末では、何もしません。 */
 (() => {
   async function 見た() {
     try {
       if (typeof navigator.clearAppBadge === 'function') await navigator.clearAppBadge();
-      if (!('serviceWorker' in navigator)) return;
+      if (!('serviceWorker' in navigator) || typeof caches === 'undefined') return;
       const reg = await navigator.serviceWorker.getRegistration();
-      if (reg && typeof reg.getNotifications === 'function') (await reg.getNotifications()).forEach((x) => x.close());
+      if (!reg) return;
+      const c = await caches.open('t3works');
+      await c.put(new URL('app-badge-count', reg.scope).href, new Response('0'));
+      // 通知の一覧からも下げます（効く端末だけ。iPhone では下がらないことがあります）
+      if (typeof reg.getNotifications === 'function') (await reg.getNotifications()).forEach((x) => x.close());
     } catch (e) { /* 数を消せなくても、アプリはそのまま動きます */ }
   }
   見た();
