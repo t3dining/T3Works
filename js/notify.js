@@ -1,10 +1,14 @@
 /* ============================================================
- *  アプリの知らせを受け取る（マインの「この端末の設定」の欄。2026-11-20、ko-dai さんの指示）
+ *  アプリの知らせを受け取る（ワークスとマインの「この端末の設定」の欄。2026-11-20、ko-dai さんの指示）
  *
  *  「明日からクローズとジャーナルの通知は LINE ではなくアプリからの通知で知らせてください。
  *    各社員の自分のスマホで通知を受け取りたいです」
  *
- *  ★マインにだけ出します（社員が自分のスマホで使うアプリです。お店のタブレットのワークスには出しません）。
+ *  ★ワークスにもマインにも出します（2026-11-21、ko-dai さん「マインは私しか使っていません。
+ *    他の社員はワークスを使っているので、ワークスにも通知がいくようにしてください」）。
+ *    ★どちらで登録したかを Cloudflare に伝えます（app）。2つは同じ住所の下にあるので、
+ *      押したときに開く画面を、登録したアプリに合わせるためです（ワークスで受け取った人にマインを開かない）。
+ *    お店のタブレットでも押せば受け取れます（押さなければ届きません）。
  *  ★画面（view）ではなく、設定の画面に1つ欄を足すだけです（js/app.js に触りません。js/share.js と同じ作り）。
  *  ★届けるのは Cloudflare（cloudflare/worker.js の「アプリの知らせ」）、画面に出すのは sw.js です。
  *    端末の登録は Sync.ask の cloud（Cloudflare へ。ふつうの合言葉と、その人の番号で通ります）。
@@ -15,7 +19,9 @@
  *  ★検算は .claude/skills/t3works-zentai/test_notify_ui.js（jsc）。
  * ============================================================ */
 const NotifyView = (() => {
-  if (document.body.dataset.mode !== 'mine') return null;
+  const マイン = document.body.dataset.mode === 'mine';
+  // ★iPhone の「設定」→「通知」に出る名前（ホーム画面のアイコンの名前。index.html の apple-mobile-web-app-title）
+  const アプリの名 = マイン ? 'T3 Works Mine' : 'T3 Works';
   const 保存の欄 = document.getElementById('storeUsage');
   const 設定 = document.getElementById('modal');
   if (!保存の欄 || !設定 || !保存の欄.closest('.field')) return null;
@@ -76,11 +82,11 @@ const NotifyView = (() => {
   /** いまの様子を出します（設定の画面を開いたとき） */
   async function 様子() {
     if (!使える()) {
-      見せる('この開き方では、通知を受け取れません。iPhone は iOS 16.4 以降で、ホーム画面に追加したアプリ（T3 Works Mine）から開いてください。', []);
+      見せる('この開き方では、通知を受け取れません。iPhone は iOS 16.4 以降で、ホーム画面に追加したアプリ（' + アプリの名 + '）から開いてください。', []);
       return;
     }
     if (Notification.permission === 'denied') {
-      見せる('通知が切られています。iPhone の「設定」→「通知」→「T3 Works Mine」で「通知を許可」をオンにしてから、もう一度開いてください。', []);
+      見せる('通知が切られています。iPhone の「設定」→「通知」→「' + アプリの名 + '」で「通知を許可」をオンにしてから、もう一度開いてください。', []);
       return;
     }
     if (!Sync.enabled() || !Sync.pin()) {
@@ -109,7 +115,7 @@ const NotifyView = (() => {
     // ★押した流れの中で、一番先に聞きます（iPhone の決まり）
     const 許可 = await Notification.requestPermission();
     if (許可 !== 'granted') {
-      見せる('通知が許可されませんでした。iPhone の「設定」→「通知」→「T3 Works Mine」で「通知を許可」をオンにしてから、もう一度押してください。', [受け取る]);
+      見せる('通知が許可されませんでした。iPhone の「設定」→「通知」→「' + アプリの名 + '」で「通知を許可」をオンにしてから、もう一度押してください。', [受け取る]);
       return;
     }
     字.textContent = '登録しています…';
@@ -121,7 +127,7 @@ const NotifyView = (() => {
       let 登録 = await reg.pushManager.getSubscription();
       if (登録 && !同じ鍵(登録, 鍵.key)) { await 登録.unsubscribe(); 登録 = null; }
       if (!登録) 登録 = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: 鍵の並び(鍵.key) });
-      const r = await 頼む('add', { sub: 登録.toJSON() });
+      const r = await 頼む('add', { sub: 登録.toJSON(), app: マイン ? 'mine' : 'works' });
       if (!r.ok) throw new Error(r.error || '登録できませんでした');
       見せる('この端末は受け取ります。「試しに送る」を押して、届くか確かめてください。', [試す, やめる]);
     } catch (e) {
@@ -136,7 +142,7 @@ const NotifyView = (() => {
     const 登録 = reg ? await reg.pushManager.getSubscription() : null;
     if (!登録) { 見せる('この端末は、まだ受け取っていません。', [受け取る]); return; }
     const r = await 頼む('test', { sub: { endpoint: 登録.endpoint } });
-    if (r.ok) 見せる('送りました。数秒で届きます。届かないときは、iPhone の「設定」→「通知」で、T3 Works Mine の通知がオンか見てください。', [試す, やめる]);
+    if (r.ok) 見せる('送りました。数秒で届きます。届かないときは、iPhone の「設定」→「通知」で、' + アプリの名 + ' の通知がオンか見てください。', [試す, やめる]);
     else if (r.on === false) 見せる(r.error || 'この端末にはもう届きません。もう一度「通知を受け取る」を押してください。', [受け取る]);
     else 見せる(r.error || '送れませんでした。少したってから、もう一度お試しください。', [試す, やめる]);
   });
