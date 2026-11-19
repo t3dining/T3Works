@@ -14684,9 +14684,10 @@ function openShiftRecruit() {
 /**
  * 募集を始める画面の「募集する期間」（こじゃれ・炭まろ・ちゃこる・おいでんテラスだけ。2026-11-19、ko-dai さんの指示）
  *
- * ★始めは、いま開いている半月の初日です（1日か16日）。終わりを、15日か月末で選びます（SHIFT_SPAN_MAX 個の半月まで）。
+ * ★始めは、いま開いている半月の初日です（1日か16日）。選べるのは「この半月だけ」か「1か月」です（→ js/config.js の shiftSpanChoices）。
  * ★index.html は本部のファイルなので、欄はここで作って、期限の欄の上に差し込みます。他の店舗では隠します。
- * ★初めの値は、いまの半月がまとめた期間の始めなら、その期間の終わり。そうでなければ「この半月だけ」です。
+ * ★初めの値は、いまの半月がまとめた期間の始めで、その終わりが選べるものなら、その期間の終わり。そうでなければ「この半月だけ」です
+ *   （前に3か月で始めた募集は、選べるものにないので「この半月だけ」になります）。
  */
 function shiftSpanFieldSync() {
   let box = document.getElementById('shiftOpenSpanField');
@@ -14698,7 +14699,7 @@ function shiftSpanFieldSync() {
     box.id = 'shiftOpenSpanField';
     const cap = document.createElement('span');
     cap.className = 'field__label';
-    cap.textContent = '募集する期間（始めは、いま開いている半月の初日です）';
+    cap.textContent = '募集する期間（半月か1か月。始めは、いま開いている半月の初日です）';
     const sel = document.createElement('select');
     sel.className = 'field__input';
     sel.id = 'shiftOpenSpanTo';
@@ -14718,7 +14719,8 @@ function shiftSpanFieldSync() {
     o.textContent = c.label;
     sel.appendChild(o);
   });
-  sel.value = いまの期間 && いまの期間.from === 始め ? いまの期間.to : sel.options[0].value;
+  const 選べる = [...sel.options].map((o) => o.value);
+  sel.value = いまの期間 && いまの期間.from === 始め && 選べる.includes(いまの期間.to) ? いまの期間.to : 選べる[0];
 }
 
 /** 募集を始める画面で選んでいる期間の半月（{ y, m, half } の配列。4店舗でなければ、いまの半月だけ） */
@@ -16332,8 +16334,8 @@ function shiftGuideHtml(kind) {
     '表の上の<b>‹ ›</b> で、組みたい半月（例：10/1〜10/15）にします。<b>「今期」</b>でいまの半月に戻ります',
     '<b>「シフト募集を始める」</b>を押します',
     // ★仕込み・営業の4店舗は、何か月分かをまとめて募集できます（2026-11-19、ko-dai さんの指示 → 「何か月分をまとめて募集する」）
-    ...(kind === 'yoru' ? ['何か月分かをまとめて募集するときは、<b>「募集する期間」</b>で終わりの日を選びます'
-      + '（例：12/1〜12/31。始めは開いている半月の初日、終わりは15日か月末で、3か月まで）。'
+    ...(kind === 'yoru' ? ['1か月分をまとめて募集するときは、<b>「募集する期間」</b>で「1か月」を選びます'
+      + '（1日から開いていれば月末まで＝例：12/1〜12/31、16日から開いていれば次の月の15日まで＝例：11/16〜12/15）。'
       + 'アルバイトは期間の全部の日を1回で出し、確定と「提出を一時的に再開する」も期間の全部にかかります'] : []),
     '<b>提出の期限</b>（この日までに出してもらう日）を選んで<b>「始める」</b>',
   ]));

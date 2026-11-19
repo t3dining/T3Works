@@ -7882,8 +7882,11 @@ function shiftPhaseText(phase) {
  *    まとめた半月の全部の items.phase に、**同じ** from（始め）・to（終わり）を入れるだけです。
  *      { v: 'open', at, due, reopen, from: '2026-12-01', to: '2026-12-31' }
  *    募集中・確定ずみ・期限・再開も、半月ごとに今までどおり持ちます（全部の半月に同じものを入れます）。
- *  ★始めは1日か16日、終わりは15日か月末、長さは SHIFT_SPAN_MAX 個の半月まで。
+ *  ★始めは1日か16日、終わりは15日か月末、長さは SHIFT_SPAN_MAX 個の半月まで（読む側の決まり）。
  *    半月1つだけのときは from・to を入れません（今までと同じ形）。
+ *  ★選べるのは「この半月だけ」か「1か月」（＝半月2つ）の2つです（2026-11-19、ko-dai さん「半月または1ヶ月の選択になるようにしてください」。
+ *    はじめは3か月まで選べました）。1日から開いていれば月末まで、16日から開いていれば次の月の15日までです（→ shiftSpanChoices）。
+ *    ★SHIFT_SPAN_MAX は減らしていません。サーバーが読める長さで、前に3か月で始めた募集も読めるように残します
  *  ★サーバー（cloudflare/worker.js の shiftSpanOf・gas/シフト.gs の shiftSpanOf_）も同じ決まりで読みます。
  *    from・to のそろった半月だけを1つの期間として出し、「出す」も半月ごとの希望の行に分けて書きます。
  *  ★検算は .claude/skills/t3works-shift/span.js（画面）と gas-shift.js の「まとめて募集」（サーバー）。
@@ -7891,8 +7894,10 @@ function shiftPhaseText(phase) {
 
 /** 何か月分かをまとめて募集できる店舗（名指し。2026-11-19） */
 const SHIFT_SPAN_STORES = ['kojare', 'sumimaro', 'chacoru', 'oiden'];
-/** まとめられる半月の数（6 = 3か月）。★サーバーの SHIFT_SPAN_MAX と同じ数（ずれたら span.js が鳴ります） */
+/** まとめた期間として読める半月の数（6 = 3か月）。★サーバーの SHIFT_SPAN_MAX と同じ数（ずれたら test_worker_shift.js が鳴ります） */
 const SHIFT_SPAN_MAX = 6;
+/** 募集を始める画面で選べる半月の数（1 = この半月だけ、2 = 1か月。2026-11-19、ko-dai さんの指示） */
+const SHIFT_SPAN_PICK = 2;
 
 /** その店舗で、期間をまとめて募集できるか */
 function shiftUsesSpan(storeId) {
@@ -7968,18 +7973,20 @@ function shiftSpanLineLabel(from, to) {
 /**
  * 募集を始める画面で選べる「期間の終わり」（2026-11-19）
  *
- *   返すもの … [{ to: 'YYYY-MM-DD', label: '12/1〜12/31（31日間）', halves: [{ y, m, half }, …] }, …]（短い順）
+ *   返すもの … [{ to: 'YYYY-MM-DD', label: '12/1〜12/15（この半月だけ）', halves: [{ y, m, half }, …] }, …]（短い順。SHIFT_SPAN_PICK 個）
+ *
+ * ★「この半月だけ」と「1か月」の2つです（ko-dai さん「半月または1ヶ月の選択になるようにしてください」）。
+ *   1か月は、開いている半月から半月2つ分（12/1〜12/31・11/16〜12/15）
  */
 function shiftSpanChoices(y, m, half) {
   const from = shiftDays(y, m, half)[0];
   const out = [];
-  for (let i = 0; i < SHIFT_SPAN_MAX; i += 1) {
+  for (let i = 0; i < SHIFT_SPAN_PICK; i += 1) {
     const p = shiftStep(y, m, half, i);
     const days = shiftDays(p.y, p.m, p.half);
     const to = days[days.length - 1];
     const halves = shiftSpanHalves(from, to);
-    const n = shiftSpanDays(from, to).length;
-    out.push({ to, halves, label: `${shiftSpanLabel(from, to)}（${i === 0 ? 'この半月だけ' : `${n}日間`}）` });
+    out.push({ to, halves, label: `${shiftSpanLabel(from, to)}（${i === 0 ? 'この半月だけ' : '1か月'}）` });
   }
   return out;
 }
