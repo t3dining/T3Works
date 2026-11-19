@@ -18,6 +18,23 @@
  *    だから押したら、他の何より先に許可を聞きます。
  *  ★検算は .claude/skills/t3works-zentai/test_notify_ui.js（jsc）。
  * ============================================================ */
+/* ---------- アイコンの数（2026-11-21、ko-dai さんの指示） ----------
+ *  アプリを開いたら、届いた知らせは見たことにします（LINE やメールと同じ）。
+ *  数を消し、通知の一覧からも下げます。★下げないと、次に届いたときに、見た分まで数え直してしまいます（sw.js の 数を出す）。
+ *  ワークスにもマインにも効きます。数を出せない端末では、何もしません。 */
+(() => {
+  async function 見た() {
+    try {
+      if (typeof navigator.clearAppBadge === 'function') await navigator.clearAppBadge();
+      if (!('serviceWorker' in navigator)) return;
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg && typeof reg.getNotifications === 'function') (await reg.getNotifications()).forEach((x) => x.close());
+    } catch (e) { /* 数を消せなくても、アプリはそのまま動きます */ }
+  }
+  見た();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) 見た(); });
+})();
+
 const NotifyView = (() => {
   const マイン = document.body.dataset.mode === 'mine';
   // ★iPhone の「設定」→「通知」に出る名前（ホーム画面のアイコンの名前。index.html の apple-mobile-web-app-title）
