@@ -23,7 +23,7 @@
  *      一覧まるごとがコメントに刺さります（2026-09-13 に実際にそうなりました）。
  * ============================================================ */
 
-const VERSION = '9f98007a';
+const VERSION = 'eeaa2200';
 
 /* ★控えの名前に版の印を入れません。**2026-09-13 まで入れていました。**
  *
@@ -225,16 +225,16 @@ async function 数の控え() {
   return { c: await caches.open(CACHE), u: new URL(BADGE_KEY, self.registration.scope).href };
 }
 
-/** アイコンの数を、1つ足すか（足す＝true）、0に戻します */
-async function 数を出す(足す) {
+/** アイコンの数を動かします。差 … 1＝届いた（1つ足す）／-1＝押さずに消した（1つ減らす。0より下にはしない）／0＝0に戻す */
+async function 数を出す(差) {
   try {
     const n = self.navigator;
     if (!n || typeof n.setAppBadge !== 'function') return;
     const 控え = await 数の控え();
     let 数 = 0;
-    if (足す) {
+    if (差) {
       const r = await 控え.c.match(控え.u);
-      数 = (r ? Number(await r.text()) || 0 : 0) + 1;
+      数 = Math.max(0, (r ? Number(await r.text()) || 0 : 0) + 差);
     }
     await 控え.c.put(控え.u, new Response(String(数)));
     if (数) await n.setAppBadge(数);
@@ -248,7 +248,14 @@ self.addEventListener('push', (e) => {
   const 題 = String(d.title || 'T3 Works');
   const 決め = { body: String(d.body || ''), data: { url: String(d.url || '') } };
   if (d.tag) 決め.tag = String(d.tag);
-  e.waitUntil(self.registration.showNotification(題, 決め).then(() => 数を出す(true)));
+  e.waitUntil(self.registration.showNotification(題, 決め).then(() => 数を出す(1)));
+});
+
+/* 知らせを、押さずに消したとき（スワイプで消す・まとめて消す）。数を1つ減らします（2026-11-21、ko-dai さんの指示）
+ * ★iPhone がこれを知らせてくれるかは、まだ確かめていません。知らせてくれない端末では何も起きず、
+ *   今までどおりアプリを開いたときに0に戻ります */
+self.addEventListener('notificationclose', (e) => {
+  e.waitUntil(数を出す(-1));
 });
 
 self.addEventListener('notificationclick', (e) => {
@@ -259,7 +266,7 @@ self.addEventListener('notificationclick', (e) => {
   // ★よその所へは開きません（行き先はアプリの中だけ）
   if (url.indexOf(self.registration.scope) !== 0) url = self.registration.scope;
   e.waitUntil((async () => {
-    await 数を出す(false);   // 押したらアプリが開くので、0に戻します（開いたアプリの側でも戻します）
+    await 数を出す(0);   // 押したらアプリが開くので、0に戻します（開いたアプリの側でも戻します）
     const 窓たち = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const w of 窓たち) {
       if (w.url.indexOf(self.registration.scope) === 0 && 'focus' in w) {
