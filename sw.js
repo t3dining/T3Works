@@ -23,7 +23,7 @@
  *      一覧まるごとがコメントに刺さります（2026-09-13 に実際にそうなりました）。
  * ============================================================ */
 
-const VERSION = 'd100350a';
+const VERSION = 'b146ab7e';
 
 /* ★控えの名前に版の印を入れません。**2026-09-13 まで入れていました。**
  *
@@ -46,7 +46,7 @@ const CACHE = 't3works';
 
 /* いまの版が使うファイルの一覧（`?v=` 付き）。公開用を作る.py が入れます。
  * ★ここにない控えだけを捨てます。**あるものは残します。** */
-const KEEP_LIST = ["css/style.css?v=fe10c428", "drive/js/drive.js?v=2c2de0e7", "help/css/help.css?v=4011d0ad", "help/js/help.js?v=0619d3be", "img/chacoru.png?v=3406529b", "img/drive-icon-180.png?v=cf8bda78", "img/drive-icon-512.png?v=7c78116c", "img/drive-icon-64.png?v=7088d4ae", "img/kojare.png?v=c5b494db", "img/manage-icon-180.png?v=ac18efea", "img/manage-icon-64.png?v=2b8a9145", "img/mine-icon-180.png?v=cbafcd5d", "img/mine-icon-512.png?v=2dbb903e", "img/mine-icon-64.png?v=ea09f133", "img/owner-icon-180.png?v=cbb1087e", "img/owner-icon-512.png?v=7972b6a3", "img/owner-icon-64.png?v=ce05c3fc", "img/shift-icon-180.png?v=ab0bd671", "img/shift-icon-64.png?v=0254ff8c", "img/shift-qr.png?v=3509f79d", "img/t3dining-mark.png?v=c9163364", "img/works-icon-180.png?v=a0ee5b78", "img/works-icon-512.png?v=dddd764f", "img/works-icon-64.png?v=0f9cbed2", "img/works-qr.png?v=facd8cdc", "js/app.js?v=b4fbd8a0", "js/config.js?v=9d91ed9f", "js/interview.js?v=9c08c637", "js/share.js?v=88023092", "js/shift-sheet.js?v=202d99f9", "js/storage.js?v=3d5fd037", "js/sync.js?v=94d03772", "js/update.js?v=b2294857", "js/voice.js?v=3aa252ba", "manage/css/admin.css?v=eae657ea", "manage/js/admin.js?v=d63ec218", "shift/css/submit.css?v=e8a6d2b3", "shift/js/submit.js?v=45f4a638", "story/css/story.css?v=55f08ac0", "story/js/story.js?v=0f730e6d"];
+const KEEP_LIST = ["css/style.css?v=fe10c428", "drive/js/drive.js?v=2c2de0e7", "help/css/help.css?v=4011d0ad", "help/js/help.js?v=0619d3be", "img/chacoru.png?v=3406529b", "img/drive-icon-180.png?v=cf8bda78", "img/drive-icon-512.png?v=7c78116c", "img/drive-icon-64.png?v=7088d4ae", "img/kojare.png?v=c5b494db", "img/manage-icon-180.png?v=ac18efea", "img/manage-icon-64.png?v=2b8a9145", "img/mine-icon-180.png?v=cbafcd5d", "img/mine-icon-512.png?v=2dbb903e", "img/mine-icon-64.png?v=ea09f133", "img/owner-icon-180.png?v=cbb1087e", "img/owner-icon-512.png?v=7972b6a3", "img/owner-icon-64.png?v=ce05c3fc", "img/shift-icon-180.png?v=ab0bd671", "img/shift-icon-64.png?v=0254ff8c", "img/shift-qr.png?v=3509f79d", "img/t3dining-mark.png?v=c9163364", "img/works-icon-180.png?v=a0ee5b78", "img/works-icon-512.png?v=dddd764f", "img/works-icon-64.png?v=0f9cbed2", "img/works-qr.png?v=facd8cdc", "js/app.js?v=b4fbd8a0", "js/config.js?v=9d91ed9f", "js/interview.js?v=9c08c637", "js/notify.js?v=0aae47cc", "js/share.js?v=88023092", "js/shift-sheet.js?v=202d99f9", "js/storage.js?v=3d5fd037", "js/sync.js?v=33c12037", "js/update.js?v=b2294857", "js/voice.js?v=3aa252ba", "manage/css/admin.css?v=eae657ea", "manage/js/admin.js?v=d63ec218", "shift/css/submit.css?v=e8a6d2b3", "shift/js/submit.js?v=45f4a638", "story/css/story.css?v=55f08ac0", "story/js/story.js?v=0f730e6d"];
 
 /**
  * この控えを捨てるか
@@ -200,4 +200,43 @@ self.addEventListener('fetch', (e) => {
   if (url.searchParams.has('v')) { e.respondWith(cacheFirst(req)); return; }
 
   e.respondWith(networkFirst(req));
+});
+
+/* ============================================================
+ *  アプリの知らせ（Web Push。2026-11-20、ko-dai さんの指示）
+ *
+ *  クローズとジャーナルの未提出を、LINE ではなく、この端末の通知で知らせます。
+ *  届けるのは Cloudflare（cloudflare/worker.js の「アプリの知らせ」）。登録は js/notify.js です。
+ *
+ *  ★iPhone は、届いた知らせを**必ず画面に出さないと**、何回かで知らせを止めてしまいます。
+ *    だから中身が読めなくても、何かは必ず出します。
+ *  ★押したら、アプリ（マイン）の、その店のその日の画面を開きます（開いていれば、その画面を前に出します）。
+ * ============================================================ */
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (err) { d = {}; }
+  const 題 = String(d.title || 'T3 Works');
+  const 決め = { body: String(d.body || ''), data: { url: String(d.url || '') } };
+  if (d.tag) 決め.tag = String(d.tag);
+  e.waitUntil(self.registration.showNotification(題, 決め));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const 行き先 = (e.notification.data && e.notification.data.url) || 'mine/';
+  let url;
+  try { url = new URL(行き先, self.registration.scope).href; } catch (err) { url = self.registration.scope; }
+  // ★よその所へは開きません（行き先はアプリの中だけ）
+  if (url.indexOf(self.registration.scope) !== 0) url = self.registration.scope;
+  e.waitUntil((async () => {
+    const 窓たち = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const w of 窓たち) {
+      if (w.url.indexOf(self.registration.scope) === 0 && 'focus' in w) {
+        try { if ('navigate' in w) await w.navigate(url); } catch (err) { /* 動かせなくても、前に出すだけはします */ }
+        return w.focus();
+      }
+    }
+    if (self.clients.openWindow) return self.clients.openWindow(url);
+    return null;
+  })());
 });

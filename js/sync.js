@@ -1057,6 +1057,7 @@ const Sync = {
    * 決め … { ms, hedge }（省けます。2026-09-18、ジャーナルの頼み）
    *   ms    … この頼みごとだけの上限（ミリ秒）。省くと `askMs`（60秒）
    *   hedge … true なら、`重ねるまで`（8秒）たっても返事がないとき同じ体をもう1本重ね、先に JSON で届いた方を取ります
+   *   cloud … true なら、GAS ではなく Cloudflare（syncUrl）へ送ります（アプリの知らせの登録。2026-11-20、本部）
    *           ★★**やり直しても同じ答えになる頼みごとだけ**に付けること（日報の見る／書く＝可）。
    *             写真の読み取り・残すには付けない（2本走ると Cloud Vision が2枚数えます）
    */
@@ -1071,7 +1072,8 @@ const Sync = {
     const body = JSON.stringify({ pin: this.pin(), code: this.code(), action, ...extra });
     // ★ジャーナル・日報は GAS に残ります（2026-09-19〜。同期と ping だけ Cloudflare）。
     //   gasUrl がない形（古い config.js）なら、今までどおり syncUrl へ
-    const 送る = () => fetch(APP.gasUrl || APP.syncUrl, {
+    const 宛先 = 決め && 決め.cloud ? APP.syncUrl : (APP.gasUrl || APP.syncUrl);
+    const 送る = () => fetch(宛先, {
       method: 'POST',
       signal: stop.signal,
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
