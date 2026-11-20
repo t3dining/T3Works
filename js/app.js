@@ -16354,7 +16354,10 @@ function shiftGuideHtml(kind) {
       + shiftGuideLine('10月前半のシフト提出をお願いします！\n期限は9月28日（月）までです！'),
     'コピーした文を LINE に貼った見本です'));
   out.push(shiftGuideUl([
-    '募集できるのは、店舗ごとに<b>1つの半月だけ</b>です。次の半月の募集を始めると、前の半月は締め切られます',
+    // ★4店舗は半月か1か月で募集します（2026-11-19 → 「何か月分をまとめて募集する」）。「1つの半月だけ」とは書きません
+    kind === 'yoru'
+      ? '募集できるのは、店舗ごとに<b>1つの期間だけ</b>です（半月か1か月）。次の募集を始めると、前の募集は締め切られます'
+      : '募集できるのは、店舗ごとに<b>1つの半月だけ</b>です。次の半月の募集を始めると、前の半月は締め切られます',
     // ★2026-11-02、ko-dai さんの指示（期限の次の日の 0:00 から出せない・一時的に再開できる）
     '<b>提出の期限の日のうちは</b>出せます。<b>次の日の0時から</b>、提出ページで出せなくなります（表の上が<b>「締め切りました」</b>になります）',
     '出し忘れた人がいたら<b>「提出を一時的に再開する」</b>を押すと、<b>その日の24時まで</b>出せるようになります。'
@@ -18193,7 +18196,8 @@ function renderShiftPick() {
   // ★時刻を入れる店舗（popo）では、枠ごとの時刻ではなく
   //   「選べる時刻を全部」から選びます。枠は出勤時刻で決まるためです
   const 時刻で入れる = shiftUsesRange(state.storeId);
-  const 選べる時刻 = 時刻で入れる ? shiftRangeTimes(state.storeId) : slot.times;
+  // ★popo は組む画面だけ15分おき（2026-11-20、ko-dai さんの指示 → js/config.js の staffStep）。提出ページは30分おきのまま
+  const 選べる時刻 = 時刻で入れる ? shiftRangeTimes(state.storeId, 'in', true) : slot.times;
   el.shiftPickTimes.innerHTML = '';
   el.shiftPickTimeField.classList.toggle('is-hidden', !選べる時刻.length);
   // ★時と分を回して選ぶ店舗（`every` の4店舗と、時刻を入れる popo。2026-09-24 から popo も）

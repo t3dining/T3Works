@@ -5974,10 +5974,13 @@ const SHIFT_STYLE_STORES = {
   // ★last: '22' … **22時以降に出勤する人は「ラスト」の行**に入ります（2026-10-08、ko-dai さんの指示
   //   「popoのみ立ち上げ、ランチ、ディナー、ラストの４部構成に」「ラストは２２時以降出勤のシフトが自動的に入るように」）。
   //   → 下の「ラスト」の節。★マネージからは変えられません（コードで決めます）
+  // ★staffStep … 組む画面（社員）だけのきざみ（2026-11-20、ko-dai さん「popoのシフトを組むときに、15分ごとに時間を決めれるようにしてください」
+  //   「今は手入力でしか15分単位の出勤を決めれない状態です」）。出勤・退勤とも15分おきを、時と分を回して選べます。
+  //   ★アルバイトの提出ページは今までどおり step（30分おき）です（→ shiftRangeTimes の3つ目）
   popo: {
     range: true, step: 0.5, from: '10', to: '24',
     endFrom: '13', endTo: '27', lunchTo: '17', patty: false,
-    last: '22',
+    last: '22', staffStep: 0.25,
   },
   // ★仕込み／営業の4店舗。パティはバグるの言葉なので出しません
   //   （2026-09-07「メモ欄のボタンは全部消して、ただのメモ欄に」）
@@ -6033,7 +6036,8 @@ function shiftUsesEnd(storeId) {
 
 /** 組む画面の小窓で選べる退勤の時刻（「ラスト」は入りません → shiftEndHasLast） */
 function shiftEndTimes(storeId) {
-  if (shiftUsesRange(storeId)) return shiftRangeTimes(storeId, 'out');
+  // ★popo は組む画面のきざみ（15分おき。2026-11-20）。提出ページの退勤は submit.js が30分おきで並べます
+  if (shiftUsesRange(storeId)) return shiftRangeTimes(storeId, 'out', true);
   const s = shiftStaffEnd(storeId);
   if (!s) return [];
   const from = Number(s.from), to = Number(s.to);
@@ -6066,10 +6070,13 @@ function shiftHasPatty(storeId) {
  *
  * ★出勤と退勤で、別の幅にできます（`shiftRangeTimes(店舗id, 'out')` が退勤）。
  *   popo は 出勤 10:00〜24:00 ／ 退勤 13:00〜27:00 です。
+ * ★組む … true なら組む画面（社員）の並びです。staffStep があれば、そのきざみで並べます
+ *   （popo は15分おき。2026-11-20、ko-dai さんの指示）。提出ページは渡さないので、今までどおり step（30分おき）です。
  */
-function shiftRangeTimes(storeId, どちら) {
+function shiftRangeTimes(storeId, どちら, 組む) {
   const st = shiftStyleOf(storeId);
-  const step = Number(st.step) > 0 ? Number(st.step) : 0.5;
+  const きざみ = 組む && Number(st.staffStep) > 0 ? st.staffStep : st.step;
+  const step = Number(きざみ) > 0 ? Number(きざみ) : 0.5;
   // ★退勤（'out'）だけ別の幅にできます。書いていなければ出勤と同じです
   const 退勤 = どちら === 'out';
   const from = Number(退勤 && st.endFrom ? st.endFrom : st.from);
