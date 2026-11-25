@@ -10369,6 +10369,10 @@ function catchByStore() {
  *
  *  「誰に いくら渡したか」で数えます。相手は現金支払い管理表の
  *  キャッチの記録に入っている who です。
+ *
+ *  ★並びは人数の多い順です（2026-11-25、ko-dai さんの指示。前は金額の多い順）。
+ *    1人あたりの金額は人によって違う（50円・100円など）ので、金額順と人数順は並びが変わります。
+ *    割合の帯と円グラフも人数で測ります（金額で測ると、上の人より下の人の帯が長くなるため）
  * ---------------------------------------------------------- */
 
 /** ランキングを「この月」で見るか「全て」で見るか */
@@ -10394,7 +10398,7 @@ function catchEntriesFor(range) {
   return out;
 }
 
-/** 人ごとに足して、金額の多い順に並べます */
+/** 人ごとに足して、人数の多い順に並べます（人数が同じなら金額の多い順） */
 function catchRanking(range, storeId) {
   const map = new Map();
   catchEntriesFor(range)
@@ -10408,7 +10412,7 @@ function catchRanking(range, storeId) {
       r.yen += Number(e.yen) || 0;
       r.count += 1;
     });
-  return [...map.values()].sort((a, b) => b.yen - a.yen || b.people - a.people
+  return [...map.values()].sort((a, b) => b.people - a.people || b.yen - a.yen
     || a.name.localeCompare(b.name, 'ja'));
 }
 
@@ -10426,18 +10430,23 @@ function rankShortName(name) {
   return name.length > 6 ? `${name.slice(0, 5)}…` : name;
 }
 
-/** 金額の割合を、まんなかに合計を出した円グラフ（ドーナツ）にします */
-function renderRankPie(list, total) {
+/** 人数の割合を、まんなかに合計を出した円グラフ（ドーナツ）にします
+ *  ★index.html の下の字は「金額の割合」のままなので、ここで書き直します（index.html は本部の持ち物） */
+function renderRankPie(list) {
+  const total = list.reduce((t, r) => t + r.people, 0);
+  const cap = el.rankPie.querySelector('.rank-pie__cap');
+  if (cap) cap.textContent = '人数の割合';
   el.rankPie.classList.toggle('is-hidden', !total);
   if (!total) { el.rankPieBox.innerHTML = ''; return; }
 
-  // 上位8人はそのまま。9人目からは「他」にひとまとめ
-  const parts = list.slice(0, RANK_TOP).map((r, i) => ({
-    name: r.name, yen: r.yen, color: RANK_COLORS[i],
+  // 上位8人はそのまま。9人目からは「他」にひとまとめ。★人数が0の人は輪に出しません（細い線が残るため）
+  const parts = list.slice(0, RANK_TOP).filter((r) => r.people > 0).map((r) => ({
+    name: r.name, people: r.people, color: RANK_COLORS[list.indexOf(r)],
   }));
-  const restYen = list.slice(RANK_TOP).reduce((t, r) => t + r.yen, 0);
-  if (restYen) {
-    parts.push({ name: `他${list.length - RANK_TOP}人`, yen: restYen, color: RANK_REST_COLOR });
+  const restPeople = list.slice(RANK_TOP).reduce((t, r) => t + r.people, 0);
+  if (restPeople) {
+    const rest = list.slice(RANK_TOP).filter((r) => r.people > 0).length;
+    parts.push({ name: `他${rest}人`, people: restPeople, color: RANK_REST_COLOR });
   }
 
   /* 輪のかたち。まわりに名前を出すので、横長の絵にしています */
@@ -10451,7 +10460,7 @@ function renderRankPie(list, total) {
   let acc = 0;
   const marks = [];
   const arcs = parts.map((p) => {
-    const f = p.yen / total;
+    const f = p.people / total;
     // その色のまん中の向き（12時から時計まわり）
     marks.push({ ...p, f, mid: (acc + f / 2) * 2 * Math.PI - Math.PI / 2 });
     const len = f * C;
@@ -10503,19 +10512,19 @@ function renderRankPie(list, total) {
       + `${Math.round(m.f * 100)}%</tspan></text>`;
   }).join('');
 
-  const people = list.reduce((t, r) => t + r.people, 0);
+  const yen = list.reduce((t, r) => t + r.yen, 0);
   // まんなかの金額は、けたが増えたら小さくして輪からはみ出さないようにします
-  const fs = total >= 10000000 ? 9 : total >= 1000000 ? 10.5 : 12;
+  const fs = yen >= 10000000 ? 9 : yen >= 1000000 ? 10.5 : 12;
   el.rankPieBox.innerHTML = `
     <svg class="rank-pie__svg" viewBox="0 0 ${VW} ${VH}" role="img"
-         aria-label="渡した相手ごとの金額の割合">
+         aria-label="渡した相手ごとの人数の割合">
       <circle class="rank-pie__hole" cx="${CX}" cy="${CY}" r="${R}"
               stroke-width="${BAND}"></circle>
       ${arcs}
       ${leads}
       ${texts}
-      <text class="rank-pie__yen" x="${CX}" y="${CY - 1}" style="font-size:${fs}px">¥${total.toLocaleString('ja-JP')}</text>
-      <text class="rank-pie__people" x="${CX}" y="${CY + 10}">${people.toLocaleString('ja-JP')}名</text>
+      <text class="rank-pie__yen" x="${CX}" y="${CY - 1}" style="font-size:${fs}px">¥${yen.toLocaleString('ja-JP')}</text>
+      <text class="rank-pie__people" x="${CX}" y="${CY + 10}">${total.toLocaleString('ja-JP')}名</text>
     </svg>`;
 
   // 名前はそのまま入れると危ないので、DOMで入れます
@@ -10525,7 +10534,7 @@ function renderRankPie(list, total) {
   // マウスを乗せると、正しい名前と割合が出ます
   [...el.rankPieBox.querySelectorAll('.rank-pie__arc')].forEach((c, i) => {
     const t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-    t.textContent = `${parts[i].name}　${((parts[i].yen / total) * 100).toFixed(1)}%`;
+    t.textContent = `${parts[i].name}　${((parts[i].people / total) * 100).toFixed(1)}%`;
     c.appendChild(t);
   });
 }
@@ -10558,17 +10567,18 @@ function renderCatchRank() {
     tr.innerHTML = '<td class="exp-total__name" colspan="5">キャッチの記録がありません。</td>';
     el.rankRows.appendChild(tr);
     el.rankFoot.innerHTML = '';
-    renderRankPie([], 0);
+    renderRankPie([]);
     return;
   }
 
   const total = list.reduce((t, r) => t + r.yen, 0);
+  const peopleTotal = list.reduce((t, r) => t + r.people, 0);
 
-  // 金額が同じなら同じ順位にします
+  // 人数が同じなら同じ順位にします
   let rank = 0, prev = null;
   list.forEach((r, i) => {
-    if (prev === null || r.yen !== prev) rank = i + 1;
-    prev = r.yen;
+    if (prev === null || r.people !== prev) rank = i + 1;
+    prev = r.people;
 
     const tr = document.createElement('tr');
     if (rank <= 3) tr.classList.add('is-top', 'is-top' + rank);
@@ -10592,8 +10602,8 @@ function renderCatchRank() {
     yen.className = 'exp-total__yen';
     yen.innerHTML = yenMarkup(r.yen);
 
-    /* 帯の長さ＝全体に占める割合。表の右にあく場所を、この帯でうめます */
-    const pct = total ? (r.yen / total) * 100 : 0;
+    /* 帯の長さ＝全体の人数に占める割合。表の右にあく場所を、この帯でうめます */
+    const pct = peopleTotal ? (r.people / peopleTotal) * 100 : 0;
     const share = document.createElement('td');
     share.className = 'rank-share';
     share.innerHTML = '<span class="rank-share__in">'
@@ -10606,15 +10616,14 @@ function renderCatchRank() {
   });
 
   /* ---- 合計 ---- */
-  const people = list.reduce((t, r) => t + r.people, 0);
   el.rankFoot.innerHTML =
     '<tr class="ledger-foot"><td class="exp-total__name" colspan="2">合計</td>'
-    + `<td class="exp-total__yen">${people.toLocaleString('ja-JP')}<span class="ledger-unit">名</span></td>`
+    + `<td class="exp-total__yen">${peopleTotal.toLocaleString('ja-JP')}<span class="ledger-unit">名</span></td>`
     + `<td class="exp-total__yen">${yenMarkup(total)}</td>`
     + '<td class="rank-share"><span class="rank-share__in"><b class="rank-pct">100'
     + '<span class="ledger-unit">%</span></b></span></td></tr>';
 
-  renderRankPie(list, total);
+  renderRankPie(list);
 
   // 全店舗の人数と合わないときは、しぼっていることが分かるようにします
   el.rankNote.classList.toggle('is-hidden', !all.length);
