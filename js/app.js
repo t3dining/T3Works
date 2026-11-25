@@ -9578,6 +9578,9 @@ function taskStatus(taskId, storeId) {
   }
 
   if (taskId === 'week') {
+    // ★月単位の店舗の状況は、週間掃除の見出しの weekTaskStatus が出します（2026-11-25、本部。週間掃除の願い⑦。決裁.md）。
+    //   ないあいだ（古い版の中身と混ざったとき）は、今までどおり期で出します
+    if (typeof weekTaskStatus === 'function') return weekTaskStatus(storeId);
     const period = periodOfDate(TODAY.y, TODAY.m, TODAY.d);
     const st = periodStatus(storeId, period);
     if (!st.total) return { text: '項目なし', kind: 'none' };
