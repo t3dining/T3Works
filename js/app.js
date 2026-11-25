@@ -20283,10 +20283,15 @@ function bindEvents() {
   });
   el.note.addEventListener('blur', () => { clearTimeout(noteTimer); noteTimer = null; saveNote(); });
 
-  /* 週間掃除の備考（2週間ごと。入力が止まったら保存） */
+  /* 週間掃除の備考（入力が止まったら保存）
+     ★どの行に書くか・どれだけ送るかは、週間掃除の見出しの関数が決めます（2026-11-25、本部。週間掃除の願い。決裁.md）：
+       weekNoteKey() … 備考を書く行（月単位の店舗は M<YYYY-MM>、それ以外は W<期の1週目>）
+       stepWeekView(dir)・stepWeekAll(dir) … 日を動かすだけ（writeHash と render は、ここで呼びます）
+     ★関数がまだない（古い版の js/app.js の中身と混ざった）ときは、今までどおり2週間で動きます */
   let weekNoteTimer = null;
   const saveWeekNote = () => {
-    Store.setNote(state.storeId, weekRecKey(currentPeriod()), el.weekNote.value);
+    const 行 = typeof weekNoteKey === 'function' ? weekNoteKey() : weekRecKey(currentPeriod());
+    Store.setNote(state.storeId, 行, el.weekNote.value);
     renderSyncStatus();
   };
   el.weekNote.addEventListener('input', () => {
@@ -20318,9 +20323,10 @@ function bindEvents() {
   );
   el.doerClear.addEventListener('click', clearDoer);
 
-  /* 週間掃除：2週間ずつ送る */
+  /* 週間掃除：前・次へ送る（2週間の店舗は2週間ずつ、月単位の店舗は1か月ずつ。決めるのは週間掃除の stepWeekView） */
   const shiftWeek = (dir) => {
-    goToWeek(addDaysStr(currentPeriod(), dir * 14));
+    if (typeof stepWeekView === 'function') stepWeekView(dir);
+    else goToWeek(addDaysStr(currentPeriod(), dir * 14));
     writeHash();
     render();
   };
@@ -20339,8 +20345,14 @@ function bindEvents() {
   /* 6店舗の達成状況 */
   $('weekAllBtn').addEventListener('click', () => openAllStores('weekall'));
   $('weekAllBack').addEventListener('click', goHome);
-  $('weekAllPrev').addEventListener('click', () => { goToWeek(addDaysStr(currentPeriod(), -14)); writeHash(); render(); });
-  $('weekAllNext').addEventListener('click', () => { goToWeek(addDaysStr(currentPeriod(), 14)); writeHash(); render(); });
+  // ★どれだけ送るかは週間掃除の stepWeekAll（ないあいだは今までどおり2週間）
+  const shiftWeekAll = (dir) => {
+    if (typeof stepWeekAll === 'function') stepWeekAll(dir);
+    else goToWeek(addDaysStr(currentPeriod(), dir * 14));
+    writeHash(); render();
+  };
+  $('weekAllPrev').addEventListener('click', () => shiftWeekAll(-1));
+  $('weekAllNext').addEventListener('click', () => shiftWeekAll(1));
   /* 年の送り。その年の1つ目の期に移ります */
   $('weekAllYearPrev').addEventListener('click', () => shiftWeekAllYear(-1));
   $('weekAllYearNext').addEventListener('click', () => shiftWeekAllYear(1));
