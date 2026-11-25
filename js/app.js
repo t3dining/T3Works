@@ -16527,10 +16527,11 @@ function shiftGuideHtml(kind) {
       '<b>ヘルプに出す</b>… 自分の店舗の人を、他の店舗へ手伝いに出します。誰を・どの店舗に・キッチンかホールか・どの枠か・何時からを選んで「決める」。'
         + '<b>向こうの店舗の表に、そのまま入ります</b>（名前のうしろに送り元の店舗が付きます）',
       '出したものは、ボタンの上に札で並びます。札を押すと直せます（0人で取り消し）',
-      '表の上の<b>「ヘルプ要請・人員過多を見る」</b>で、<b>4店舗が出しているもの</b>（自分の店舗の分も）を日付ごとに見られます。出ていると件数が付きます',
+      '表の上の<b>「ヘルプ要請・人員過多を見る」</b>で、<b>4店舗が出しているもの</b>（自分の店舗の分も）を日付ごとに見られます。'
+        + '<b>出るのは、表で開いている期間（半月、1か月で募集しているなら1か月）の分だけ</b>です。出ていると件数が付きます',
     ]));
     out.push(shiftGuideShot(shiftGuidePanel('ヘルプ要請・人員過多を見る',
-      '<p class="modal__note">4店舗が出しているものです（今日から先。この店の分も出ます）。</p>'
+      '<p class="modal__note">4店舗が出しているものです（10/1〜10/15 のうち、今日から先。この店の分も出ます）。</p>'
         + '<p style="margin:10px 0 4px;font-weight:700;">10/5（月）</p>'
         + [['炭まろ', 'ヘルプ要請', 'var(--ng)', 'ホール あと１人（２人中）', true], ['ちゃこる', '人員過多', 'var(--ok)', 'キッチン １人', false]]
           .map(([s, k, c, t, me]) => '<div style="display:flex;gap:10px;align-items:baseline;padding:5px 2px;border-bottom:1px solid var(--line);">'
@@ -16982,13 +16983,29 @@ function helpReqNumText(r) {
 }
 
 /**
+ * 「ヘルプ要請・人員過多を見る」に出す期間（{ from, to, label }。2026-11-25、ko-dai さんの指示）
+ *
+ * ko-dai さん「ヘルプ要請・人員過多が翌月のシフトでも残ったままなので、募集している期間で登録したものが見れるようにしてください」。
+ * ★組む画面でいま開いている半月です。1か月でまとめて募集しているなら、その1か月（→ js/config.js の shiftSpanOf）。
+ *   前は今日から先の全部を出していたので、翌月のシフトを開いても今月の分が並んでいました。
+ */
+function helpReqPeriod() {
+  const sp = shiftSpanOf(shiftRec(), state.y, state.m, shiftHalf);
+  if (sp) return { from: sp.from, to: sp.to, label: shiftSpanLabel(sp.from, sp.to) };
+  const days = shiftDays(state.y, state.m, shiftHalf);
+  return { from: days[0], to: days[days.length - 1], label: shiftRangeLabel(state.y, state.m, shiftHalf) };
+}
+
+/**
  * 4店舗が出しているもの（今日から先だけ。★自分の店舗の分も入れます）
+ *
+ *   期間 … { from, to }（'YYYY-MM-DD'）。渡せば、その期間の日だけにします（→ helpReqPeriod。画面はいつも渡します）
  *
  * ★2026-09-24 までは他の3店舗の分だけでした（ko-dai さんの指示で、自分の分も並べて見られるように）。
  * ★ヘルプ要請は「あと何人」で、そろったものは入れません（→ helpReqLeft）。
  * ★並びは 日付 → 店舗（SHIFT_HELP_STORES の順）→ 種類 → 持ち場。
  */
-function helpReqAll() {
+function helpReqAll(期間) {
   const 店の順 = (id) => SHIFT_HELP_STORES.indexOf(id);
   const 種の順 = (id) => HELP_REQ_KINDS.findIndex((v) => v.id === id);
   const 場の順 = (id) => SHIFT_LANES.findIndex((v) => v.id === id);
@@ -17000,6 +17017,8 @@ function helpReqAll() {
       Object.keys(items).forEach((ik) => {
         const [d, kind, lane] = ik.split('|');
         if (!/^\d{4}-\d{2}-\d{2}$/.test(d || '') || d < TODAY_STR) return;
+        // ★期間の外の日は出しません（2026-11-25。翌月のシフトを開いても今月の分が並んでいたため）
+        if (期間 && (d < 期間.from || d > 期間.to)) return;
         if (種の順(kind) < 0 || 場の順(lane) < 0) return;
         const v = items[ik];
         const n = helpReqLeft(sid, d, kind, lane, v);
@@ -17418,7 +17437,8 @@ function helpReqBtnSync() {
   if (!on) return;
   const b = document.getElementById('helpReqListBtn');
   // ★出ていれば、数を添えます（開くと出るものの数。自分の店舗の分も入ります）。開かなくても気づけるように
-  const n = helpReqAll().length;
+  //   ★数えるのは、開いている期間の分だけです（開くと出るものと同じ数にするため → helpReqPeriod）
+  const n = helpReqAll(helpReqPeriod()).length;
   b.textContent = n ? `ヘルプ要請・人員過多を見る（${n}件）` : 'ヘルプ要請・人員過多を見る';
 }
 
@@ -17444,15 +17464,18 @@ function openHelpReqList() {
       x.addEventListener('click', () => m.classList.add('is-hidden'));
     });
   }
-  const list = helpReqAll();
+  // ★組む画面で開いている期間の分だけ（2026-11-25、ko-dai さんの指示 → helpReqPeriod）
+  const 期間 = helpReqPeriod();
+  const list = helpReqAll(期間);
   const 店たち = SHIFT_HELP_STORES.map((id) => getStore(id).name);
-  m.querySelector('#helpReqListNote').textContent = `${店たち.join('・')}が出しているものです（今日から先。この店の分も出ます）。`
+  m.querySelector('#helpReqListNote').textContent = `${店たち.join('・')}が出しているものです`
+    + `（${期間.label} のうち、今日から先。この店の分も出ます）。`
     + 'ヘルプ要請は、人が入った分だけ減り、そろうと消えます。';
   const body = m.querySelector('#helpReqListBody');
   body.innerHTML = '';
   if (!list.length) {
     const p = document.createElement('p');
-    p.textContent = 'いまは、どの店舗からも出ていません。';
+    p.textContent = `${期間.label} には、どの店舗からも出ていません。`;
     p.style.cssText = 'margin:8px 0;color:var(--text-sub);';
     body.appendChild(p);
   }
