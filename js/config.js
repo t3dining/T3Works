@@ -812,6 +812,7 @@ const CHECKLIST_OVERRIDES = {
  *            省略すると「その他」にまとまります
  *    every : 'week'   … 毎週やる（省略時はこちら）
  *            'biweek' … 2週間に1回でよい
+ *            'month'  … 月に1回でよい（1か月で区切る店舗だけ。WEEKLY_MONTH_FROM）
  *    addedAt / retiredAt … 管理アプリで追加・削除した日（過去の記録を守るため）
  *
  *  ここに書いてあるのは初期値です。管理アプリで店舗ごとに
@@ -848,6 +849,26 @@ const WEEKLY_DEFAULT = [
  *  （過去の記録は週ごとに持っているので、消えたりしません）。
  * ---------------------------------------------------------- */
 const PERIOD_ANCHOR = '2026-08-02';
+
+/* ------------------------------------------------------------
+ *  1か月で区切る店舗（2026-11-25、ko-dai さん）
+ *
+ *  ここに書いた店舗は、週間掃除の表・提出・達成率が「1か月」で1区切りになり、
+ *  項目の頻度に「毎月」を選べるようになります。
+ *  書いていない店舗は今までどおり2週間（期）です。
+ *
+ *  値は「その月から」。★実際に切り替わるのは、その月に入ってから最初の期の区切りです
+ *  （期の途中で切ると、その期の提出と達成率が半分になるため）。
+ *  それより前の週は今までどおり期で見せるので、過去の記録・提出・達成率は変わりません。
+ *
+ *  ★こじゃれは切り替える前から「2週」の項目を使っています。その記録は期の1週目の行にあり、
+ *    切り替えたあとも、切り替える前の期を開けば今までどおり見えます。
+ * ---------------------------------------------------------- */
+const WEEKLY_MONTH_FROM = {
+  kojare:   '2026-12',
+  sumimaro: '2026-12',
+  chacoru:  '2026-12',
+};
 
 /* 店舗ごとに初期値を変えたいときはここに書きます。
    （書かなければ全店舗 WEEKLY_DEFAULT から始まります）
@@ -9460,9 +9481,35 @@ function periodRangeLabel(periodStart) {
   return `${sm}/${sd}（日）〜${em}/${ed}（土）`;
 }
 
+/* ------------------------------------------------------------
+ *  頻度（毎週・2週に1回・毎月）
+ *
+ *  ★2択（2週か、そうでないか）で分けていたのを、表引きにしました（2026-11-25）。
+ *    2択の分岐は、3つめを足すと「どちらでもないもの」を黙って片方に入れてしまいます。
+ *    頻度を足すときは、この表と、表を使う所
+ *    （periodSlots・monthSlots・現場の表・マネージのボタン）を見てください。
+ * ---------------------------------------------------------- */
+const WEEKLY_EVERY = {
+  week:   { name: '毎週',     tag: '毎週' },
+  biweek: { name: '2週に1回', tag: '2週' },
+  month:  { name: '月に1回',   tag: '毎月', monthOnly: true }, // 1か月で区切る店舗だけ選べます
+};
+/** マネージのボタンを押したときに回る順 */
+const WEEKLY_EVERY_ORDER = ['week', 'biweek', 'month'];
+
+/** 項目の頻度（'week' / 'biweek' / 'month'）。印がないものは毎週 */
+function weeklyEvery(item) {
+  return item && WEEKLY_EVERY[item.every] ? item.every : 'week';
+}
+
 /** その項目は「2週間に1回」か */
 function isBiweekly(item) {
-  return item.every === 'biweek';
+  return weeklyEvery(item) === 'biweek';
+}
+
+/** その項目は「月に1回」か */
+function isMonthly(item) {
+  return weeklyEvery(item) === 'month';
 }
 
 /** その項目の見出し（決まっていなければ「その他」） */
@@ -9502,12 +9549,13 @@ function groupWeekly(items) {
  *
  *   毎週の項目     … 1週目と2週目で1つずつ（2つ）
  *   2週に1回の項目 … 期に1つだけ。記録は1週目のところに入れます
+ *   毎月の項目     … ★期で見る間（1か月で区切る店舗が切り替わる前）は、2週に1回と同じく期に1つ
  */
 function periodSlots(storeId, periodStart) {
   const weeks = periodWeeks(periodStart);
   const out = [];
   getWeekly(storeId).forEach((item) => {
-    if (isBiweekly(item)) {
+    if (weeklyEvery(item) !== 'week') {
       if (weeks.some((w) => weeklyAppliesTo(item, w, storeId))) {
         out.push({ item, week: periodStart, span: 2 });
       }
@@ -9520,9 +9568,9 @@ function periodSlots(storeId, periodStart) {
   return out;
 }
 
-/** その1マスが済んでいるか */
+/** その1マスが済んでいるか（月のマスは key に自分の記録キーを持っています） */
 function slotDone(storeId, slot) {
-  const rec = Store.getDay(storeId, weekRecKey(slot.week));
+  const rec = Store.getDay(storeId, slot.key || weekRecKey(slot.week));
   return !!(rec.items && rec.items[slot.item.id] && rec.items[slot.item.id].done);
 }
 
@@ -9531,6 +9579,250 @@ function periodStatus(storeId, periodStart) {
   const slots = periodSlots(storeId, periodStart);
   const done = slots.filter((s) => slotDone(storeId, s)).length;
   const rec = Store.getDay(storeId, weekRecKey(periodStart));
+  return {
+    total: slots.length,
+    done,
+    rate: slots.length ? Math.round((done / slots.length) * 100) : 0,
+    submittedAt: rec.submittedAt || null,
+    submittedBy: rec.submittedBy || '',
+    staff: rec.staff || '',
+  };
+}
+
+/* ------------------------------------------------------------
+ *  1か月の区切り（WEEKLY_MONTH_FROM に書いた店舗）
+ *
+ *  ★1つの週は、1つの月にだけ数えます。**週の水曜が入っている月**です。
+ *    月をまたぐ週を2つの月で二重に数えないためです。隣の月の表に入るのは、多くて3日です。
+ *  ★記録の入れ先
+ *    毎週・2週に1回 … 今までと同じ W<週の日曜> の行
+ *    毎月           … M<YYYY-MM> の行（月の提出・備考・担当もここ）
+ *    W の行に月の提出を置かないのは、月の1週目が「期の1週目」と重なる月があり
+ *    （2026-12〜2027-12 の13か月のうち7か月）、過去の期の提出の印と取りちがえるためです。
+ * ---------------------------------------------------------- */
+
+/** その週を数える月（'YYYY-MM'）。週の水曜が入っている月 */
+function weekMonthOf(weekStartStr) {
+  return addDaysStr(weekStartStr, 3).slice(0, 7);
+}
+
+/** その月に数える週（日曜の日付）。4つか5つ */
+function monthWeeksOf(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  let w = weekStartOf(y, m, 1);
+  if (weekMonthOf(w) < ym) w = addDaysStr(w, 7);
+  const out = [];
+  while (weekMonthOf(w) === ym) { out.push(w); w = addDaysStr(w, 7); }
+  return out;
+}
+
+/** 'YYYY-MM' を n か月ずらす */
+function shiftMonthStr(ym, n) {
+  const [y, m] = ym.split('-').map(Number);
+  const dt = new Date(y, m - 1 + n, 1);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** 1か月で区切る店舗が、月の区切りに切り替わる週（日曜）。月で区切らない店舗は '' */
+function monthModeStart(storeId) {
+  const from = WEEKLY_MONTH_FROM[storeId] || '';
+  if (!from) return '';
+  // その月の最初の週から数えて、最初の期の区切り（期の途中では切りません）
+  const first = monthWeeksOf(from)[0];
+  const p = periodStartOf(first);
+  return p === first ? first : addDaysStr(p, 14);
+}
+
+/** その店舗の、その週は1か月で区切るか */
+function isMonthMode(storeId, weekStartStr) {
+  const s = monthModeStart(storeId);
+  return !!s && weekStartStr >= s;
+}
+
+/** その店舗は「毎月」を選べるか（1か月で区切る店舗。切り替わる前から選べます） */
+function weeklyUsesMonth(storeId) {
+  return !!WEEKLY_MONTH_FROM[storeId];
+}
+
+/** その店舗の、その月の週。切り替わる月は、切り替わった週から。月で区切らない店舗は [] */
+function storeMonthWeeks(storeId, ym) {
+  const s = monthModeStart(storeId);
+  if (!s) return [];
+  return monthWeeksOf(ym).filter((w) => w >= s);
+}
+
+/** 月の記録キー。日付の形ではないので Store.firstDate() には拾われません（W と同じ） */
+function monthRecKey(ym) {
+  return `M${ym}`;
+}
+
+/** 2週に1回の項目のマス。前半は1〜2週目、後半は3週目から */
+function monthHalves(weeks) {
+  if (weeks.length <= 2) return [weeks.slice()];
+  return [weeks.slice(0, 2), weeks.slice(2)];
+}
+
+/** その月の表の最終日（最後の週の土曜）。月の提出日です */
+function monthEndOf(storeId, ym) {
+  const weeks = storeMonthWeeks(storeId, ym);
+  return weeks.length ? weekEndOf(weeks[weeks.length - 1]) : '';
+}
+
+/** 「12/6（日）〜1/2（土）」のような表記 */
+function monthRangeLabel(storeId, ym) {
+  const weeks = storeMonthWeeks(storeId, ym);
+  if (!weeks.length) return '';
+  const [, sm, sd] = weeks[0].split('-').map(Number);
+  const [, em, ed] = weekEndOf(weeks[weeks.length - 1]).split('-').map(Number);
+  return `${sm}/${sd}（日）〜${em}/${ed}（土）`;
+}
+
+/** 「2026年12月」 */
+function monthTitle(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  return `${y}年${m}月`;
+}
+
+/** 毎月の項目が、その月の対象か（weeklyAppliesTo の月版。決まりは同じです） */
+function monthlyAppliesTo(item, ym, weeks, storeId) {
+  if (item.draft || !weeks.length) return false;
+  const start = weeks[0];
+  const end = weekEndOf(weeks[weeks.length - 1]);
+  if (item.addedAt && end < item.addedAt) return false;
+  if (item.retiredAt) {
+    if (start >= item.retiredAt) return false;
+    if (!monthlyHasRecord(storeId, item, ym)) return false;
+  }
+  return true;
+}
+
+/** その月に、その毎月の項目の記録が残っているか（確かめられないときは残す側） */
+function monthlyHasRecord(storeId, item, ym) {
+  if (!storeId || typeof Store === 'undefined') return true;
+  const rec = Store.getDay(storeId, monthRecKey(ym));
+  return !!(rec && rec.items && rec.items[item.id]);
+}
+
+/**
+ * その月にやるべきことを1つずつ並べる（1か月で区切る店舗の達成率の分母）
+ *
+ *   毎週     … 週ごとに1マス
+ *   2週に1回 … 前半・後半に1マスずつ（記録はその半分の最初の週）
+ *   毎月     … 月に1マス（記録は M<その月>）
+ *
+ *   1マス … { item, week: 最初の週, weeks: そのマスが占める週, key: 記録キー }
+ */
+function monthSlots(storeId, ym) {
+  const weeks = storeMonthWeeks(storeId, ym);
+  const out = [];
+  getWeekly(storeId).forEach((item) => {
+    const every = weeklyEvery(item);
+    if (every === 'month') {
+      if (monthlyAppliesTo(item, ym, weeks, storeId)) {
+        out.push({ item, week: weeks[0], weeks, key: monthRecKey(ym) });
+      }
+      return;
+    }
+    if (every === 'biweek') {
+      monthHalves(weeks).forEach((half) => {
+        if (half.some((w) => weeklyAppliesTo(item, w, storeId))) {
+          out.push({ item, week: half[0], weeks: half, key: weekRecKey(half[0]) });
+        }
+      });
+      return;
+    }
+    weeks.forEach((w) => {
+      if (weeklyAppliesTo(item, w, storeId)) out.push({ item, week: w, weeks: [w], key: weekRecKey(w) });
+    });
+  });
+  return out;
+}
+
+/** 何週かつながったマスの表記「12/6（日）〜12/19（土）」 */
+function weeksRangeLabel(weeks) {
+  const [, sm, sd] = weeks[0].split('-').map(Number);
+  const [, em, ed] = weekEndOf(weeks[weeks.length - 1]).split('-').map(Number);
+  return `${sm}/${sd}（日）〜${em}/${ed}（土）`;
+}
+
+/**
+ * その店舗の、その週が入っている区切り（期か月か）
+ *
+ *   { month: 月か, ym, period, key: 提出と備考の行, status, last: 提出日,
+ *     range: 「12/6（日）〜1/2（土）」, name: '2週間' か '1か月' }
+ *
+ * ★画面（表・提出・業務選択のカード）は、期か月かをここで1回だけ決めます。
+ *   画面ごとに分けて書くと、片方だけ直って食いちがうためです。
+ */
+function weekUnitOf(storeId, weekStartStr) {
+  if (isMonthMode(storeId, weekStartStr)) {
+    const ym = weekMonthOf(weekStartStr);
+    return {
+      month: true, ym, period: '', key: monthRecKey(ym), status: monthStatus(storeId, ym),
+      last: monthEndOf(storeId, ym), range: monthRangeLabel(storeId, ym), name: '1か月',
+    };
+  }
+  const period = periodStartOf(weekStartStr);
+  return {
+    month: false, ym: '', period, key: weekRecKey(period), status: periodStatus(storeId, period),
+    last: periodEndOf(period), range: periodRangeLabel(period), name: '2週間',
+  };
+}
+
+/* ------------------------------------------------------------
+ *  6店舗の達成状況（2026-11-25、ko-dai さん「B」＝店舗ごとに目盛りを変える）
+ *
+ *  2週間の店舗は今までどおり期のマスに、1か月で区切る店舗は（切り替わったあと）月のマスに出ます。
+ *  ★2週間の店舗の見え方は変えません（test_weekly.js が、今までの決め方と同じことを見張っています）
+ *
+ *    'skip' … このマスには出さない（その店は、ここを別の目盛りで数えている）
+ *    'none' … 項目なし ／ 'done' … 提出済み ／ 'yet' … まだ
+ * ---------------------------------------------------------- */
+
+/** 期のマス1つでの、その店舗の扱い */
+function weekAllPeriodMark(storeId, periodStart) {
+  // 切り替わる週は必ず期の区切りなので、期の途中で目盛りが変わることはありません
+  if (isMonthMode(storeId, periodStart)) return 'skip';
+  const st = periodStatus(storeId, periodStart);
+  if (st.total === 0) return 'none';
+  return st.submittedAt ? 'done' : 'yet';
+}
+
+/** 月のマス1つでの、その店舗の扱い（月で区切らない店舗・切り替わる前の月は 'skip'） */
+function weekAllMonthMark(storeId, ym) {
+  if (!storeMonthWeeks(storeId, ym).length) return 'skip';
+  const st = monthStatus(storeId, ym);
+  if (st.total === 0) return 'none';
+  return st.submittedAt ? 'done' : 'yet';
+}
+
+/**
+ * 週間掃除のミスを、店舗ごとの目盛りで数える { period: {期の1週目: 件数}, month: {'YYYY-MM': 件数} }
+ *   list … missAll('week') の中身（{ d: 'YYYY-MM-DD', store }）
+ * ★2週間の店舗のミスは、今までどおりその日の期に数えます
+ */
+function weekAllMissCounts(list) {
+  const out = { period: {}, month: {} };
+  list.forEach((e) => {
+    const [y, m, d] = (e.d || '').split('-').map(Number);
+    if (!y) return;
+    const w = weekStartOf(y, m, d);
+    if (e.store && isMonthMode(e.store, w)) {
+      const ym = weekMonthOf(w);
+      out.month[ym] = (out.month[ym] || 0) + 1;
+    } else {
+      const p = periodStartOf(w);
+      out.period[p] = (out.period[p] || 0) + 1;
+    }
+  });
+  return out;
+}
+
+/** 月の達成状況 { total, done, rate, submittedAt, submittedBy, staff }。提出の印は M<その月> の行 */
+function monthStatus(storeId, ym) {
+  const slots = monthSlots(storeId, ym);
+  const done = slots.filter((s) => slotDone(storeId, s)).length;
+  const rec = Store.getDay(storeId, monthRecKey(ym));
   return {
     total: slots.length,
     done,

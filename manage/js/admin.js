@@ -557,12 +557,24 @@ function renderWeeklyEditor() {
   const items = currentWeekly();
   const live = items.filter(alive);
   const bi = live.filter(isBiweekly).length;
+  const mo = live.filter(isMonthly).length;
+  const 内わけ = [bi ? `2週に1回 ${bi}` : '', mo ? `毎月 ${mo}` : ''].filter(Boolean).join('・');
 
   el.weeklyStoreName.textContent = getStore(state.storeId).name;
   el.weeklyCount.textContent =
-    `${live.length}項目` + (bi ? `（うち2週に1回 ${bi}）` : '');
+    `${live.length}項目` + (内わけ ? `（うち${内わけ}）` : '');
 
   el.weeklyEditor.innerHTML = '';
+
+  /* 1か月で区切る店舗（config.js の WEEKLY_MONTH_FROM）には、そのことを書いておきます */
+  if (weeklyUsesMonth(state.storeId)) {
+    const [, sm, sd] = monthModeStart(state.storeId).split('-').map(Number);
+    const p = document.createElement('p');
+    p.className = 'admin-empty';
+    p.textContent = `この店舗は1か月で区切ります（${sm}/${sd} の週から。提出も月に1回）。`
+      + '頻度のボタンを押すと 毎週 → 2週 → 毎月 と変わります。';
+    el.weeklyEditor.appendChild(p);
+  }
 
   /* 掃除する場所ごとに1枚のカード。
      まだ項目がない場所（トイレなど）も、足せるように空のまま出します */
@@ -844,14 +856,15 @@ function buildWeeklyRow(item, index, count) {
   group.addEventListener('click', () => cycleWeeklyGroup(item.id));
   row.appendChild(group);
 
-  /* 毎週／2週に1回 の切り替え。押すたびに入れ替わります */
+  /* 頻度の切り替え。押すたびに次へ移ります（毎週 → 2週 →（1か月で区切る店舗は）毎月 → 毎週…）
+     ★名前と順は config.js の WEEKLY_EVERY・WEEKLY_EVERY_ORDER の表から引きます */
+  const ev = weeklyEvery(item);
+  const 次 = nextWeeklyEvery(item);
   const every = document.createElement('button');
   every.type = 'button';
-  every.className = 'every-btn' + (isBiweekly(item) ? ' every-btn--bi' : '');
-  every.textContent = isBiweekly(item) ? '2週' : '毎週';
-  every.title = isBiweekly(item)
-    ? '2週間に1回でよい項目です（押すと毎週に戻ります）'
-    : '毎週やる項目です（押すと2週に1回になります）';
+  every.className = 'every-btn' + (ev !== 'week' ? ' every-btn--bi' : '');
+  every.textContent = WEEKLY_EVERY[ev].tag;
+  every.title = `${WEEKLY_EVERY[ev].name}の項目です（押すと${WEEKLY_EVERY[次].name}になります）`;
   every.addEventListener('click', () => toggleWeeklyEvery(item.id));
   row.appendChild(every);
 
@@ -897,13 +910,25 @@ function cycleWeeklyGroup(itemId) {
   saveWeekly(next);
 }
 
-/** 毎週 ⇄ 2週に1回 を入れ替える */
+/**
+ * 次の頻度。WEEKLY_EVERY_ORDER の順に回ります。
+ * 「毎月」は1か月で区切る店舗だけ（それ以外の店舗は 毎週 ⇄ 2週 のまま）。
+ * 選べない頻度だったとき（毎月を選べない店舗の毎月など）は、毎週へ戻します
+ */
+function nextWeeklyEvery(item) {
+  const 選べる = WEEKLY_EVERY_ORDER.filter((k) => !WEEKLY_EVERY[k].monthOnly || weeklyUsesMonth(state.storeId));
+  const at = 選べる.indexOf(weeklyEvery(item));
+  return at < 0 ? 選べる[0] : 選べる[(at + 1) % 選べる.length];
+}
+
+/** 頻度を次へ移す */
 function toggleWeeklyEvery(itemId) {
   const next = currentWeekly();
   const item = next.find((it) => it.id === itemId);
   if (!item) return;
-  if (isBiweekly(item)) delete item.every;
-  else item.every = 'biweek';
+  const ev = nextWeeklyEvery(item);
+  if (ev === 'week') delete item.every; // 毎週は印なし（今までと同じ形）
+  else item.every = ev;
   saveWeekly(next);
 }
 

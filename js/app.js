@@ -13325,6 +13325,10 @@ function refreshSubmitCard() {
  *
  *  提出と達成率の単位は「2週間（期）」です。期の1週目の記録に
  *  提出の印と備考を持たせています。
+ *
+ *  ★1か月で区切る店舗（config.js の WEEKLY_MONTH_FROM。2026-11-25〜）は、
+ *    切り替わった週から「月の表」になります（横がその月の4〜5週）。
+ *    提出と備考は M<YYYY-MM> の行です。期か月かは weekUnitOf で1回だけ決めます。
  * ============================================================ */
 
 /** いま見ている週（日曜の日付） */
@@ -13343,6 +13347,60 @@ function goToWeek(weekStart) {
   state.y = y; state.m = m; state.d = d;
 }
 
+/** いま見ている月（'YYYY-MM'）。週の水曜が入っている月です */
+function currentMonth() {
+  return weekMonthOf(currentWeek());
+}
+
+/** いま見ているところは、月で区切るか（1か月で区切る店舗の、切り替わったあとの週） */
+function viewingMonth() {
+  return isMonthMode(state.storeId, currentWeek());
+}
+
+/*
+ * ★下の3つは、本部のイベント登録が**この名前で**呼びます（2026-11-25、本部との約束。決裁.md）。
+ *   名前を変えると、黙って2週間のまま動きます。test_weekly.js が名前を見張っています。
+ *   stepWeekView・stepWeekAll は**日を動かすだけ**です（writeHash と render は呼ぶ側が呼びます）。
+ */
+
+/** 備考を書く行の名前（storeId/ の後ろ。例 W2026-11-22・M2026-12） */
+function weekNoteKey() {
+  return weekUnitOf(state.storeId, currentWeek()).key;
+}
+
+/** 前・次へ送る（1か月で区切る店舗は1か月、それ以外は2週間） */
+function stepWeekView(dir) {
+  const storeId = state.storeId;
+  if (viewingMonth()) {
+    const weeks = storeMonthWeeks(storeId, shiftMonthStr(currentMonth(), dir));
+    // 切り替わる前の月へ戻るときは、切り替わる直前の期へ
+    goToWeek(weeks.length ? weeks[0] : addDaysStr(monthModeStart(storeId), -14));
+    return;
+  }
+  // 期から次へ送ると、切り替わる週（月の1週目）にちょうど着きます
+  goToWeek(addDaysStr(currentPeriod(), dir * 14));
+}
+
+/** 6店舗の達成状況の前・次。今までどおり2週間ずつ（ko-dai さん「B」＝店舗ごとに目盛りを変える。
+ *  1か月で区切る店舗は、選んだ日が入っている月をカードに出します。renderWeekAllPeriod） */
+function stepWeekAll(dir) {
+  goToWeek(addDaysStr(currentPeriod(), dir * 14));
+}
+
+/**
+ * 業務選択のカードに出す、週間掃除のいまの状況 { text, kind }
+ * ★業務選択の taskStatus がこの名前で呼びます（2026-11-25、本部が⑦でつなぎました。決裁.md）。
+ *   2週間の店舗では、今までの taskStatus の週間掃除と同じ文を返します。
+ */
+function weekTaskStatus(storeId) {
+  const u = weekUnitOf(storeId, weekStartOf(TODAY.y, TODAY.m, TODAY.d));
+  const st = u.status;
+  if (!st.total) return { text: '項目なし', kind: 'none' };
+  if (st.submittedAt) return { text: `提出済み ${st.rate}%`, kind: 'done' };
+  const [, lm, ld] = u.last.split('-').map(Number);
+  return { text: `${st.rate}%　提出 ${lm}/${ld}`, kind: 'todo' };
+}
+
 /** ISO日時を「8/12」の形にする */
 function shortDate(iso) {
   if (!iso) return '';
@@ -13353,6 +13411,8 @@ function shortDate(iso) {
 
 function renderWeekView() {
   const storeId = state.storeId;
+  // ★1か月で区切る店舗の、切り替わったあとの週は「月の表」
+  if (viewingMonth()) { renderMonthTable(storeId); return; }
   const period = currentPeriod();
   const weeks = periodWeeks(period);
   const nowWeek = weekStartOf(TODAY.y, TODAY.m, TODAY.d);
@@ -13360,6 +13420,7 @@ function renderWeekView() {
   /* ---- 見出しと送り戻し ---- */
   el.weekNavMain.textContent = periodRangeLabel(period);
   el.weekNavSub.textContent = period === periodStartOf(nowWeek) ? 'この2週間' : '2週間分';
+  weekNavWords('今期', '2週間');
 
   /* ---- 表 ---- */
   const items = getWeekly(storeId).filter((it) => weeks.some((w) => weeklyAppliesTo(it, w, storeId)));
@@ -13420,17 +13481,20 @@ function renderWeekView() {
       nameTd.className = 'col-item';
       nameTd.textContent = it.label;
       // 毎週やるものにだけ印を付けます（2週に1回のものは、マスが1つに
-      // つながっているので印は付けません）
-      if (!isBiweekly(it)) {
+      // つながっているので印は付けません）。
+      // ★毎月の項目（1か月で区切る店舗が切り替わる前の期）は、2週と見分けられるよう「毎月」
+      const every = weeklyEvery(it);
+      if (every !== 'biweek') {
         const tag = document.createElement('span');
         tag.className = 'week-every';
-        tag.textContent = '毎週';
+        tag.textContent = WEEKLY_EVERY[every].tag;
         nameTd.appendChild(tag);
       }
       tr.appendChild(nameTd);
 
       // 2週に1回の項目は、記録を期の1週目にまとめて持ち、マスも1つにつなげます
-      if (isBiweekly(it)) {
+      // （毎月の項目も、期で見る間は同じ。config.js の periodSlots と合わせています）
+      if (every !== 'week') {
         const td = weekCell(storeId, it, period, nowWeek);
         td.classList.add('week-cell--span');
         td.colSpan = 2;
@@ -13447,6 +13511,7 @@ function renderWeekView() {
 
   /* ---- 備考（期ごと） ---- */
   el.weekNote.value = Store.getDay(storeId, weekRecKey(period)).note || '';
+  el.weekNote.placeholder = 'この2週間の気付き、次回への申し送りなど';
 
   /* ---- 随時掃除（上の表とは別物。達成率には入れません） ---- */
   renderAnytimeBlock();
@@ -13466,6 +13531,15 @@ function weekCell(storeId, item, week, nowWeek) {
   }
 
   const cur = Store.getDay(storeId, weekRecKey(week)).items?.[item.id];
+  const btn = weekDoneButton(cur);
+  btn.title = `${item.label}　${weekRangeLabel(week)}`;
+  btn.addEventListener('click', () => openDoerModal(item, week));
+  td.appendChild(btn);
+  return td;
+}
+
+/** マスの中のボタン（✓・担当者・日付）。期の表と月の表で共通です */
+function weekDoneButton(cur) {
   const done = !!cur?.done;
 
   const btn = document.createElement('button');
@@ -13493,9 +13567,152 @@ function weekCell(storeId, item, week, nowWeek) {
       btn.appendChild(when);
     }
   }
+  return btn;
+}
 
-  btn.title = `${item.label}　${weekRangeLabel(week)}`;
-  btn.addEventListener('click', () => openDoerModal(item, week));
+/**
+ * 送りのボタンの文字（index.html に書いてあるのは2週間の文字なので、月の表のときはここで書き換えます）
+ *   today … 「今期」か「今月」／ span … 読み上げ用の「前の2週間」「前の1か月」
+ */
+function weekNavWords(today, span) {
+  const t = document.getElementById('weekToday');
+  const p = document.getElementById('weekPrev');
+  const n = document.getElementById('weekNext');
+  if (t) t.textContent = today;
+  if (p) p.setAttribute('aria-label', `前の${span}`);
+  if (n) n.setAttribute('aria-label', `次の${span}`);
+}
+
+/* ------------------------------------------------------------
+ *  月の表（1か月で区切る店舗。2026-11-25〜）
+ *
+ *  横がその月の4〜5週。マスは config.js の monthSlots のとおりです。
+ *    毎週 … 週ごとに1マス
+ *    2週に1回 … 月の前半・後半で1マスずつ（つなげて出します）
+ *    毎月 … 月に1マス（全部の週をつなげて出します）
+ *  ★1か月の全部の項目を、いつ・だれがやったか、この1枚で見られるようにしています
+ * ---------------------------------------------------------- */
+function renderMonthTable(storeId) {
+  const ym = currentMonth();
+  const weeks = storeMonthWeeks(storeId, ym);
+  const nowWeek = weekStartOf(TODAY.y, TODAY.m, TODAY.d);
+  const nowYm = isMonthMode(storeId, nowWeek) ? weekMonthOf(nowWeek) : '';
+
+  /* ---- 見出しと送り戻し ---- */
+  el.weekNavMain.textContent = monthTitle(ym);
+  el.weekNavSub.textContent = (ym === nowYm ? '今月　' : '') + monthRangeLabel(storeId, ym);
+  weekNavWords('今月', '1か月');
+
+  /* ---- 表 ---- */
+  const slots = monthSlots(storeId, ym);
+  const items = [];
+  const seen = new Set();
+  slots.forEach((s) => { if (!seen.has(s.item.id)) { seen.add(s.item.id); items.push(s.item); } });
+  const empty = items.length === 0;
+  el.weekEmpty.classList.toggle('is-hidden', !empty);
+  el.weekNoteCard.classList.toggle('is-hidden', empty);
+  el.periodCard.classList.toggle('is-hidden', empty);
+  el.weekTableWrap.classList.toggle('is-hidden', empty);
+
+  const t = el.weekTable;
+  t.innerHTML = '';
+
+  const thead = document.createElement('thead');
+  const htr = document.createElement('tr');
+  htr.innerHTML = '<th class="col-item">掃除する場所</th>';
+  weeks.forEach((w, i) => {
+    const th = document.createElement('th');
+    // 5週あっても狭い画面に収まるよう、「1週目」と日付を2行にします
+    th.innerHTML =
+      `<span class="week-th__nth">${i + 1}週目</span><br>` +
+      `<span class="week-th__range">${weekShortLabel(w)}〜</span>`;
+    if (w === nowWeek) {
+      th.classList.add('is-now');
+      th.insertAdjacentHTML('beforeend', '<span class="week-th__now">今週</span>');
+    }
+    th.title = weekRangeLabel(w);
+    htr.appendChild(th);
+  });
+  thead.appendChild(htr);
+  t.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  const groups = groupWeekly(items);
+  groups.forEach((g) => {
+    if (groups.length > 1) {
+      const htr2 = document.createElement('tr');
+      htr2.className = 'week-group';
+      const gtd = document.createElement('td');
+      gtd.colSpan = weeks.length + 1;
+      const glabel = document.createElement('span');
+      glabel.className = 'week-group__label';
+      glabel.textContent = g.name;
+      gtd.appendChild(glabel);
+      htr2.appendChild(gtd);
+      tbody.appendChild(htr2);
+    }
+
+    g.items.forEach((it, i) => {
+      const tr = document.createElement('tr');
+      if (i % 2 === 1) tr.classList.add('is-alt');
+
+      const nameTd = document.createElement('td');
+      nameTd.className = 'col-item';
+      nameTd.textContent = it.label;
+      // 月の表では、どの頻度にも印を付けます（毎週・2週・毎月）
+      const tag = document.createElement('span');
+      tag.className = 'week-every';
+      tag.textContent = WEEKLY_EVERY[weeklyEvery(it)].tag;
+      nameTd.appendChild(tag);
+      tr.appendChild(nameTd);
+
+      // マスを週の順に並べます。マスのない週（足した日より前など）は「–」
+      const mine = slots.filter((s) => s.item.id === it.id);
+      for (let k = 0; k < weeks.length;) {
+        const slot = mine.find((s) => s.week === weeks[k]);
+        if (slot) {
+          tr.appendChild(monthCell(storeId, slot, nowWeek));
+          k += slot.weeks.length;
+        } else {
+          const td = document.createElement('td');
+          td.className = 'week-cell is-future' + (weeks[k] === nowWeek ? ' is-now' : '');
+          td.innerHTML = '<span class="cell-mark cell-mark--none">–</span>';
+          tr.appendChild(td);
+          k += 1;
+        }
+      }
+      tbody.appendChild(tr);
+    });
+  });
+  t.appendChild(tbody);
+
+  renderPeriodCard(storeId, weeks[0]);
+
+  /* ---- 備考（月ごと。M<YYYY-MM> の行） ---- */
+  el.weekNote.value = Store.getDay(storeId, monthRecKey(ym)).note || '';
+  el.weekNote.placeholder = 'この1か月の気付き、次回への申し送りなど';
+
+  /* ---- 随時掃除（上の表とは別物。達成率には入れません） ---- */
+  renderAnytimeBlock();
+}
+
+/** 月の表のマス1つ。何週かつながったマスもあります */
+function monthCell(storeId, slot, nowWeek) {
+  const td = document.createElement('td');
+  td.className = 'week-cell';
+  const span = slot.weeks.length;
+  if (span > 1) {
+    td.classList.add('week-cell--span');
+    td.colSpan = span;
+  } else if (slot.week === nowWeek) {
+    td.classList.add('is-now');
+  }
+  if (slot.week > nowWeek) td.classList.add('is-future');
+
+  const cur = Store.getDay(storeId, slot.key).items?.[slot.item.id];
+  const btn = weekDoneButton(cur);
+  btn.title = `${slot.item.label}　${weeksRangeLabel(slot.weeks)}`;
+  btn.addEventListener('click', () => openDoerModal(slot.item, slot.week, slot));
   td.appendChild(btn);
   return td;
 }
@@ -13559,13 +13776,14 @@ function donut(rate, { size = 96, stroke = 10, color = 'var(--store)', label = '
 }
 
 /* ------------------------------------------------------------
- *  この2週間の達成状況と提出
+ *  この2週間（1か月で区切る店舗は、この1か月）の達成状況と提出
  * ---------------------------------------------------------- */
-function renderPeriodCard(storeId, period) {
-  const st = periodStatus(storeId, period);
+function renderPeriodCard(storeId, week) {
+  const u = weekUnitOf(storeId, week);
+  const st = u.status;
   const submitted = !!st.submittedAt;
 
-  el.periodTitle.textContent = `この2週間 ${periodRangeLabel(period)}`;
+  el.periodTitle.textContent = `この${u.name} ${u.range}`;
   el.periodRate.textContent = `${st.rate}%`;
   el.periodRate.classList.toggle('is-full', st.rate === 100);
   el.periodBar.style.width = `${st.rate}%`;
@@ -13578,7 +13796,7 @@ function renderPeriodCard(storeId, period) {
   el.periodCard.classList.toggle('is-submitted', submitted);
 
   // 提出はクローズのページで行うので、ここではいつ提出できるかだけ案内します
-  const last = periodEndOf(period);
+  const last = u.last;
   if (submitted) {
     const d = new Date(st.submittedAt);
     el.periodWhen.textContent =
@@ -13603,14 +13821,17 @@ function renderPeriodCard(storeId, period) {
  * ---------------------------------------------------------- */
 function renderWeekSubmit(dateStr) {
   const storeId = state.storeId;
-  const period = periodStartOf(weekStartOf(state.y, state.m, state.d));
-  const last = periodEndOf(period);
-  const st = periodStatus(storeId, period);
+  // 期か月か（1か月で区切る店舗は、月の最後の週の土曜に出します）
+  const u = weekUnitOf(storeId, weekStartOf(state.y, state.m, state.d));
+  const last = u.last;
+  const st = u.status;
   const submitted = !!st.submittedAt;
 
   // 出す日：その2週間の最終日。ただし提出済みならその日だけ、
   // 未提出なら最終日を過ぎたあとも出しておく
   const isLast = dateStr === last;
+  // ★2026-11-25 に見つけたこと：区切りを「見ている日」から決めているので、dateStr が last を
+  //   越えることはなく、この overdue は働いていません（最終日にだけ出ます）。直すかは未定。報告ずみ
   const overdue = !submitted && dateStr > last && dateStr <= addDaysStr(last, 13);
   const show = st.total > 0 && (isLast || overdue);
 
@@ -13618,11 +13839,12 @@ function renderWeekSubmit(dateStr) {
   if (!show) return;
 
   const [, lm, ld] = last.split('-').map(Number);
-  el.weekSubmitRange.textContent = periodRangeLabel(period) + (overdue ? `　※${lm}/${ld}が提出日でした` : '');
+  el.weekSubmitRange.textContent = u.range + (overdue ? `　※${lm}/${ld}が提出日でした` : '');
+  el.periodSubmitBtn.textContent = `この${u.name}分を提出する`;
   el.weekSubmitRate.textContent = `達成率 ${st.rate}%（${st.done} / ${st.total} マス）`;
   el.weekSubmitRate.classList.toggle('is-full', st.rate === 100);
 
-  const sending = state.sending === `${state.storeId}/${weekRecKey(period)}`;
+  const sending = state.sending === `${state.storeId}/${u.key}`;
   el.weekSubmitCard.classList.toggle('is-submitted', submitted && !sending);
   el.weekSubmitCard.classList.toggle('is-sending', sending);
   el.periodSubmit.classList.toggle('is-hidden', submitted || sending);
@@ -13721,8 +13943,8 @@ function fillStaffOptions(select, current) {
 
 function submitPeriod() {
   const storeId = state.storeId;
-  const period = currentPeriod();
-  const st = periodStatus(storeId, period);
+  const u = weekUnitOf(storeId, currentWeek());
+  const st = u.status;
   if (st.total === 0) return;
 
   const name = el.periodStaff.value;
@@ -13730,7 +13952,7 @@ function submitPeriod() {
 
   const remain = st.total - st.done;
   askConfirm({
-    item: `週間掃除　${periodRangeLabel(period)}`,
+    item: `週間掃除　${u.range}`,
     message: (remain === 0
       ? `${st.total}マス全てが済んでいます（達成率 100%）。`
       : `達成率 ${st.rate}%（${st.done} / ${st.total} マス）で提出します。`
@@ -13739,23 +13961,23 @@ function submitPeriod() {
     okLabel: '提出する',
   }).then(async (ok) => {
     if (!ok) return;
-    Store.setStaff(storeId, weekRecKey(period), name);
-    Store.submit(storeId, weekRecKey(period));
-    await sendSubmit(`${storeId}/${weekRecKey(period)}`);
+    Store.setStaff(storeId, u.key, name);
+    Store.submit(storeId, u.key);
+    await sendSubmit(`${storeId}/${u.key}`);
   });
 }
 
 function unsubmitPeriod() {
   const storeId = state.storeId;
-  const period = currentPeriod();
+  const u = weekUnitOf(storeId, currentWeek());
   askConfirm({
-    item: `週間掃除　${periodRangeLabel(period)}`,
+    item: `週間掃除　${u.range}`,
     message: '提出を取り消します。6店舗の達成状況では「未提出」に戻ります。',
     okLabel: '取り消す',
     danger: true,
   }).then((ok) => {
     if (!ok) return;
-    Store.unsubmit(storeId, weekRecKey(period));
+    Store.unsubmit(storeId, u.key);
     render();
   });
 }
@@ -13782,7 +14004,9 @@ function renderWeekAll() {
 function renderWeekAllYear() {
   const year = state.y;
   el.weekAllYear.textContent = `${year}年`;
-  const misses = missCountByPeriod();
+  // ★ミスも店舗ごとの目盛りで数えます（2週間の店舗は今までどおり期。1か月で区切る店舗は月）
+  const missCounts = weekAllMissCounts(missAll('week'));
+  const misses = missCounts.period;
   const now = currentPeriod();
   const today = ymd(TODAY.y, TODAY.m, TODAY.d);
 
@@ -13811,13 +14035,16 @@ function renderWeekAllYear() {
     marks.className = 'cal__marks';
     let done = 0, target = 0, yet = 0;
     STORES.forEach((s) => {
-      const st = periodStatus(s.id, start);
-      const none = st.total === 0;                 // この期は対象の項目がない
+      // ★1か月で区切る店舗の、切り替わったあとの期は出しません（下の月のマスに出ます）。
+      //   2週間の店舗の決め方は今までと同じです（config.js の weekAllPeriodMark）
+      const mark = weekAllPeriodMark(s.id, start);
+      if (mark === 'skip') return;
+      const none = mark === 'none';                // この期は対象の項目がない
       if (!none) {
         target += 1;
-        if (st.submittedAt) done += 1; else yet += 1;
+        if (mark === 'done') done += 1; else yet += 1;
       }
-      if (!none && !st.submittedAt) return;
+      if (mark === 'yet') return;
 
       const chip = document.createElement('span');
       chip.className = 'logo-chip cal-logo' + (none ? ' is-closed' : '');
@@ -13852,8 +14079,112 @@ function renderWeekAllYear() {
     el.weekAllGrid.appendChild(cell);
   });
 
+  // 1か月で区切る店舗の月のマス（ない年は出しません）
+  const monthSum = renderWeekAllMonths(year, missCounts.month, today);
+  doneAll += monthSum.done; targetAll += monthSum.target;
+
   el.weekAllYearSummary.textContent = targetAll ? `今までの提出 ${doneAll} / ${targetAll}` : '';
   el.weekAllYearSummary.classList.toggle('is-all-done', targetAll > 0 && doneAll === targetAll);
+}
+
+/**
+ * 1か月で区切る店舗の「月のマス」（2026-11-25、ko-dai さん「B」＝店舗ごとに目盛りを変える）
+ *
+ * 期の格子のすぐ下に、1か月で区切る店舗だけの格子を出します。切り替わった月がない年は出しません。
+ * 中の見かたは期のマスと同じです（出した店舗はアイコン・項目なしはうすく・まだは「未◯」）。
+ * ★index.html に枠を足さず、ここで作ります（共通のファイルに触らないため）
+ *
+ * 戻り値 … { done, target }（年のまとめ「今までの提出」に足します）
+ */
+function renderWeekAllMonths(year, misses, today) {
+  const stores = STORES.filter((s) => weeklyUsesMonth(s.id));
+  const months = [];
+  for (let m = 1; m <= 12; m++) {
+    const ym = `${year}-${String(m).padStart(2, '0')}`;
+    if (stores.some((s) => weekAllMonthMark(s.id, ym) !== 'skip')) months.push(ym);
+  }
+
+  let box = document.getElementById('weekAllMonthBox');
+  if (!months.length) {
+    if (box) box.classList.add('is-hidden');
+    return { done: 0, target: 0 };
+  }
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'weekAllMonthBox';
+    box.innerHTML = '<p class="report-summary" id="weekAllMonthHead"></p>'
+      + '<div class="period-grid" id="weekAllMonthGrid"></div>';
+    el.weekAllGrid.insertAdjacentElement('afterend', box);
+  }
+  box.classList.remove('is-hidden');
+  document.getElementById('weekAllMonthHead').textContent =
+    `1か月で区切る店舗（${stores.map((s) => s.name).join('・')}）`;
+
+  const grid = document.getElementById('weekAllMonthGrid');
+  grid.innerHTML = '';
+  const pickedYm = weekMonthOf(currentWeek());
+  let doneAll = 0, targetAll = 0;
+  months.forEach((ym) => {
+    // その月の最初の週（切り替わる月は、切り替わった週から）
+    const first = stores.map((s) => storeMonthWeeks(s.id, ym)[0]).filter(Boolean).sort()[0];
+    const future = first > today;
+    const cell = document.createElement('button');
+    cell.type = 'button';
+    cell.className = 'period-cell'
+      + (ym === pickedYm && currentWeek() >= first ? ' is-picked' : '')   // 選んでいる日が、この月（切り替わったあと）に入っている
+      + (future ? ' is-future' : '');
+
+    const label = document.createElement('span');
+    label.className = 'period-cell__label';
+    label.textContent = `${Number(ym.slice(5))}月`;
+    cell.appendChild(label);
+
+    const marks = document.createElement('span');
+    marks.className = 'cal__marks';
+    let done = 0, target = 0, yet = 0;
+    stores.forEach((s) => {
+      const mark = weekAllMonthMark(s.id, ym);
+      if (mark === 'skip') return;
+      const none = mark === 'none';
+      if (!none) {
+        target += 1;
+        if (mark === 'done') done += 1; else yet += 1;
+      }
+      if (mark === 'yet') return;
+
+      const chip = document.createElement('span');
+      chip.className = 'logo-chip cal-logo' + (none ? ' is-closed' : '');
+      chip.title = `${s.name}${none ? '（項目なし）' : '（提出済み）'}`;
+      fillLogo(chip, s);
+      marks.appendChild(chip);
+    });
+    if (yet) {
+      const left = document.createElement('span');
+      left.className = 'cal-yet' + (future ? '' : ' is-late');
+      left.textContent = `未${yet}`;
+      left.title = `未提出 ${yet}店舗`;
+      marks.appendChild(left);
+    }
+    cell.appendChild(marks);
+
+    if (misses[ym]) {
+      const badge = document.createElement('span');
+      badge.className = 'cal-miss';
+      badge.textContent = misses[ym] > 1 ? misses[ym] : '!';
+      badge.title = `ミスの記録 ${misses[ym]}件`;
+      cell.appendChild(badge);
+    }
+    if (!future && target && done === target) cell.classList.add('is-all');
+    if (!future) { doneAll += done; targetAll += target; }
+
+    cell.addEventListener('click', () => {
+      goToWeek(first);
+      writeHash();
+      render();
+    });
+    grid.appendChild(cell);
+  });
+  return { done: doneAll, target: targetAll };
 }
 
 /** 選んだ期の中身（店舗ごとの達成率） */
@@ -13861,20 +14192,27 @@ function renderWeekAllPeriod() {
   const period = currentPeriod();
   el.weekAllRange.textContent = periodRangeLabel(period);
 
-  const rows = STORES.map((store) => ({ store, st: periodStatus(store.id, period) }));
+  // ★店舗ごとの目盛り（2026-11-25、ko-dai さん「B」）：2週間の店舗はこの期、
+  //   1か月で区切る店舗は（切り替わったあとなら）この日が入っている月を出します
+  const rows = STORES.map((store) => {
+    const u = weekUnitOf(store.id, currentWeek());
+    return { store, u, st: u.status };
+  });
+  const 月の店 = rows.filter((r) => r.u.month);
   const active = rows.filter((r) => r.st.total > 0);
   const submitted = active.filter((r) => r.st.submittedAt).length;
   const avg = active.length
     ? Math.round(active.reduce((n, r) => n + r.st.rate, 0) / active.length)
     : 0;
 
-  el.weekAllSummary.textContent = active.length
+  el.weekAllSummary.textContent = (active.length
     ? `平均の達成率 ${avg}%　提出済み ${submitted} / ${active.length} 店舗`
-    : 'この2週間に対象の項目がある店舗はありません。';
+    : 'この2週間に対象の項目がある店舗はありません。')
+    + (月の店.length ? `　※${月の店.map((r) => r.store.name).join('・')}は${Number(月の店[0].u.ym.slice(5))}月の分` : '');
   el.weekAllSummary.classList.toggle('is-all-done', active.length > 0 && submitted === active.length);
 
   el.weekAllList.innerHTML = '';
-  rows.forEach(({ store, st }) => {
+  rows.forEach(({ store, st, u }) => {
     const li = document.createElement('li');
     li.className = 'rate-item';
 
@@ -13902,7 +14240,8 @@ function renderWeekAllPeriod() {
 
     const count = document.createElement('span');
     count.className = 'rate-card__count';
-    count.textContent = st.total ? `${st.done} / ${st.total} マス` : '項目なし';
+    count.textContent = (u.month ? `${Number(u.ym.slice(5))}月　` : '')
+      + (st.total ? `${st.done} / ${st.total} マス` : '項目なし');
     btn.appendChild(count);
 
     const badge = document.createElement('span');
@@ -13916,7 +14255,8 @@ function renderWeekAllPeriod() {
     btn.addEventListener('click', () => {
       state.storeId = store.id;
       state.view = 'week';
-      goToWeek(period);
+      // 1か月で区切る店舗は、その月の表を開きます
+      goToWeek(u.month ? storeMonthWeeks(store.id, u.ym)[0] : period);
       writeHash();
       render();
       window.scrollTo(0, 0);
@@ -13929,14 +14269,22 @@ function renderWeekAllPeriod() {
 /* ---------- やった人を選ぶ ---------- */
 let doerTarget = null; // { item, week }
 
-function openDoerModal(item, week) {
-  doerTarget = { kind: 'week', item, week };
+function openDoerModal(item, week, slot) {
+  // 月の表のマスは、記録を書く行（W か M）を slot.key に持っています
+  const key = slot ? slot.key : weekRecKey(week);
+  doerTarget = { kind: 'week', item, week, key };
   el.doerItem.textContent = item.label;
-  el.doerWeek.textContent = isBiweekly(item)
-    ? `${periodRangeLabel(periodStartOf(week))} のうち1回`
-    : weekRangeLabel(week);
+  if (slot) {
+    el.doerWeek.textContent = slot.weeks.length > 1
+      ? `${weeksRangeLabel(slot.weeks)} のうち1回`
+      : weekRangeLabel(week);
+  } else {
+    el.doerWeek.textContent = weeklyEvery(item) !== 'week'
+      ? `${periodRangeLabel(periodStartOf(week))} のうち1回`
+      : weekRangeLabel(week);
+  }
 
-  const cur = Store.getDay(state.storeId, weekRecKey(week)).items?.[item.id];
+  const cur = Store.getDay(state.storeId, key).items?.[item.id];
   const done = !!cur?.done;
   el.doerClear.classList.toggle('is-hidden', !done);
 
@@ -13987,7 +14335,8 @@ function closeDoerModal() {
 
 /** 記録の入れ先。随時掃除は日付ではなく1つのまとまりに入れます */
 function doerKey(target) {
-  return target.kind === 'anytime' ? ANYTIME_KEY : weekRecKey(target.week);
+  if (target.kind === 'anytime') return ANYTIME_KEY;
+  return target.key || weekRecKey(target.week);
 }
 
 function doerRedraw() {
