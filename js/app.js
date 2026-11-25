@@ -12813,6 +12813,12 @@ function missInRange(kind, e) {
   if (kind === 'week') {
     const [y, m, d] = (e.d || '').split('-').map(Number);
     if (!y) return false;
+    // ★店舗ごとの目盛りで絞ります（2026-11-25、本部の⑧・ko-dai さんの「B」）。
+    //   2週間の店舗はその期、1か月で区切る店舗は（切り替わったあとなら）その月。
+    //   店舗のない記録と、関数がない（古い config.js と混ざった）ときは今までどおり期
+    if (e.store && typeof weekUnitKey === 'function') {
+      return weekUnitKey(e.store, weekStartOf(y, m, d)) === weekUnitKey(e.store, currentWeek());
+    }
     return periodOfDate(y, m, d) === currentPeriod();
   }
   return (e.d || '').startsWith(missMonthKey(state.y, state.m));
@@ -12824,18 +12830,6 @@ function missCountByDay(y, m) {
   missAll('close')
     .filter((e) => (e.d || '').startsWith(missMonthKey(y, m)))
     .forEach((e) => { out[e.d] = (out[e.d] || 0) + 1; });
-  return out;
-}
-
-/** ミスを「期のはじまり → 件数」に（週間掃除の一覧の印） */
-function missCountByPeriod() {
-  const out = {};
-  missAll('week').forEach((e) => {
-    const [y, m, d] = (e.d || '').split('-').map(Number);
-    if (!y) return;
-    const p = periodOfDate(y, m, d);
-    out[p] = (out[p] || 0) + 1;
-  });
   return out;
 }
 
@@ -14199,6 +14193,9 @@ function renderWeekAllPeriod() {
     return { store, u, st: u.status };
   });
   const 月の店 = rows.filter((r) => r.u.month);
+  // 下のミスの一覧の「この期」（index.html の文字）は、1か月で区切る店舗が入るときは「この期・月」に（本部の⑧）
+  const 近く = document.querySelector('#wmissRange [data-range="near"]');
+  if (近く) 近く.textContent = 月の店.length ? 'この期・月' : 'この期';
   const active = rows.filter((r) => r.st.total > 0);
   const submitted = active.filter((r) => r.st.submittedAt).length;
   const avg = active.length

@@ -9746,6 +9746,16 @@ function weeksRangeLabel(weeks) {
 }
 
 /**
+ * その店舗の、その週が入っている区切りの行の名前（W<期の1週目> か M<YYYY-MM>）
+ * weekUnitOf の key と同じものを、達成状況を数えずに返します（ミスの一覧を絞るとき、記録1件ごとに呼ぶため）
+ */
+function weekUnitKey(storeId, weekStartStr) {
+  return isMonthMode(storeId, weekStartStr)
+    ? monthRecKey(weekMonthOf(weekStartStr))
+    : weekRecKey(periodStartOf(weekStartStr));
+}
+
+/**
  * その店舗の、その週が入っている区切り（期か月か）
  *
  *   { month: 月か, ym, period, key: 提出と備考の行, status, last: 提出日,
@@ -9758,13 +9768,13 @@ function weekUnitOf(storeId, weekStartStr) {
   if (isMonthMode(storeId, weekStartStr)) {
     const ym = weekMonthOf(weekStartStr);
     return {
-      month: true, ym, period: '', key: monthRecKey(ym), status: monthStatus(storeId, ym),
+      month: true, ym, period: '', key: weekUnitKey(storeId, weekStartStr), status: monthStatus(storeId, ym),
       last: monthEndOf(storeId, ym), range: monthRangeLabel(storeId, ym), name: '1か月',
     };
   }
   const period = periodStartOf(weekStartStr);
   return {
-    month: false, ym: '', period, key: weekRecKey(period), status: periodStatus(storeId, period),
+    month: false, ym: '', period, key: weekUnitKey(storeId, weekStartStr), status: periodStatus(storeId, period),
     last: periodEndOf(period), range: periodRangeLabel(period), name: '2週間',
   };
 }
